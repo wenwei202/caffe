@@ -83,6 +83,7 @@ class SGDSolver : public Solver<Dtype> {
   Dtype GetLearningRate();
   virtual void ApplyUpdate();
   virtual Dtype GetSparsity(int param_id);
+  virtual Dtype GetGroupSparsity(int param_id);
   virtual void Normalize(int param_id);
   virtual Dtype Regularize(int param_id);
   virtual Dtype GroupLassoRegularize(int param_id);

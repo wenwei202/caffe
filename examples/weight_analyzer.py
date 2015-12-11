@@ -25,13 +25,14 @@ caffe.set_mode_gpu()
 
 #net = caffe.Net('../models/bvlc_reference_caffenet/deploy.prototxt','../models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel', caffe.TEST)
 #net = caffe.Net('models/eilab_reference_sparsenet/deploy_scnn.prototxt','models/eilab_reference_sparsenet/sparsenet_train_iter_1000.caffemodel', caffe.TEST)
-net = caffe.Net('models/eilab_reference_sparsenet/deploy_scnn.prototxt','models/eilab_reference_sparsenet/eilab_reference_sparsenet.caffemodel', caffe.TEST)
+net = caffe.Net('/home/wew57/bincaffe_bin_copyed/models/bvlc_reference_caffenet/train_val.prototxt','/home/wew57/bincaffe_bin_copyed/models/bvlc_reference_caffenet/caffenet_train_iter_120000.caffemodel', caffe.TEST)
 #net = caffe.Net('../examples/cifar10/cifar10_full_scnn.prototxt','../examples/cifar10/eilab_cifar10_full_ini_sparsenet.caffemodel', caffe.TEST)
 print("blobs {}\nparams {}".format(net.blobs.keys(), net.params.keys()))
 coefficient = 0.00005
 group_weight_decay = 0.00001
 sum_l1 = 0
 sum_l2 = 0
+savetxt("conv3.weight",net.params['conv3'][0].data.reshape((384,256*9)),fmt='%.10f')
 for idx in range(0,len(net.params.keys())):
     key = net.params.keys()[idx]
     if re.match("^conv[1-9]$",key) or re.match("^fc[1-9]$",key):

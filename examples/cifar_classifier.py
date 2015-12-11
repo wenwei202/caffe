@@ -23,12 +23,12 @@ caffe_root = './'
 imagenet_val_path  = 'examples/cifar10/cifar10_test_lmdb/'
 
 # GPU mode
-caffe.set_device(0)
-caffe.set_mode_gpu()
-
+#caffe.set_device(0)
+#caffe.set_mode_gpu()
+caffe.set_mode_cpu()
 # [10000] Accuracy (Top 1): 81.45%  (Top 5): 99.21% cifar10_full_scnn.prototxt before sparsifying
-net = caffe.Net(caffe_root + 'examples/cifar10/cifar10_full_scnn.prototxt',
-                caffe_root + 'examples/cifar10/cifar10_full_scnn_iter_70000_zerout.caffemodel',
+net = caffe.Net(caffe_root + 'examples/cifar10/cifar10_quick.prototxt',
+                caffe_root + 'examples/cifar10/cifar10_quick_iter_5000.caffemodel',
                 #caffe_root + 'examples/cifar10/eilab_cifar10_full_ini_sparsenet.caffemodel',
                 caffe.TEST)
 

@@ -302,6 +302,7 @@ void caffe_gpu_fabs(const int n, const Dtype* x, Dtype* y);
 template <typename Dtype>
 void caffe_gpu_scale(const int n, const Dtype alpha, const Dtype *x, Dtype* y);
 
+//get sqrt sum of weights within groups and copy them at each position
 template <typename Dtype>
 void caffe_gpu_group_lasso(const int n, const int c, const Dtype *x, Dtype* y);
 

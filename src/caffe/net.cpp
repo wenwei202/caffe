@@ -599,6 +599,9 @@ string Net<Dtype>::Forward(const string& input_blob_protos, Dtype* loss) {
 
 template <typename Dtype>
 void Net<Dtype>::BackwardFromTo(int start, int end) {
+  if(Caffe::mode()==Caffe::CPU){
+	  LOG(FATAL) << "Training dynamic sparse weight in CPU mode is not supported";
+  }
   CHECK_GE(end, 0);
   CHECK_LT(start, layers_.size());
   for (int i = start; i >= end; --i) {

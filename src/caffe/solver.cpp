@@ -288,6 +288,36 @@ Dtype SGDSolver<Dtype>::GetSparsity(int param_id) {
 }
 
 template <typename Dtype>
+Dtype SGDSolver<Dtype>::GetGroupSparsity(int param_id) {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  Dtype sparsity = Dtype(0);
+  switch (Caffe::mode()) {
+  case Caffe::CPU: {
+        LOG(WARNING)<<"Unsupported in CPU mode: GetGroupSparsity";
+        sparsity = Dtype(-1);
+        break;
+  }
+  case Caffe::GPU: {
+#ifndef CPU_ONLY
+
+//        caffe_gpu_if_zerout(net_params[param_id]->count(),
+//            net_params[param_id]->gpu_data(),
+//            temp_[param_id]->mutable_gpu_data());
+//        caffe_gpu_asum(net_params[param_id]->count(),temp_[param_id]->gpu_data(),&sparsity);
+//        sparsity = sparsity*Dtype(100)/net_params[param_id]->count();
+	  NOT_IMPLEMENTED;
+#else
+    NO_GPU;
+#endif
+    	break;
+  }
+  default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+  return sparsity;
+}
+
+template <typename Dtype>
 void Solver<Dtype>::Solve(const char* resume_file) {
   LOG(INFO) << "Solving " << net_->name();
   LOG(INFO) << "Learning Rate Policy: " << param_.lr_policy();
@@ -671,10 +701,13 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
   Dtype group_weight_decay = this->param_.group_weight_decay();
   Dtype local_group_decay = group_weight_decay * net_params_group_weight_decay[param_id];
   Dtype regularization_term = Dtype(0);
-  bool if_group_lasso = local_group_decay && (net_params[param_id]->num_axes()==4 && (net_params[param_id]->shape(2)==1) && (net_params[param_id]->shape(3)==1) );
+  bool if_group_lasso = local_group_decay && (net_params[param_id]->num_axes()==4 && (net_params[param_id]->shape(2)>=1) && (net_params[param_id]->shape(3)>=1) );
   switch (Caffe::mode()) {
   case Caffe::CPU: {
     if (if_group_lasso) {
+      if((net_params[param_id]->shape(2)>1) || (net_params[param_id]->shape(3)>1))
+    	  LOG(FATAL)<< "Unsupported in CPU mode: group lasso for convolutional layers with kernel > 1x1";
+
       //LOG(WARNING) << "Low Precision in CPU mode for group lasso";
       //LOG(INFO) << "Shape: " << net_params[param_id]->shape_string();
       for(int c=0;c<net_params[param_id]->shape(1);c++){
@@ -744,14 +777,15 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
       } else {
         LOG(FATAL) << "Unknown regularization type: " << regularization_type;
       }*/
-
+    	LOG(WARNING)<<"GroupLassoRegularize is NOT separated for different kernel groups";
     	//caffe_gpu_set(temp_[param_id]->count(), static_cast<Dtype>(0),temp_[param_id]->mutable_gpu_diff());
+    	int equivalent_ch = net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
     	caffe_gpu_group_lasso(net_params[param_id]->shape(0),
-    			net_params[param_id]->shape(1),
+    			equivalent_ch,
     			net_params[param_id]->gpu_data(),
     			temp_[param_id]->mutable_gpu_data());
 
-    	caffe_gpu_asum(temp_[param_id]->shape(1),temp_[param_id]->gpu_data(),&regularization_term);
+    	caffe_gpu_asum(equivalent_ch,temp_[param_id]->gpu_data(),&regularization_term);
     	regularization_term *= local_group_decay;
     	//LOG(INFO) << "    group lasso term : " << regularization_term;
 

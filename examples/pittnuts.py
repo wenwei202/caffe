@@ -3,6 +3,7 @@ __author__ = 'pittnuts'
 from numpy import *
 from numpy.linalg import inv
 from scipy.linalg import eigh
+import matplotlib.pyplot as plt
 import warnings
 # PCA analysis
 def pca(X):
@@ -188,3 +189,13 @@ def get_sparsity(X,thre=0):
     thre = abs(thre)
     mask_mat = abs(X)<=thre
     return sum(mask_mat)/(float)(mask_mat.size)
+
+def show_matrix(mat):
+    if len(mat.shape) > 2:
+        return
+
+    filt_min, filt_max = mat.min(), mat.max()
+    plt.figure()
+    plt.imshow(mat, vmin=filt_min, vmax=filt_max,cmap=plt.get_cmap('Greys'),interpolation='none')
+    #plt.axis('off')
+    plt.tick_params(axis='both', which='both', bottom='off', top='off', labelbottom='off', right='off', left='off', labelleft='off')

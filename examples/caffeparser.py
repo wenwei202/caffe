@@ -21,6 +21,15 @@ class CaffeProtoParser:
         return self._readProtoBinFile(self.filepath, blob)
     #enddef
 
+    def getLayerByName(self,net_msg,layername):
+        res = []
+        for cur_layer in net_msg.layer:
+            if layername==cur_layer.name:
+                res = cur_layer
+                break
+        return res
+    #enddef
+
     def _readProtoTxtFile(self, filepath, parser_object):
 
         file = open(filepath, "r")
