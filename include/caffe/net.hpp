@@ -144,6 +144,10 @@ class Net {
   inline const vector<shared_ptr<Blob<Dtype> > >& params() const {
     return params_;
   }
+  /// @brief returns the groups of parameters
+    inline const vector<int  >& param_groups() const {
+      return param_groups_;
+    }
   /// @brief returns the parameter learning rate multipliers
   inline const vector<float>& params_lr() const { return params_lr_; }
   inline const vector<float>& params_weight_decay() const {
@@ -258,6 +262,8 @@ class Net {
   vector<Blob<Dtype>*> net_output_blobs_;
   /// The parameters in the network.
   vector<shared_ptr<Blob<Dtype> > > params_;
+  // The group of each parameter blob (for conv)
+  vector<int > param_groups_;
   /// the learning rate multipliers
   vector<float> params_lr_;
   /// the weight decay multipliers

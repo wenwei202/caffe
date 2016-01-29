@@ -439,6 +439,13 @@ void Net<Dtype>::AppendParam(const NetParameter& param, const int layer_id,
   }
   const int net_param_id = params_.size();
   params_.push_back(layers_[layer_id]->blobs()[param_id]);
+
+  if(layer_param.has_convolution_param()){
+	  param_groups_.push_back(layer_param.convolution_param().group());
+  }
+  else {
+	  param_groups_.push_back(1);
+  }
   param_id_vecs_[layer_id].push_back(net_param_id);
   param_layer_indices_.push_back(make_pair(layer_id, param_id));
   if (!param_size || !param_name.size() || (param_name.size() &&

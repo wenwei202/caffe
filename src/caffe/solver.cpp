@@ -696,6 +696,7 @@ Dtype SGDSolver<Dtype>::Regularize(int param_id) {
 template <typename Dtype>
 Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<int >& net_param_groups = this->net_->param_groups();
   const vector<float>& net_params_group_weight_decay =
   	             this->net_->params_group_weight_decay();
   Dtype group_weight_decay = this->param_.group_weight_decay();
@@ -705,8 +706,8 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
   switch (Caffe::mode()) {
   case Caffe::CPU: {
     if (if_group_lasso) {
-      if((net_params[param_id]->shape(2)>1) || (net_params[param_id]->shape(3)>1))
-    	  LOG(FATAL)<< "Unsupported in CPU mode: group lasso for convolutional layers with kernel > 1x1";
+      if((net_params[param_id]->shape(2)>1) || (net_params[param_id]->shape(3)>1) || net_param_groups[param_id]>1)
+    	  LOG(FATAL)<< "Unsupported in CPU mode: group lasso for convolutional layers with kernel > 1x1 or with more than 1 kernel bank";
 
       //LOG(WARNING) << "Low Precision in CPU mode for group lasso";
       //LOG(INFO) << "Shape: " << net_params[param_id]->shape_string();
@@ -777,8 +778,9 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
       } else {
         LOG(FATAL) << "Unknown regularization type: " << regularization_type;
       }*/
-    	LOG(WARNING)<<"GroupLassoRegularize is NOT separated for different kernel groups";
-    	//caffe_gpu_set(temp_[param_id]->count(), static_cast<Dtype>(0),temp_[param_id]->mutable_gpu_diff());
+    	/*
+    	//LOG(INFO)<<param_id<<": group="<<net_param_groups[param_id];
+
     	int equivalent_ch = net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
     	caffe_gpu_group_lasso(net_params[param_id]->shape(0),
     			equivalent_ch,
@@ -794,10 +796,24 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
     	            local_group_decay,
     	            temp_[param_id]->gpu_data(),
     	            net_params[param_id]->mutable_gpu_diff());
-    	//Dtype tmp_test;
-    	//caffe_gpu_asum(temp_[param_id]->count(),temp_[param_id]->gpu_data(),&tmp_test);
-    	//LOG(INFO) << "    asum of diff : " << local_group_decay*tmp_test;
-
+    	*/
+    	int equivalent_ch = net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
+    	int group_size = net_params[param_id]->shape(0)/net_param_groups[param_id];//number of kernels in each group
+    	for (int g=0;g<net_param_groups[param_id];g++){
+    		int offset = g*group_size*equivalent_ch;
+			caffe_gpu_group_lasso(group_size,
+					equivalent_ch,
+					net_params[param_id]->gpu_data()+offset,
+					temp_[param_id]->mutable_gpu_data()+offset);
+			Dtype term;
+			caffe_gpu_asum(equivalent_ch,temp_[param_id]->gpu_data()+offset,&term);
+			regularization_term += term*local_group_decay;
+    	}
+    	caffe_gpu_div_checkzero(net_params[param_id]->count(), net_params[param_id]->gpu_data(), temp_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
+		caffe_gpu_axpy(net_params[param_id]->count(),
+					local_group_decay,
+					temp_[param_id]->gpu_data(),
+					net_params[param_id]->mutable_gpu_diff());
     }
 #else
     NO_GPU;
