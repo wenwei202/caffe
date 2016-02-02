@@ -274,19 +274,25 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
   // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
   // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
   if (!is_1x1_ ||  is_sparse_feature_maps_) {
-    if (!skip_im2col) {
-      conv_im2col_cpu(input, col_buffer_.mutable_cpu_data(),col_buf_mask_.mutable_cpu_data(), dense_feature_map_mask_.mutable_cpu_data());
-      //conv_im2col_cpu(input, col_buffer_.mutable_cpu_data());
+    if (!skip_im2col || is_sparse_feature_maps_) {
+      if(is_sparse_feature_maps_){
+    	  conv_im2col_cpu(input, col_buffer_.mutable_cpu_data(),col_buf_mask_.mutable_cpu_data(), dense_feature_map_mask_.mutable_cpu_data());
+      }else{
+    	  conv_im2col_cpu(input, col_buffer_.mutable_cpu_data());
+      }
     }
     col_buff = col_buffer_.cpu_data();
   }
-  int masked_map_num = 0;
-  for(int map_idx=0; map_idx<conv_in_channels_;++map_idx){
-	  if(dense_feature_map_mask_.cpu_data()[map_idx]){
-		  masked_map_num++;
+
+  if(is_sparse_feature_maps_){
+	  int masked_map_num = 0;
+	  for(int map_idx=0; map_idx<conv_in_channels_;++map_idx){
+		  if(dense_feature_map_mask_.cpu_data()[map_idx]){
+			  masked_map_num++;
+		  }
 	  }
+	  Dtype sparsity = (Dtype)1.0 - (Dtype)masked_map_num/(Dtype)conv_in_channels_;
   }
-  Dtype sparsity = (Dtype)1.0 - (Dtype)masked_map_num/(Dtype)conv_in_channels_;
   //LOG(INFO)<<Layer<Dtype>::layer_param().name()<<" sparsity: "<<sparsity;
   /*
   col_buffer_.Snapshot(Layer<Dtype>::layer_param().name()+".blob");
@@ -308,7 +314,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 #ifdef FOR_SCNN_PAPER
 	  if(!is_scnn_){
 #endif
-		  //if(sparsity>-1){
+		  if(is_sparse_feature_maps_){
 			  int left_cols = 0;
 			  caffe_cpu_del_zero_cols(conv_out_channels_ /group_,
 					  kernel_dim_ / group_,
@@ -324,12 +330,12 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 					conv_out_spatial_dim_, (Dtype)0., output + output_offset_ * g, conv_out_spatial_dim_);
 
 			  offset_sum += left_cols * conv_out_spatial_dim_;
-		  //}else{
-		//		caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, conv_out_channels_ /
-		//				  group_, conv_out_spatial_dim_, kernel_dim_ / group_,
-		//				  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
-		//				  (Dtype)0., output + output_offset_ * g);
-		//  }
+		  }else{
+				caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, conv_out_channels_ /
+						  group_, conv_out_spatial_dim_, kernel_dim_ / group_,
+						  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
+						  (Dtype)0., output + output_offset_ * g);
+		  }
 #ifdef FOR_SCNN_PAPER
 	  }else{
 		  //caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, conv_out_channels_ /

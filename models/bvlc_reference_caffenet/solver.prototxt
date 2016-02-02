@@ -5,7 +5,7 @@ test_interval: 1000
 base_lr: 0.001
 lr_policy: "step"
 gamma: 0.1
-stepsize: 50000
+stepsize: 60000
 #stepsize: 80000
 display: 20
 max_iter: 160000
@@ -22,8 +22,20 @@ momentum: 0.9
 #weight_decay: 8e-5
 #group_weight_decay: 8e-4
 
-weight_decay: 8e-5
-group_weight_decay: 1.2e-3
+#weight_decay: 8e-5
+#group_weight_decay: 1.2e-3
+
+#weight_decay: 8e-5
+#group_weight_decay: 4e-4
+
+#weight_decay: 2e-5
+#group_weight_decay: 4e-4
+
+#weight_decay: 1e-5
+#group_weight_decay: 1e-3
+
+weight_decay: 1e-5
+group_weight_decay: 2e-3
 
 regularization_type: "L1"
 snapshot: 5000
