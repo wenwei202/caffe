@@ -30,7 +30,7 @@ import os
 #    os.system("./scripts/download_model_binary.py ./models/bvlc_reference_caffenet")
 
 ## GPU mode
-#caffe.set_device(0)
+#caffe.set_device(2)
 #caffe.set_mode_gpu()
 
 caffe.set_mode_cpu()
