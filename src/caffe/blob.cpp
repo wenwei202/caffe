@@ -6,6 +6,7 @@
 #include "caffe/syncedmem.hpp"
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/io.hpp"
+#include "caffe/util/mmio.hpp"
 
 namespace caffe {
 
@@ -205,6 +206,16 @@ void Blob<Dtype>::Zerout() {
   }
 }
 
+template <typename Dtype>
+Dtype Blob<Dtype>::GetSparsity(){
+	int zero_num = 0;
+	for(int i=0;i<this->count();i++){
+		if( this->cpu_data()[i]<ZEROUT_THRESHOLD && this->cpu_data()[i]>-ZEROUT_THRESHOLD){
+			zero_num++;
+		}
+	}
+	return (Dtype)(zero_num) / (Dtype)(this->count());
+}
 
 template <> unsigned int Blob<unsigned int>::asum_data() const {
   NOT_IMPLEMENTED;
@@ -536,6 +547,40 @@ void Blob<Dtype>::Snapshot(string filename, bool write_diff) const{
 	BlobProto proto;
 	ToProto(&proto, write_diff);
 	WriteProtoToBinaryFile(proto, filename.c_str());
+}
+
+template <typename Dtype>
+void Blob<Dtype>:: WriteToNistMMIO(string filename) const{
+	if(filename.empty()){
+		filename = shape_string()+".blob";
+	}
+	MM_typecode matcode;
+	FILE * fp = fopen(filename.c_str(), "w+");
+	mm_initialize_typecode(&matcode);
+	mm_set_matrix(&matcode);
+	mm_set_array(&matcode);
+	mm_set_real(&matcode);
+	mm_set_general(&matcode);
+
+	mm_write_banner(fp, matcode);
+	int M = this->shape(0);//column of the stored matrix
+	int N = this->count()/M;
+	mm_write_mtx_array_size(fp, M, N);
+
+	/* NOTE: matrix market files use 1-based indices, i.e. first element
+	 of a vector has index 1, not 0.  */
+	const Dtype * data_ptr = this->cpu_data();
+	for (int c=0; c<this->shape(1); c++) {
+		for (int h=0; h<this->shape(2); h++) {
+			for (int w=0; w<this->shape(3); w++) {
+				for (int n=0; n<this->shape(0); n++) {
+					fprintf(fp, "%20g\n", *(data_ptr+((n * this->shape(1) + c) * this->shape(2) + h) * this->shape(3) + w));
+				}
+			}
+		}
+	}
+
+	fclose(fp);
 }
 
 INSTANTIATE_CLASS(Blob);

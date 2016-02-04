@@ -46,6 +46,45 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 #endif
 
 template <typename Dtype>
+void BaseConvolutionLayer<Dtype>::WeightAlign(){
+	is_sparse_weights_ = this->blobs_[0]->GetSparsity() > 0.8;
+	const LayerParameter& layerparam = this->layer_param();
+	LOG(INFO)<<"layer\t"<<layerparam.name()<<"\t"<<"has sparsity of "<< this->blobs_[0]->GetSparsity();
+	this->blobs_[0]->WriteToNistMMIO(layerparam.name()+".weight");
+#ifdef USE_MKL
+	const int M = this->blobs_[0]->shape(0)/group_;
+	const int N = this->blobs_[0]->count(1,4);
+	const int weight_offset = this->blobs_[0]->count()/group_;
+	const int row_offset = this->blobs_[0]->shape(0)/group_ + 1;
+    switch (Caffe::mode()) {
+    case Caffe::CPU:
+    	//convert trained weights in dense format to CSR format
+    	for (int g = 0; g < group_; ++g) {
+    		caffe_cpu_sparse_dense2csr(M, N,
+					this->blobs_[0]->mutable_cpu_data() + weight_offset * g,
+					nz_weight_values_.mutable_cpu_data()+ weight_offset * g,
+					nz_weight_indices_.mutable_cpu_data()+ weight_offset * g,
+					nz_weight_index_pointers_.mutable_cpu_data() + row_offset * g);
+    	}
+    	break;
+
+    case Caffe::GPU:
+#ifndef CPU_ONLY
+    	LOG(INFO)<<"Sparse storage format of weights in GPU model  is unimplemented!";
+#else
+    	NO_GPU;
+#endif
+    	break;
+
+    default:
+    	LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+    }
+#else
+    	LOG(WARNING)<<"Sparse Math BLAS is unsupported without MKL (when it's on CPU mode)!";
+#endif
+}
+
+template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   CHECK_EQ(4, bottom[0]->num_axes()) << "Input must have 4 axes, "
@@ -194,6 +233,7 @@ void BaseConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
   is_sparse_feature_maps_ = false;
   dense_feature_map_mask_.Reshape(1,1,1,channels_);
   squeezed_weight_buffer_.Reshape(this->blobs_[0]->shape(0)/group_,this->blobs_[0]->shape(1),this->blobs_[0]->shape(2),this->blobs_[0]->shape(3));
+  weight_offset_ = conv_out_channels_ * kernel_dim_ / group_ / group_;
 }
 
 template <typename Dtype>
@@ -256,6 +296,9 @@ void BaseConvolutionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
 	index_pointers_buffer_.Reshape(1,1,1,col_buffer_.shape(1)+1);
 	nonzero_per_rowcol_buffer_.Reshape(1,1,1,col_buffer_.shape(1));
 #endif
+	nz_weight_values_.Reshape(1, 1, 1, this->blobs_[0]->count());//nonzero elements
+	nz_weight_indices_.Reshape(1,1,1,nz_weight_values_.count());//index of nonzero
+	nz_weight_index_pointers_.Reshape(1,1,1,this->blobs_[0]->shape(0)+group_);//pointer(index) of indices
   }
   // Set up the all ones "bias multiplier" for adding biases by BLAS
   if (bias_term_) {
@@ -331,10 +374,37 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 
 			  offset_sum += left_cols * conv_out_spatial_dim_;
 		  }else{
+			  if(is_sparse_weights_){
+				  int row_offset = conv_out_channels_ /group_ + 1;
+				  int nnz = *(nz_weight_index_pointers_.cpu_data() + row_offset * g + conv_out_channels_ /group_);
+				  int M = conv_out_channels_ /group_;
+				  int N = conv_out_spatial_dim_;
+				  int K = kernel_dim_ / group_;
+				  Timer timer;
+				  timer.Start();
+				  caffe_cpu_sparse_mmcsr(M,
+						  N,
+						  K,
+						  (Dtype)1.,
+						  nz_weight_values_.cpu_data()+ weight_offset_ * g,
+						  nz_weight_indices_.cpu_data()+ weight_offset_ * g,
+						  nz_weight_index_pointers_.cpu_data() + row_offset * g,
+						  nz_weight_index_pointers_.cpu_data() + row_offset * g + 1,
+						  col_buff + col_offset_ * g,
+						  (Dtype)0.,output + output_offset_ * g);
+				  float passed_time = timer.MicroSeconds();
+				  long mem_bytes = nnz*(sizeof(Dtype)+sizeof(int))+M*sizeof(int)+M*K*sizeof(Dtype)+K*N*sizeof(Dtype);
+				  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
+						  <<"A("<<M<<"x"<<K<<" nnz:"<<nnz<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
+						  <<mem_bytes<<"B/"<<passed_time<<"us = "
+						  <<""<<mem_bytes/passed_time << " MB/s";
+
+			  }else{
 				caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, conv_out_channels_ /
 						  group_, conv_out_spatial_dim_, kernel_dim_ / group_,
 						  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
 						  (Dtype)0., output + output_offset_ * g);
+			  }
 		  }
 #ifdef FOR_SCNN_PAPER
 	  }else{

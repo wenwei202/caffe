@@ -228,9 +228,13 @@ class Blob {
   Dtype* mutable_gpu_diff();
   void Update();
   void Zerout();
+  Dtype GetSparsity();
   void FromProto(const BlobProto& proto, bool reshape = true);
   void ToProto(BlobProto* proto, bool write_diff = false) const;
   void Snapshot(string filename = "", bool write_diff = false) const;
+
+  /// @brief snapshot to format of Matrix Market http://math.nist.gov/MatrixMarket/formats.html
+  void WriteToNistMMIO(string filename = "") const;
 
   /// @brief Compute the sum of absolute values (L1 norm) of the data.
   Dtype asum_data() const;

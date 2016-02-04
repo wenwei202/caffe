@@ -65,6 +65,8 @@ private:\
 // is executed we will see a fatal log.
 #define NOT_IMPLEMENTED LOG(FATAL) << "Not Implemented Yet"
 
+#define ZEROUT_THRESHOLD 0.0001
+
 // See PR #1236
 namespace cv { class Mat; }
 

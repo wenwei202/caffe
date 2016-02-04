@@ -393,6 +393,84 @@ template
 double caffe_cpu_dot<double>(const int n, const double* x, const double* y);
 
 template <>
+void caffe_cpu_sparse_dense2csr<float>(const int M, const int N,
+    float* A,
+    float* A_nonzero_buf, int* A_nonzero_idx_buf, int* A_idx_pointer_buf){
+#ifdef USE_MKL
+	MKL_INT info;
+	const MKL_INT job[] = {0,0,0,2,M*N,1};
+	mkl_sdnscsr(job, &M , &N , A,
+			&N , A_nonzero_buf, A_nonzero_idx_buf, A_idx_pointer_buf,  &info);
+	if(info){
+		LOG(FATAL)<<"The routine is interrupted processing the "<<
+				info<<"-th row "
+				<<"because there is no space in the arrays acsr and ja according to the value nzmax.";
+	}
+#else
+	NOT_IMPLEMENTED;
+#endif
+}
+
+template <>
+void caffe_cpu_sparse_dense2csr<double>(const int M, const int N,
+    double* A,
+    double* A_nonzero_buf, int* A_nonzero_idx_buf, int* A_idx_pointer_buf){
+#ifdef USE_MKL
+	MKL_INT info;
+	const MKL_INT job[] = {0,0,0,2,M*N,1};
+	mkl_ddnscsr(job, &M , &N , A,
+			&N , A_nonzero_buf, A_nonzero_idx_buf, A_idx_pointer_buf,  &info);
+	if(info){
+		LOG(FATAL)<<"The routine is interrupted processing the "<<
+				info<<"-th row "
+				<<"because there is no space in the arrays acsr and ja according to the value nzmax.";
+	}
+#else
+	NOT_IMPLEMENTED;
+#endif
+}
+
+template <>
+void caffe_cpu_sparse_mmcsr<float>(const int M, const int N, const int K,
+    const float alpha,
+    const float* A_nonzero_buf, const int* A_nonzero_idx_buf, const int* A_idx_pointerB_,const int* A_idx_pointerE_,
+    const float* B,
+    const float beta,float* C){
+#ifdef USE_MKL
+	const char *matdescra = "GXXCX";//6 bytes
+	const char transa = 'N';
+	mkl_scsrmm (&transa, &M , &N, &K,
+			&alpha , matdescra,
+			A_nonzero_buf, A_nonzero_idx_buf, A_idx_pointerB_, A_idx_pointerE_,
+			B, &N,
+			&beta , C, &N);
+#else
+	NOT_IMPLEMENTED;
+#endif
+}
+
+template <>
+void caffe_cpu_sparse_mmcsr<double>(const int M, const int N, const int K,
+    const double alpha,
+    const double* A_nonzero_buf, const int* A_nonzero_idx_buf, const int* A_idx_pointerB_,const int* A_idx_pointerE_,
+    const double* B,
+    const double beta,double* C){
+#ifdef USE_MKL
+	char matdescra[6];
+	matdescra[0] = 'g';
+	matdescra[3] = 'c';
+	const char transa = 'N';
+	mkl_dcsrmm (&transa, &M , &N, &K,
+			&alpha , matdescra,
+			A_nonzero_buf, A_nonzero_idx_buf, A_idx_pointerB_, A_idx_pointerE_,
+			B, &N,
+			&beta , C, &N);
+#else
+	NOT_IMPLEMENTED;
+#endif
+}
+
+template <>
 int caffe_cpu_hamming_distance<float>(const int n, const float* x,
                                   const float* y) {
   int dist = 0;

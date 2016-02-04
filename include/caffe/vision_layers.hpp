@@ -25,9 +25,9 @@ class BaseConvolutionLayer : public Layer<Dtype> {
  public:
   explicit BaseConvolutionLayer(const LayerParameter& param)
       : Layer<Dtype>(param) {}
-#ifdef FOR_SCNN_PAPER
+//#ifdef FOR_SCNN_PAPER
   virtual void WeightAlign();
-#endif
+//#endif
   virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
   virtual void Reshape(const vector<Blob<Dtype>*>& bottom,
@@ -123,7 +123,7 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   Blob<Dtype> col_buffer_;
   Blob<Dtype> bias_multiplier_;
   Blob<Dtype> weight_buffer_; //store nonzero weights in the continuous memory
-  //Three blobs for sparse matrix storage in CSC/CSR format
+  //Three blobs for sparse feature storage in CSC/CSR format
 //#define GPU_USE_CUSPARSE
 #ifdef GPU_USE_CUSPARSE
   Blob<Dtype> nonzero_elements_buffer_;
@@ -131,6 +131,12 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   Blob<int> index_pointers_buffer_;
   Blob<int> nonzero_per_rowcol_buffer_;
 #endif
+  //Three blobs for sparse weight storage in CSC/CSR format
+  bool is_sparse_weights_; //if consider the sparsity of weights
+  Blob<Dtype> nz_weight_values_;//nonzero elements
+  Blob<int> nz_weight_indices_;//index of nonzero
+  Blob<int> nz_weight_index_pointers_;//pointer(index) of indices
+
   bool is_sparse_feature_maps_; //if consider the sparsity of feature maps
   Blob<int> dense_feature_map_mask_;//to skip all zero rows in col_buffer_
   Blob<int> col_buf_mask_;
