@@ -374,12 +374,12 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 
 			  offset_sum += left_cols * conv_out_spatial_dim_;
 		  }else{
+			  int M = conv_out_channels_ /group_;
+			  int N = conv_out_spatial_dim_;
+			  int K = kernel_dim_ / group_;
 			  if(is_sparse_weights_){
 				  int row_offset = conv_out_channels_ /group_ + 1;
 				  int nnz = *(nz_weight_index_pointers_.cpu_data() + row_offset * g + conv_out_channels_ /group_);
-				  int M = conv_out_channels_ /group_;
-				  int N = conv_out_spatial_dim_;
-				  int K = kernel_dim_ / group_;
 				  Timer timer;
 				  timer.Start();
 				  caffe_cpu_sparse_mmcsr(M,
@@ -396,14 +396,26 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 				  long mem_bytes = nnz*(sizeof(Dtype)+sizeof(int))+M*sizeof(int)+M*K*sizeof(Dtype)+K*N*sizeof(Dtype);
 				  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
 						  <<"A("<<M<<"x"<<K<<" nnz:"<<nnz<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
-						  <<mem_bytes<<"B/"<<passed_time<<"us = "
+						  <<mem_bytes<<" B/ "<<passed_time<<" us = "
 						  <<""<<mem_bytes/passed_time << " MB/s";
 
 			  }else{
-				caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, conv_out_channels_ /
-						  group_, conv_out_spatial_dim_, kernel_dim_ / group_,
+				Timer timer;
+				timer.Start();
+				caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, M, N, K,
 						  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
 						  (Dtype)0., output + output_offset_ * g);
+				float passed_time = timer.MicroSeconds();
+//				int M = conv_out_channels_ /group_;
+//				int N = conv_out_spatial_dim_;
+//				int K = kernel_dim_ / group_;
+
+				long mem_bytes = (M*K+K*N+M*N)*sizeof(Dtype);
+				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
+						<<"A("<<M<<"x"<<K<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
+						<<mem_bytes<<" B/ "<<passed_time<<" us = "
+						<<""<<mem_bytes/passed_time << " MB/s";
+
 			  }
 		  }
 #ifdef FOR_SCNN_PAPER
