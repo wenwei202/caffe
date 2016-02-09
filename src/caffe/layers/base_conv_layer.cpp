@@ -393,7 +393,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 						  col_buff + col_offset_ * g,
 						  (Dtype)0.,output + output_offset_ * g);
 				  float passed_time = timer.MicroSeconds();
-				  long mem_bytes = nnz*(sizeof(Dtype)+sizeof(int))+M*sizeof(int)+M*K*sizeof(Dtype)+K*N*sizeof(Dtype);
+				  long mem_bytes = nnz*(sizeof(Dtype)+sizeof(int))+M*sizeof(int)+K*N*sizeof(Dtype)+M*N*sizeof(Dtype);
 				  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
 						  <<"A("<<M<<"x"<<K<<" nnz:"<<nnz<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
 						  <<mem_bytes<<" B/ "<<passed_time<<" us = "
@@ -417,6 +417,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 						<<""<<mem_bytes/passed_time << " MB/s";
 
 			  }
+			  //LOG(INFO)<<"mkl_get_max_threads="<<mkl_get_max_threads();
 		  }
 #ifdef FOR_SCNN_PAPER
 	  }else{
