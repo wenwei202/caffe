@@ -1,0 +1,74 @@
+SpMP (sparse matrix pre-processing) library includes optimized parallel
+implementations of a few key sparse matrix pre-processing routines: currently,
+task dependency graph construction of Gauss-Seidel like loops with
+data-dependent loop carried dependencies, and cache-locality optimizing
+reorderings like breadth-first search (BFS) and reverse Cuthill-McKee (RCM).
+In addition, SpMP includes auxiliary routines like parallel matrix transpose
+that is useful for moving back and forth between compressed sparse row (CSR)
+and compressed sparse column (CSC), matrix market file I/O, load balanced
+sparse matrix dense vector multiplication (SpMV), and optimized dissemination
+barrier.
+
+The pre-processing routines implemented in SpMP are very important for
+achieving high performance of key sparse matrix operations such as sparse
+triangular solver, Gauss-Seidel (GS) smoothing, incomplete LU (ILU)
+factorization, and SpMV, in particular in modern machines with many cores and
+deep memory hierarchy.
+At the same time it is very challenging to have efficient parallel
+implementations of the pre-processing routines.
+An intention of SpMP design is to showcase a "best known method" in
+high-performance implementations of those pre-processing routines.
+SpMP can also be used as an usual library, for example within a sparse
+iterative solver package.
+However, if a package uses its own unique sparse matrix format, a direct
+invocation of SpMP can involve non-trivial conversion overhead.
+Therefore, we strive to document appropriately so that our optimization
+approach can be adopted by other software packages.
+
+We recommend to explore SpMP starting from the two examples provided in
+test directory: test/gs_test.cpp and test/reordering_test.cpp .
+test/gs_test.cpp shows how to parallelize GS-like loops using the level
+scheduling approach with point-to-point synchronization and redundant
+transitive dependency elimination described in [1].
+test/reordering_test.cpp shows how to optimize cache locality of SpMV
+by using BFS and RCM reorderings.
+
+SpMP has the following file structure:
+
+CSR.hpp/cpp: a simple compressed sparse row structure with support for routines
+like parallel matrix transposition.
+
+LevelSchedule.hpp/cpp: an implementation of dependency graph construction of
+GS-like loops described in [1].
+
+reordering/ConnectedComponents.cpp: parallel detection of connected components
+that is used for parallel BFS for graphs with multiple connected components.
+Implementation of algorithm described in [2].
+
+reordering/RCM.cpp: parallel BFS and RCM reordering. Our BFS implementation
+incorporates optimizations described in [3]. Our RCM implementation uses
+pseudo-diameter heuristic described in [4] for selecting source nodes, and
+uses the method described in [5] for the final construction of RCM permutation.
+
+synk/*: fast implementation of dissemination barrier
+
+Permute.cpp: parallel permutation of CSR matrices
+SpMV.cpp: load-balanced SpMV
+mm_io.cpp and COO.hpp/cpp: matrix market file I/O
+Laplacian.cpp: generation of 3D 27-pt Laplacian matrices (useful for quickly
+testing w/o any file I/O)
+
+Utils.hpp/cpp: miscellaneous routines like comparing two vectors with
+floating-point numbers, permuting vectors, and so on
+
+[1] Park et al., Sparsifying Synchronizations for High-Performance
+Shared-Memory Sparse Triangular Solver, ISC 2014,
+(http://pcl.intel-research.net/publications/trsolver_isc14.pdf)
+[2] Patwary et al., Multi-core spanning forest algorithms using the
+disjoint-set data structure, IPDPS 2012
+[3] Chhugani et al., Fast and Efficient Graph Traversal Algorithms for CPUs:
+Maximizing Single-Node Efficiency, IPDPS 2012
+[4] Kumfert, AN OBJECT-ORIENTED ALGORITHMIC LABORATORY FOR ORDERING
+SPARSE MATRICES.
+[5] Karantasis et al., Parallelization of Reordering Algorithms for Bandwidth
+and Wavefront Reduction, SC 2014
