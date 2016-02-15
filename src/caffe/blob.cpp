@@ -574,7 +574,7 @@ void Blob<Dtype>:: WriteToNistMMIO(string filename) const{
 		for (int h=0; h<this->shape(2); h++) {
 			for (int w=0; w<this->shape(3); w++) {
 				for (int n=0; n<this->shape(0); n++) {
-					fprintf(fp, "%20g\n", *(data_ptr+((n * this->shape(1) + c) * this->shape(2) + h) * this->shape(3) + w));
+					fprintf(fp, "%20g\n", (double)(*(data_ptr+((n * this->shape(1) + c) * this->shape(2) + h) * this->shape(3) + w)));
 				}
 			}
 		}
