@@ -334,7 +334,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 			  masked_map_num++;
 		  }
 	  }
-	  Dtype sparsity = (Dtype)1.0 - (Dtype)masked_map_num/(Dtype)conv_in_channels_;
+	  //Dtype sparsity = (Dtype)1.0 - (Dtype)masked_map_num/(Dtype)conv_in_channels_;
   }
   //LOG(INFO)<<Layer<Dtype>::layer_param().name()<<" sparsity: "<<sparsity;
   /*

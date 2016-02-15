@@ -2,7 +2,7 @@
 #include <boost/random.hpp>
 
 #include <limits>
-
+#include <omp.h>
 #include "caffe/common.hpp"
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/rng.hpp"
@@ -444,6 +444,58 @@ void caffe_cpu_sparse_mmcsr<float>(const int M, const int N, const int K,
 			A_nonzero_buf, A_nonzero_idx_buf, A_idx_pointerB_, A_idx_pointerE_,
 			B, &N,
 			&beta , C, &N);
+//#pragma omp parallel
+//	{
+//	  const int BLOCK = 64;
+//
+//	  int nthreads = omp_get_num_threads();
+//	  int tid = omp_get_thread_num();
+//
+//	  int total_work = A_idx_pointerB_[M];
+//	  int work_per_thread = (total_work + nthreads - 1)/nthreads;
+//
+//	  int begin = tid == 0 ? 0 : std::lower_bound(A_idx_pointerB_, A_idx_pointerB_ + M, work_per_thread*tid) - A_idx_pointerB_;
+//	  int end = tid == nthreads - 1 ? M : std::lower_bound(A_idx_pointerB_, A_idx_pointerB_ + M, work_per_thread*(tid + 1)) - A_idx_pointerB_;
+//
+//	  float sum[BLOCK];
+//
+//	  for (int b = 0; b < N/BLOCK; ++b) {
+//		for (int i = begin; i < end; ++i) {
+//		  for (int k = 0; k < BLOCK; ++k) {
+//			sum[k] = 0;
+//		  }
+//		  for (int j = A_idx_pointerB_[i]; j < A_idx_pointerB_[i + 1]; ++j) {
+//			float v = A_nonzero_buf[j];
+//			int c = A_nonzero_idx_buf[j];
+//
+//			for (int k = 0; k < BLOCK; ++k) {
+//			  sum[k] += v*B[c*N + k + b*BLOCK];
+//			}
+//		  }
+//		  for (int k = 0; k < BLOCK; ++k) {
+//			C[i*N + k + b*BLOCK] = sum[k];
+//		  }
+//		}
+//	  }
+//
+//	  int rem = N - N/BLOCK*BLOCK;
+//	  for (int i = begin; i < end; ++i) {
+//		for (int k = 0; k < rem; ++k) {
+//		  sum[k] = 0;
+//		}
+//		for (int j = A_idx_pointerB_[i]; j < A_idx_pointerB_[i + 1]; ++j) {
+//		  float v = A_nonzero_buf[j];
+//		  int c = A_nonzero_idx_buf[j];
+//
+//		  for (int k = 0; k < rem; ++k) {
+//			sum[k] += v*B[c*N + k + (N/BLOCK)*BLOCK];
+//		  }
+//		}
+//		for (int k = 0; k < rem; ++k) {
+//		  C[i*N + k + (N/BLOCK)*BLOCK] = sum[k];
+//		}
+//	  }
+//	}
 #else
 	NOT_IMPLEMENTED;
 #endif

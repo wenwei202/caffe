@@ -289,7 +289,7 @@ Dtype SGDSolver<Dtype>::GetSparsity(int param_id) {
 
 template <typename Dtype>
 Dtype SGDSolver<Dtype>::GetGroupSparsity(int param_id) {
-  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  //const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   Dtype sparsity = Dtype(0);
   switch (Caffe::mode()) {
   case Caffe::CPU: {
