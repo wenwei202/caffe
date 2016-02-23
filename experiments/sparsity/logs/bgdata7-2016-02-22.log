@@ -1,0 +1,230 @@
+conv1.mtx: 96x363 22764 nnz (0.653237 nnz-sparsity 0.975207 col-sparsity)
+MKL_CSRMM:    2.36 sparse_gflops    3.61 dense_gflops    0.10 sparse_gbps
+MKL_CSRMM_concatenated:    1.49 sparse_gflops    2.28 dense_gflops    0.06 sparse_gbps
+MKL_CSRMM_parbatch:    8.31 sparse_gflops   12.71 dense_gflops    0.34 sparse_gbps
+myCSRMM:   10.58 sparse_gflops   16.19 dense_gflops    0.43 sparse_gbps
+myCSRMM_concatenated:    2.53 sparse_gflops    3.87 dense_gflops    0.10 sparse_gbps
+myCSRMM_parbatch:    8.35 sparse_gflops   12.79 dense_gflops    0.34 sparse_gbps
+BW is reduced by BFS reordering: 362 -> 352
+MKL_CSRMM_reordered:    2.36 sparse_gflops    3.61 dense_gflops    0.10 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    1.50 sparse_gflops    2.29 dense_gflops    0.06 sparse_gbps
+MKL_CSRMM_reordered_parbatch:    8.29 sparse_gflops   12.70 dense_gflops    0.34 sparse_gbps
+myCSRMM_reordered:   10.02 sparse_gflops   15.35 dense_gflops    0.41 sparse_gbps
+myCSRMM_reordered_concatenated:    2.57 sparse_gflops    3.93 dense_gflops    0.10 sparse_gbps
+myCSRMM_reordered_parbatch:    8.34 sparse_gflops   12.77 dense_gflops    0.34 sparse_gbps
+dense:   35.29 sparse_gflops   54.02 dense_gflops    1.44 sparse_gbps
+dense_concatenated:   34.28 sparse_gflops   52.48 dense_gflops    1.40 sparse_gbps
+dense_parbatch:   31.81 sparse_gflops   48.69 dense_gflops    1.30 sparse_gbps
+compressed:   36.03 sparse_gflops   55.15 dense_gflops    1.47 sparse_gbps
+compressed_concatenated:   35.34 sparse_gflops   54.10 dense_gflops    1.44 sparse_gbps
+compressed_parbatch:   32.80 sparse_gflops   50.21 dense_gflops    1.34 sparse_gbps
+
+conv2_1.mtx: 128x1200 35342 nnz (0.230091 nnz-sparsity 0.425 col-sparsity)
+MKL_CSRMM:   11.97 sparse_gflops   52.01 dense_gflops    0.50 sparse_gbps
+MKL_CSRMM_concatenated:    8.88 sparse_gflops   38.58 dense_gflops    0.37 sparse_gbps
+MKL_CSRMM_parbatch:    7.40 sparse_gflops   32.17 dense_gflops    0.31 sparse_gbps
+myCSRMM:   12.09 sparse_gflops   52.56 dense_gflops    0.50 sparse_gbps
+myCSRMM_concatenated:    9.10 sparse_gflops   39.56 dense_gflops    0.38 sparse_gbps
+myCSRMM_parbatch:    7.45 sparse_gflops   32.38 dense_gflops    0.31 sparse_gbps
+BW is reduced by BFS reordering: 1196 -> 507
+MKL_CSRMM_reordered:   12.36 sparse_gflops   53.71 dense_gflops    0.51 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    8.80 sparse_gflops   38.22 dense_gflops    0.37 sparse_gbps
+MKL_CSRMM_reordered_parbatch:    7.83 sparse_gflops   34.05 dense_gflops    0.33 sparse_gbps
+myCSRMM_reordered:   13.07 sparse_gflops   56.80 dense_gflops    0.54 sparse_gbps
+myCSRMM_reordered_concatenated:    8.91 sparse_gflops   38.71 dense_gflops    0.37 sparse_gbps
+myCSRMM_reordered_parbatch:    7.89 sparse_gflops   34.27 dense_gflops    0.33 sparse_gbps
+dense:   11.90 sparse_gflops   51.73 dense_gflops    0.50 sparse_gbps
+dense_concatenated:   11.76 sparse_gflops   51.11 dense_gflops    0.49 sparse_gbps
+dense_parbatch:   10.73 sparse_gflops   46.62 dense_gflops    0.45 sparse_gbps
+compressed:   27.34 sparse_gflops  118.81 dense_gflops    1.14 sparse_gbps
+compressed_concatenated:   27.60 sparse_gflops  119.94 dense_gflops    1.15 sparse_gbps
+compressed_parbatch:   25.28 sparse_gflops  109.87 dense_gflops    1.05 sparse_gbps
+
+conv2_2.mtx: 128x1200 13298 nnz (0.0865755 nnz-sparsity 0.2375 col-sparsity)
+MKL_CSRMM:   16.63 sparse_gflops  192.05 dense_gflops    1.12 sparse_gbps
+MKL_CSRMM_concatenated:    8.50 sparse_gflops   98.14 dense_gflops    0.57 sparse_gbps
+MKL_CSRMM_parbatch:    8.65 sparse_gflops   99.97 dense_gflops    0.59 sparse_gbps
+myCSRMM:   17.92 sparse_gflops  206.99 dense_gflops    1.21 sparse_gbps
+myCSRMM_concatenated:    8.68 sparse_gflops  100.25 dense_gflops    0.59 sparse_gbps
+myCSRMM_parbatch:    8.87 sparse_gflops  102.48 dense_gflops    0.60 sparse_gbps
+BW is reduced by BFS reordering: 1191 -> 280
+MKL_CSRMM_reordered:   18.34 sparse_gflops  211.89 dense_gflops    1.24 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    8.66 sparse_gflops  100.02 dense_gflops    0.59 sparse_gbps
+MKL_CSRMM_reordered_parbatch:    9.82 sparse_gflops  113.47 dense_gflops    0.66 sparse_gbps
+myCSRMM_reordered:   19.90 sparse_gflops  229.88 dense_gflops    1.35 sparse_gbps
+myCSRMM_reordered_concatenated:    8.83 sparse_gflops  102.00 dense_gflops    0.60 sparse_gbps
+myCSRMM_reordered_parbatch:   10.05 sparse_gflops  116.14 dense_gflops    0.68 sparse_gbps
+dense:    4.48 sparse_gflops   51.74 dense_gflops    0.30 sparse_gbps
+dense_concatenated:    4.32 sparse_gflops   49.86 dense_gflops    0.29 sparse_gbps
+dense_parbatch:    3.95 sparse_gflops   45.63 dense_gflops    0.27 sparse_gbps
+compressed:   18.38 sparse_gflops  212.27 dense_gflops    1.24 sparse_gbps
+compressed_concatenated:   20.10 sparse_gflops  232.17 dense_gflops    1.36 sparse_gbps
+compressed_parbatch:   18.45 sparse_gflops  213.13 dense_gflops    1.25 sparse_gbps
+
+conv2.mtx: 256x1200 48640 nnz (0.158333 nnz-sparsity 0.524167 col-sparsity)
+MKL_CSRMM:   12.48 sparse_gflops   78.80 dense_gflops    0.52 sparse_gbps
+MKL_CSRMM_concatenated:    8.92 sparse_gflops   56.32 dense_gflops    0.37 sparse_gbps
+MKL_CSRMM_parbatch:    7.74 sparse_gflops   48.87 dense_gflops    0.32 sparse_gbps
+myCSRMM:   12.60 sparse_gflops   79.58 dense_gflops    0.53 sparse_gbps
+myCSRMM_concatenated:    9.03 sparse_gflops   57.05 dense_gflops    0.38 sparse_gbps
+myCSRMM_parbatch:    7.81 sparse_gflops   49.34 dense_gflops    0.33 sparse_gbps
+BW is reduced by BFS reordering: 1196 -> 627
+MKL_CSRMM_reordered:   12.37 sparse_gflops   78.15 dense_gflops    0.52 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    8.79 sparse_gflops   55.52 dense_gflops    0.37 sparse_gbps
+MKL_CSRMM_reordered_parbatch:    8.03 sparse_gflops   50.72 dense_gflops    0.34 sparse_gbps
+myCSRMM_reordered:   12.73 sparse_gflops   80.37 dense_gflops    0.53 sparse_gbps
+myCSRMM_reordered_concatenated:    8.98 sparse_gflops   56.69 dense_gflops    0.38 sparse_gbps
+myCSRMM_reordered_parbatch:    8.11 sparse_gflops   51.22 dense_gflops    0.34 sparse_gbps
+dense:    8.07 sparse_gflops   50.96 dense_gflops    0.34 sparse_gbps
+dense_concatenated:    8.81 sparse_gflops   55.65 dense_gflops    0.37 sparse_gbps
+dense_parbatch:    7.97 sparse_gflops   50.32 dense_gflops    0.33 sparse_gbps
+compressed:   14.74 sparse_gflops   93.08 dense_gflops    0.62 sparse_gbps
+compressed_concatenated:   15.50 sparse_gflops   97.87 dense_gflops    0.65 sparse_gbps
+compressed_parbatch:   14.22 sparse_gflops   89.81 dense_gflops    0.60 sparse_gbps
+
+conv3.mtx: 384x2304 72184 nnz (0.0815882 nnz-sparsity 0.28125 col-sparsity)
+MKL_CSRMM:   17.25 sparse_gflops  211.48 dense_gflops    0.90 sparse_gbps
+MKL_CSRMM_concatenated:    9.02 sparse_gflops  110.52 dense_gflops    0.47 sparse_gbps
+MKL_CSRMM_parbatch:   10.56 sparse_gflops  129.43 dense_gflops    0.55 sparse_gbps
+myCSRMM:   18.56 sparse_gflops  227.43 dense_gflops    0.97 sparse_gbps
+myCSRMM_concatenated:    9.08 sparse_gflops  111.28 dense_gflops    0.48 sparse_gbps
+myCSRMM_parbatch:   10.91 sparse_gflops  133.70 dense_gflops    0.57 sparse_gbps
+BW is reduced by BFS reordering: 2302 -> 643
+MKL_CSRMM_reordered:   18.47 sparse_gflops  226.36 dense_gflops    0.97 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    8.96 sparse_gflops  109.81 dense_gflops    0.47 sparse_gbps
+MKL_CSRMM_reordered_parbatch:   15.92 sparse_gflops  195.10 dense_gflops    0.83 sparse_gbps
+myCSRMM_reordered:   20.11 sparse_gflops  246.51 dense_gflops    1.05 sparse_gbps
+myCSRMM_reordered_concatenated:    9.10 sparse_gflops  111.57 dense_gflops    0.48 sparse_gbps
+myCSRMM_reordered_parbatch:   16.83 sparse_gflops  206.30 dense_gflops    0.88 sparse_gbps
+dense:    5.06 sparse_gflops   62.04 dense_gflops    0.26 sparse_gbps
+dense_concatenated:    5.08 sparse_gflops   62.30 dense_gflops    0.27 sparse_gbps
+dense_parbatch:    5.01 sparse_gflops   61.41 dense_gflops    0.26 sparse_gbps
+compressed:   17.23 sparse_gflops  211.16 dense_gflops    0.90 sparse_gbps
+compressed_concatenated:   16.14 sparse_gflops  197.88 dense_gflops    0.84 sparse_gbps
+compressed_parbatch:   17.12 sparse_gflops  209.89 dense_gflops    0.90 sparse_gbps
+
+conv4_1.mtx: 192x1728 11829 nnz (0.0356536 nnz-sparsity 0.107639 col-sparsity)
+MKL_CSRMM:   14.80 sparse_gflops  415.14 dense_gflops    1.30 sparse_gbps
+MKL_CSRMM_concatenated:    9.02 sparse_gflops  253.10 dense_gflops    0.79 sparse_gbps
+MKL_CSRMM_parbatch:   15.87 sparse_gflops  445.18 dense_gflops    1.39 sparse_gbps
+myCSRMM:   16.12 sparse_gflops  452.26 dense_gflops    1.42 sparse_gbps
+myCSRMM_concatenated:    9.32 sparse_gflops  261.39 dense_gflops    0.82 sparse_gbps
+myCSRMM_parbatch:   17.39 sparse_gflops  487.65 dense_gflops    1.53 sparse_gbps
+BW is reduced by BFS reordering: 1703 -> 183
+MKL_CSRMM_reordered:   16.39 sparse_gflops  459.78 dense_gflops    1.44 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    8.93 sparse_gflops  250.40 dense_gflops    0.78 sparse_gbps
+MKL_CSRMM_reordered_parbatch:   17.22 sparse_gflops  482.87 dense_gflops    1.51 sparse_gbps
+myCSRMM_reordered:   19.03 sparse_gflops  533.88 dense_gflops    1.67 sparse_gbps
+myCSRMM_reordered_concatenated:    9.40 sparse_gflops  263.79 dense_gflops    0.83 sparse_gbps
+myCSRMM_reordered_parbatch:   19.05 sparse_gflops  534.40 dense_gflops    1.67 sparse_gbps
+dense:    1.96 sparse_gflops   55.11 dense_gflops    0.17 sparse_gbps
+dense_concatenated:    2.03 sparse_gflops   56.91 dense_gflops    0.18 sparse_gbps
+dense_parbatch:    2.10 sparse_gflops   58.98 dense_gflops    0.18 sparse_gbps
+compressed:   17.08 sparse_gflops  478.97 dense_gflops    1.50 sparse_gbps
+compressed_concatenated:   17.58 sparse_gflops  492.97 dense_gflops    1.54 sparse_gbps
+compressed_parbatch:   17.95 sparse_gflops  503.46 dense_gflops    1.58 sparse_gbps
+
+conv4_2.mtx: 192x1728 33199 nnz (0.100065 nnz-sparsity 0.250579 col-sparsity)
+MKL_CSRMM:   16.65 sparse_gflops  166.38 dense_gflops    1.02 sparse_gbps
+MKL_CSRMM_concatenated:    8.95 sparse_gflops   89.46 dense_gflops    0.55 sparse_gbps
+MKL_CSRMM_parbatch:   15.10 sparse_gflops  150.86 dense_gflops    0.93 sparse_gbps
+myCSRMM:   18.13 sparse_gflops  181.18 dense_gflops    1.11 sparse_gbps
+myCSRMM_concatenated:    9.33 sparse_gflops   93.20 dense_gflops    0.57 sparse_gbps
+myCSRMM_parbatch:   15.96 sparse_gflops  159.53 dense_gflops    0.98 sparse_gbps
+BW is reduced by BFS reordering: 1726 -> 430
+MKL_CSRMM_reordered:   17.81 sparse_gflops  178.03 dense_gflops    1.09 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    9.03 sparse_gflops   90.21 dense_gflops    0.55 sparse_gbps
+MKL_CSRMM_reordered_parbatch:   17.63 sparse_gflops  176.14 dense_gflops    1.08 sparse_gbps
+myCSRMM_reordered:   19.79 sparse_gflops  197.79 dense_gflops    1.22 sparse_gbps
+myCSRMM_reordered_concatenated:    9.14 sparse_gflops   91.37 dense_gflops    0.56 sparse_gbps
+myCSRMM_reordered_parbatch:   19.05 sparse_gflops  190.34 dense_gflops    1.17 sparse_gbps
+dense:    5.51 sparse_gflops   55.08 dense_gflops    0.34 sparse_gbps
+dense_concatenated:    5.69 sparse_gflops   56.86 dense_gflops    0.35 sparse_gbps
+dense_parbatch:    5.92 sparse_gflops   59.18 dense_gflops    0.36 sparse_gbps
+compressed:   20.83 sparse_gflops  208.12 dense_gflops    1.28 sparse_gbps
+compressed_concatenated:   21.62 sparse_gflops  216.08 dense_gflops    1.33 sparse_gbps
+compressed_parbatch:   22.06 sparse_gflops  220.42 dense_gflops    1.35 sparse_gbps
+
+conv4.mtx: 384x1728 45028 nnz (0.067859 nnz-sparsity 0.315972 col-sparsity)
+MKL_CSRMM:   17.06 sparse_gflops  251.39 dense_gflops    1.11 sparse_gbps
+MKL_CSRMM_concatenated:    8.99 sparse_gflops  132.45 dense_gflops    0.58 sparse_gbps
+MKL_CSRMM_parbatch:   15.60 sparse_gflops  229.83 dense_gflops    1.01 sparse_gbps
+myCSRMM:   18.39 sparse_gflops  270.94 dense_gflops    1.20 sparse_gbps
+myCSRMM_concatenated:    9.34 sparse_gflops  137.69 dense_gflops    0.61 sparse_gbps
+myCSRMM_parbatch:   16.58 sparse_gflops  244.36 dense_gflops    1.08 sparse_gbps
+BW is reduced by BFS reordering: 1703 -> 472
+MKL_CSRMM_reordered:   18.34 sparse_gflops  270.24 dense_gflops    1.19 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    8.88 sparse_gflops  130.89 dense_gflops    0.58 sparse_gbps
+MKL_CSRMM_reordered_parbatch:   17.36 sparse_gflops  255.78 dense_gflops    1.13 sparse_gbps
+myCSRMM_reordered:   20.11 sparse_gflops  296.28 dense_gflops    1.31 sparse_gbps
+myCSRMM_reordered_concatenated:    9.28 sparse_gflops  136.81 dense_gflops    0.60 sparse_gbps
+myCSRMM_reordered_parbatch:   18.65 sparse_gflops  274.86 dense_gflops    1.21 sparse_gbps
+dense:    4.19 sparse_gflops   61.75 dense_gflops    0.27 sparse_gbps
+dense_concatenated:    4.11 sparse_gflops   60.59 dense_gflops    0.27 sparse_gbps
+dense_parbatch:    4.16 sparse_gflops   61.27 dense_gflops    0.27 sparse_gbps
+compressed:   12.37 sparse_gflops  182.34 dense_gflops    0.81 sparse_gbps
+compressed_concatenated:   11.74 sparse_gflops  173.06 dense_gflops    0.76 sparse_gbps
+compressed_parbatch:   12.33 sparse_gflops  181.72 dense_gflops    0.80 sparse_gbps
+
+conv5_1.mtx: 128x1728 19676 nnz (0.0889576 nnz-sparsity 0.12963 col-sparsity)
+MKL_CSRMM:   16.54 sparse_gflops  185.98 dense_gflops    0.98 sparse_gbps
+MKL_CSRMM_concatenated:    9.50 sparse_gflops  106.75 dense_gflops    0.57 sparse_gbps
+MKL_CSRMM_parbatch:   16.95 sparse_gflops  190.52 dense_gflops    1.01 sparse_gbps
+myCSRMM:   18.07 sparse_gflops  203.09 dense_gflops    1.08 sparse_gbps
+myCSRMM_concatenated:    9.83 sparse_gflops  110.45 dense_gflops    0.58 sparse_gbps
+myCSRMM_parbatch:   18.24 sparse_gflops  205.01 dense_gflops    1.09 sparse_gbps
+BW is reduced by BFS reordering: 1696 -> 220
+MKL_CSRMM_reordered:   18.27 sparse_gflops  205.35 dense_gflops    1.09 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    9.84 sparse_gflops  110.66 dense_gflops    0.59 sparse_gbps
+MKL_CSRMM_reordered_parbatch:   18.07 sparse_gflops  203.11 dense_gflops    1.08 sparse_gbps
+myCSRMM_reordered:   19.91 sparse_gflops  223.82 dense_gflops    1.19 sparse_gbps
+myCSRMM_reordered_concatenated:   10.72 sparse_gflops  120.55 dense_gflops    0.64 sparse_gbps
+myCSRMM_reordered_parbatch:   19.60 sparse_gflops  220.37 dense_gflops    1.17 sparse_gbps
+dense:    4.40 sparse_gflops   49.44 dense_gflops    0.26 sparse_gbps
+dense_concatenated:    4.68 sparse_gflops   52.65 dense_gflops    0.28 sparse_gbps
+dense_parbatch:    5.15 sparse_gflops   57.85 dense_gflops    0.31 sparse_gbps
+compressed:   32.28 sparse_gflops  362.92 dense_gflops    1.92 sparse_gbps
+compressed_concatenated:   33.18 sparse_gflops  373.02 dense_gflops    1.98 sparse_gbps
+compressed_parbatch:   37.59 sparse_gflops  422.56 dense_gflops    2.24 sparse_gbps
+
+conv5_2.mtx: 128x1728 38185 nnz (0.172639 nnz-sparsity 0.295139 col-sparsity)
+MKL_CSRMM:   16.59 sparse_gflops   96.10 dense_gflops    0.95 sparse_gbps
+MKL_CSRMM_concatenated:    8.95 sparse_gflops   51.85 dense_gflops    0.51 sparse_gbps
+MKL_CSRMM_parbatch:   13.56 sparse_gflops   78.54 dense_gflops    0.77 sparse_gbps
+myCSRMM:   17.85 sparse_gflops  103.39 dense_gflops    1.02 sparse_gbps
+myCSRMM_concatenated:    9.05 sparse_gflops   52.44 dense_gflops    0.52 sparse_gbps
+myCSRMM_parbatch:   14.16 sparse_gflops   82.01 dense_gflops    0.81 sparse_gbps
+BW is reduced by BFS reordering: 1712 -> 507
+MKL_CSRMM_reordered:   18.76 sparse_gflops  108.65 dense_gflops    1.07 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    9.34 sparse_gflops   54.12 dense_gflops    0.53 sparse_gbps
+MKL_CSRMM_reordered_parbatch:   16.87 sparse_gflops   97.73 dense_gflops    0.96 sparse_gbps
+myCSRMM_reordered:   20.16 sparse_gflops  116.78 dense_gflops    1.15 sparse_gbps
+myCSRMM_reordered_concatenated:    9.30 sparse_gflops   53.84 dense_gflops    0.53 sparse_gbps
+myCSRMM_reordered_parbatch:   17.98 sparse_gflops  104.14 dense_gflops    1.03 sparse_gbps
+dense:    8.55 sparse_gflops   49.51 dense_gflops    0.49 sparse_gbps
+dense_concatenated:    9.23 sparse_gflops   53.46 dense_gflops    0.53 sparse_gbps
+dense_parbatch:    9.96 sparse_gflops   57.71 dense_gflops    0.57 sparse_gbps
+compressed:   27.69 sparse_gflops  160.39 dense_gflops    1.58 sparse_gbps
+compressed_concatenated:   29.92 sparse_gflops  173.34 dense_gflops    1.71 sparse_gbps
+compressed_parbatch:   31.88 sparse_gflops  184.64 dense_gflops    1.82 sparse_gbps
+
+conv5.mtx: 256x1728 57861 nnz (0.130798 nnz-sparsity 0.369213 col-sparsity)
+MKL_CSRMM:   16.93 sparse_gflops  129.47 dense_gflops    0.92 sparse_gbps
+MKL_CSRMM_concatenated:    9.13 sparse_gflops   69.82 dense_gflops    0.50 sparse_gbps
+MKL_CSRMM_parbatch:   14.68 sparse_gflops  112.24 dense_gflops    0.80 sparse_gbps
+myCSRMM:   17.96 sparse_gflops  137.29 dense_gflops    0.98 sparse_gbps
+myCSRMM_concatenated:    9.13 sparse_gflops   69.83 dense_gflops    0.50 sparse_gbps
+myCSRMM_parbatch:   15.46 sparse_gflops  118.20 dense_gflops    0.84 sparse_gbps
+BW is reduced by BFS reordering: 1696 -> 626
+MKL_CSRMM_reordered:   18.47 sparse_gflops  141.18 dense_gflops    1.01 sparse_gbps
+MKL_CSRMM_reordered_concatenated:    9.14 sparse_gflops   69.88 dense_gflops    0.50 sparse_gbps
+MKL_CSRMM_reordered_parbatch:   16.89 sparse_gflops  129.11 dense_gflops    0.92 sparse_gbps
+myCSRMM_reordered:   20.12 sparse_gflops  153.82 dense_gflops    1.10 sparse_gbps
+myCSRMM_reordered_concatenated:    9.16 sparse_gflops   70.02 dense_gflops    0.50 sparse_gbps
+myCSRMM_reordered_parbatch:   18.08 sparse_gflops  138.20 dense_gflops    0.99 sparse_gbps
+dense:    7.60 sparse_gflops   58.12 dense_gflops    0.42 sparse_gbps
+dense_concatenated:    7.68 sparse_gflops   58.71 dense_gflops    0.42 sparse_gbps
+dense_parbatch:    7.80 sparse_gflops   59.66 dense_gflops    0.43 sparse_gbps
+compressed:   19.74 sparse_gflops  150.90 dense_gflops    1.08 sparse_gbps
+compressed_concatenated:   18.83 sparse_gflops  143.97 dense_gflops    1.03 sparse_gbps
+compressed_parbatch:   20.15 sparse_gflops  154.08 dense_gflops    1.10 sparse_gbps
