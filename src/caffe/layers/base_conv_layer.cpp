@@ -47,11 +47,12 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::WeightAlign(){
-	is_sparse_weights_ = this->blobs_[0]->GetSparsity() > 0.8;
+	is_sparse_format_weights_ = false;
 	const LayerParameter& layerparam = this->layer_param();
 	LOG(INFO)<<"layer\t"<<layerparam.name()<<"\t"<<"has sparsity of "<< this->blobs_[0]->GetSparsity();
 	this->blobs_[0]->WriteToNistMMIO(layerparam.name()+".weight");
 #ifdef USE_MKL
+	is_sparse_format_weights_ = this->blobs_[0]->GetSparsity() > 0.80;
 	const int M = this->blobs_[0]->shape(0)/group_;
 	const int N = this->blobs_[0]->count(1,4);
 	const int weight_offset = this->blobs_[0]->count()/group_;
@@ -82,6 +83,29 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 #else
     	LOG(WARNING)<<"Sparse Math BLAS is unsupported without MKL (when it's on CPU mode)!";
 #endif
+
+    	// is_concatenating_weights_features_ has higher priority than is_sparse_format_weights_
+    	//get the all-zero column mask for weight matrix
+    	//caffe_cpu_if_all_zero(const int M, const int N, const Dtype *x, int* y);
+    	//const int M = this->blobs_[0]->shape(0)/group_;
+		//const int N = this->blobs_[0]->count(1,4);
+		//const int weight_offset = this->blobs_[0]->count()/group_;
+		//const int col_buf_offset = N/group_;
+		for (int g = 0; g < group_; ++g) {
+			caffe_cpu_if_all_zero(this->blobs_[0]->shape(0)/group_,
+					this->blobs_[0]->count(1,4),
+					this->blobs_[0]->cpu_data() + this->blobs_[0]->count()/group_ * g,
+					col_buf_mask_.mutable_cpu_data() + this->blobs_[0]->count(1,4) * g);
+		}
+		int masked_col_num = 0;
+	    for(int idx=0; idx<col_buf_mask_.count();++idx){
+		    if(col_buf_mask_.cpu_data()[idx]){
+			    masked_col_num++;
+		    }
+	    }
+	    Dtype group_sparsity = (Dtype)masked_col_num/(Dtype)col_buf_mask_.count();
+	    LOG(INFO) << Layer<Dtype>::layer_param().name() << " column sparsity: " << group_sparsity;
+	    is_concatenating_weights_features_ = group_sparsity > 0.05;
 }
 
 template <typename Dtype>
@@ -230,7 +254,7 @@ void BaseConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
 
   is_scnn_ = is_skip_channels_ || forward_outputs_.size()<num_output_;
 #endif
-  is_sparse_feature_maps_ = false;
+  is_concatenating_weights_features_ = false;
   dense_feature_map_mask_.Reshape(1,1,1,channels_);
   squeezed_weight_buffer_.Reshape(this->blobs_[0]->shape(0)/group_,this->blobs_[0]->shape(1),this->blobs_[0]->shape(2),this->blobs_[0]->shape(3));
   weight_offset_ = conv_out_channels_ * kernel_dim_ / group_ / group_;
@@ -316,10 +340,10 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
   // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
   // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
   // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
-  if (!is_1x1_ ||  is_sparse_feature_maps_) {
-    if (!skip_im2col || is_sparse_feature_maps_) {
-      if(is_sparse_feature_maps_){
-    	  conv_im2col_cpu(input, col_buffer_.mutable_cpu_data(),col_buf_mask_.mutable_cpu_data(), dense_feature_map_mask_.mutable_cpu_data());
+  if (!is_1x1_ ||  is_concatenating_weights_features_) {
+    if (!skip_im2col || is_concatenating_weights_features_) {
+      if(is_concatenating_weights_features_){
+    	  conv_im2col_cpu(input, col_buffer_.mutable_cpu_data(),col_buf_mask_.mutable_cpu_data()/*, dense_feature_map_mask_.mutable_cpu_data()*/);
       }else{
     	  conv_im2col_cpu(input, col_buffer_.mutable_cpu_data());
       }
@@ -327,16 +351,6 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
     col_buff = col_buffer_.cpu_data();
   }
 
-  if(is_sparse_feature_maps_){
-	  int masked_map_num = 0;
-	  for(int map_idx=0; map_idx<conv_in_channels_;++map_idx){
-		  if(dense_feature_map_mask_.cpu_data()[map_idx]){
-			  masked_map_num++;
-		  }
-	  }
-	  //Dtype sparsity = (Dtype)1.0 - (Dtype)masked_map_num/(Dtype)conv_in_channels_;
-  }
-  //LOG(INFO)<<Layer<Dtype>::layer_param().name()<<" sparsity: "<<sparsity;
   /*
   col_buffer_.Snapshot(Layer<Dtype>::layer_param().name()+".blob");
   LOG(INFO)<<Layer<Dtype>::layer_param().name();
@@ -357,7 +371,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 #ifdef FOR_SCNN_PAPER
 	  if(!is_scnn_){
 #endif
-		  if(is_sparse_feature_maps_){
+		  if(is_concatenating_weights_features_){
 			  int left_cols = 0;
 			  caffe_cpu_del_zero_cols(conv_out_channels_ /group_,
 					  kernel_dim_ / group_,
@@ -377,7 +391,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 			  int M = conv_out_channels_ /group_;
 			  int N = conv_out_spatial_dim_;
 			  int K = kernel_dim_ / group_;
-			  if(is_sparse_weights_){
+			  if(is_sparse_format_weights_){
 				  int row_offset = conv_out_channels_ /group_ + 1;
 				  int nnz = *(nz_weight_index_pointers_.cpu_data() + row_offset * g + conv_out_channels_ /group_);
 				  Timer timer;
@@ -394,10 +408,10 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 						  (Dtype)0.,output + output_offset_ * g);
 				  float passed_time = timer.MicroSeconds();
 				  long mem_bytes = nnz*(sizeof(Dtype)+sizeof(int))+M*sizeof(int)+K*N*sizeof(Dtype)+M*N*sizeof(Dtype);//
-				  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
-						  <<"A("<<M<<"x"<<K<<" nnz:"<<nnz<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
-						  <<mem_bytes<<" B/ "<<passed_time<<" us = "
-						  <<""<<mem_bytes/passed_time << " MB/s";
+//				  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
+//						  <<"A("<<M<<"x"<<K<<" nnz:"<<nnz<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
+//						  <<mem_bytes<<" B/ "<<passed_time<<" us = "
+//						  <<""<<mem_bytes/passed_time << " MB/s";
 
 			  }else{
 				Timer timer;
@@ -411,10 +425,10 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 //				int K = kernel_dim_ / group_;
 
 				long mem_bytes = (M*K+K*N+M*N)*sizeof(Dtype);
-				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
-						<<"A("<<M<<"x"<<K<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
-						<<mem_bytes<<" B/ "<<passed_time<<" us = "
-						<<""<<mem_bytes/passed_time << " MB/s";
+//				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
+//						<<"A("<<M<<"x"<<K<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
+//						<<mem_bytes<<" B/ "<<passed_time<<" us = "
+//						<<""<<mem_bytes/passed_time << " MB/s";
 
 			  }
 			  //LOG(INFO)<<"mkl_get_max_threads="<<mkl_get_max_threads();

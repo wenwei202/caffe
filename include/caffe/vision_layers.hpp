@@ -132,12 +132,12 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   Blob<int> nonzero_per_rowcol_buffer_;
 #endif
   //Three blobs for sparse weight storage in CSC/CSR format
-  bool is_sparse_weights_; //if consider the sparsity of weights
+  bool is_sparse_format_weights_; //if use the sparse storage format of weights
   Blob<Dtype> nz_weight_values_;//nonzero elements
   Blob<int> nz_weight_indices_;//index of nonzero
   Blob<int> nz_weight_index_pointers_;//pointer(index) of indices
 
-  bool is_sparse_feature_maps_; //if consider the sparsity of feature maps
+  bool is_concatenating_weights_features_; //if use concatenation scheme to compress dense weights and features together
   Blob<int> dense_feature_map_mask_;//to skip all zero rows in col_buffer_
   Blob<int> col_buf_mask_;
   Blob<Dtype> squeezed_weight_buffer_;

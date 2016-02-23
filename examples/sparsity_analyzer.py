@@ -54,7 +54,7 @@ if __name__ == "__main__":
     print("blobs {}\nparams {}".format(tuned_net.blobs.keys(), tuned_net.params.keys()))
     #show_filters(tuned_net,'conv1')
     kernel_max_sizexsize = -1
-
+    speedupinfo = ""
     plot_count = 0
     subplot_num = 0
     for layer_name in orig_net.params.keys():
@@ -157,6 +157,7 @@ if __name__ == "__main__":
                                     row_sparsity,\
                                     elem_sparsity))
                         plt.xlabel("{:.2f}X speedup".format(1.0/(1-col_sparsity)/(1-row_sparsity)))
+                        speedupinfo = speedupinfo + "{:.2f}X".format(1.0/(1-col_sparsity)/(1-row_sparsity))
 
             #else:
             #    weights_q = orig_net.params[layer_name+'q'][0].data
@@ -195,3 +196,4 @@ if __name__ == "__main__":
     plt.subplot(subplot_num,1,1)
     plt.title("nonzero ratio of each column (sorted)")
     plt.show()
+    print speedupinfo

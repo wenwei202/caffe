@@ -555,6 +555,32 @@ double caffe_cpu_asum<double>(const int n, const double* x) {
 }
 
 template <>
+void caffe_cpu_asum_along_col_row<float>(const int M, const int N, const float* X, float* y, bool dimen){
+	if(dimen){//along column
+		for(int i=0;i<N;i++){
+			y[i] = cblas_sasum(M, X+i, N);
+		}
+	}else{//along row
+		for(int i=0;i<M;i++){
+			y[i] = cblas_sasum(N, X+i*N, 1);
+		}
+	}
+}
+
+template <>
+void caffe_cpu_asum_along_col_row<double>(const int M, const int N, const double* X, double* y, bool dimen){
+	if(dimen){//along column
+		for(int i=0;i<N;i++){
+			y[i] = cblas_dasum(M, X+i, N);
+		}
+	}else{//along row
+		for(int i=0;i<M;i++){
+			y[i] = cblas_dasum(N, X+i*N, 1);
+		}
+	}
+}
+
+template <>
 void caffe_cpu_scale<float>(const int n, const float alpha, const float *x,
                             float* y) {
   cblas_scopy(n, x, 1, y, 1);
@@ -569,17 +595,34 @@ void caffe_cpu_scale<double>(const int n, const double alpha, const double *x,
 }
 
 template <typename Dtype>
-void caffe_cpu_ifzero(const int M, const int N, const Dtype *x, bool* y, const Dtype thre){
-	for(int row=0; row<M; ++row){
-		y[row]=true;
-		for(int col=0; col<N; col++){
-			if(x[col+row*N]>thre || x[col+row*N]<-thre){
-				y[row] = false;
-				break;
+void caffe_cpu_if_all_zero(const int M, const int N, const Dtype *x, int* y, bool dimen){
+	if(dimen){//along columns
+		for(int col=0; col<N; ++col){
+			y[col]=true;
+			for(int row=0; row<M; row++){
+				if(x[col+row*N]!=0){
+					y[col] = false;
+					break;
+				}
+			}
+		}
+	}else{//along rows
+		for(int row=0; row<M; ++row){
+			y[row]=true;
+			for(int col=0; col<N; col++){
+				if(x[col+row*N]!=0){
+					y[row] = false;
+					break;
+				}
 			}
 		}
 	}
 }
+template
+void caffe_cpu_if_all_zero(const int M, const int N, const float *x, int* y, bool dimen);
+template
+void caffe_cpu_if_all_zero(const int M, const int N, const double *x, int* y, bool dimen);
+
 
 template <typename Dtype>
 void caffe_cpu_del_zero_cols(const int M, const int N, const Dtype *x, Dtype *y, int * left_cols, const int* mask){

@@ -134,6 +134,10 @@ int caffe_cpu_hamming_distance(const int n, const Dtype* x, const Dtype* y);
 template <typename Dtype>
 Dtype caffe_cpu_asum(const int n, const Dtype* x);
 
+// Returns the column(true)/row(false) sums of the absolute values of the elements of matrix X
+template <typename Dtype>
+void caffe_cpu_asum_along_col_row(const int M, const int N, const Dtype* X, Dtype* y, bool dimen = true);
+
 // the branchless, type-safe version from
 // http://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c
 template<typename Dtype>
@@ -178,9 +182,9 @@ DEFINE_CAFFE_CPU_UNARY_FUNC(fabs, y[i] = std::fabs(x[i]));
 template <typename Dtype>
 void caffe_cpu_scale(const int n, const Dtype alpha, const Dtype *x, Dtype* y);
 
-//get all zero flag for matrix
+//get if columns(true)/rows(false) in matrix X are all zeros
 template <typename Dtype>
-void caffe_cpu_ifzero(const int M, const int N, const Dtype *x, bool* y, const Dtype thre);
+void caffe_cpu_if_all_zero(const int M, const int N, const Dtype *X, int* y, bool dimen=true);
 
 //get masked cols
 template <typename Dtype>

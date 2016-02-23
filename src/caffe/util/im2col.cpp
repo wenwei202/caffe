@@ -48,7 +48,7 @@ void im2col_cpu(const Dtype* data_im, const int channels,
     //for(int ii=0;ii<forwarding_mask.size();ii++){
     //	sum+=forwarding_mask[ii];
     //}
-    if(all_zero_mask && feature_map_mask && !feature_map_mask[c_im]) {
+    if(all_zero_mask && all_zero_mask[c]/*feature_map_mask && !feature_map_mask[c_im]*/) {
     	continue;
     }
     for (int h = 0; h < height_col; ++h) {
