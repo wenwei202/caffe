@@ -140,6 +140,7 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   bool is_concatenating_weights_features_; //if use concatenation scheme to compress dense weights and features together
   Blob<int> dense_feature_map_mask_;//to skip all zero rows in col_buffer_
   Blob<int> col_buf_mask_;
+  vector<int> left_columns_;//the number of left columns of weight matrix for each group
   Blob<Dtype> squeezed_weight_buffer_;
 };
 
