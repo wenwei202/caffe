@@ -352,6 +352,8 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
   // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
   // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
   // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
+  Timer timer;
+  timer.Start();
   if (!is_1x1_ ||  is_concatenating_weights_features_) {
     if (!skip_im2col || is_concatenating_weights_features_) {
       if(is_concatenating_weights_features_){
@@ -362,6 +364,8 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
     }
     col_buff = col_buffer_.cpu_data();
   }
+  float lowering_passed_time = timer.MicroSeconds();
+  //LOG(INFO)<<this->layer_param().name()<<"\t group all"<<": "<<lowering_passed_time<<" us (Lowering Timing)";
 
   /*
   col_buffer_.Snapshot(Layer<Dtype>::layer_param().name()+".blob");
@@ -379,6 +383,8 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
   int cur_output_offset = 0;
 #endif
   int offset_sum = 0;
+  Timer total_timer;
+  total_timer.Start();
   for (int g = 0; g < group_; ++g) {
 #ifdef FOR_SCNN_PAPER
 	  if(!is_scnn_){
@@ -391,7 +397,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 //					  squeezed_weight_buffer_.mutable_cpu_data(),
 //					  &left_cols,
 //					  col_buf_mask_.cpu_data() + kernel_dim_ / group_ * g );
-			  Timer timer;
+			  //Timer timer;
 			  timer.Start();
 			  int left_cols = left_columns_[g];
 			  caffe_cpu_cblas_gemm(conv_out_channels_ /
@@ -400,7 +406,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 					  kernel_dim_ / group_, col_buff + offset_sum,
 					conv_out_spatial_dim_, (Dtype)0., output + output_offset_ * g, conv_out_spatial_dim_);
 			  offset_sum += left_cols * conv_out_spatial_dim_;
-			  float passed_time = timer.MicroSeconds();
+			  //float passed_time = timer.MicroSeconds();
 			  //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Column Concatenation Timing)";
 
 		  }else{
@@ -410,7 +416,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 			  if(is_sparse_format_weights_){
 				  int row_offset = conv_out_channels_ /group_ + 1;
 				  //int nnz = *(nz_weight_index_pointers_.cpu_data() + row_offset * g + conv_out_channels_ /group_);
-				  Timer timer;
+				  //Timer timer;
 				  timer.Start();
 				  caffe_cpu_sparse_mmcsr(M,
 						  N,
@@ -422,7 +428,7 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 						  nz_weight_index_pointers_.cpu_data() + row_offset * g + 1,
 						  col_buff + col_offset_ * g,
 						  (Dtype)0.,output + output_offset_ * g);
-				  float passed_time = timer.MicroSeconds();
+				  //float passed_time = timer.MicroSeconds();
 				  //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Compressed Row Storage Timing)";
 //				  long mem_bytes = nnz*(sizeof(Dtype)+sizeof(int))+M*sizeof(int)+K*N*sizeof(Dtype)+M*N*sizeof(Dtype);//
 //				  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
@@ -431,12 +437,12 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 //						  <<""<<mem_bytes/passed_time << " MB/s";
 
 			  }else{
-				Timer timer;
+				//Timer timer;
 				timer.Start();
 				caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, M, N, K,
 						  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
 						  (Dtype)0., output + output_offset_ * g);
-				float passed_time = timer.MicroSeconds();
+				//float passed_time = timer.MicroSeconds();
 				//LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Dense Scheme Timing)";
 //				int M = conv_out_channels_ /group_;
 //				int N = conv_out_spatial_dim_;
@@ -469,6 +475,8 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 	  }
 #endif
   }
+  float mm_passed_time = total_timer.MicroSeconds();
+  //LOG(INFO)<<this->layer_param().name()<<"\t group all"<<": "<< lowering_passed_time*100/(mm_passed_time+lowering_passed_time)<<" % (Lowering Over Matrix Multiplying Timing)";
 
 }
 
