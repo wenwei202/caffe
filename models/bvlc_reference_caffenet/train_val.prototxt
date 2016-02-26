@@ -61,7 +61,7 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1
-    group_decay_mult: 1.0
+    group_decay_mult: 0.0
   }
   param {
     lr_mult: 2
@@ -288,7 +288,7 @@ layer {
   top: "fc6"
   param {
     lr_mult: 1
-    decay_mult: 0
+    decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -328,7 +328,7 @@ layer {
   top: "fc7"
   param {
     lr_mult: 1
-    decay_mult: 0
+    decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -368,7 +368,7 @@ layer {
   top: "fc8"
   param {
     lr_mult: 1
-    decay_mult: 0
+    decay_mult: 1
   }
   param {
     lr_mult: 2

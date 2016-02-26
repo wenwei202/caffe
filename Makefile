@@ -172,7 +172,8 @@ endif
 LIBRARIES += glog gflags protobuf leveldb snappy \
 	lmdb boost_system hdf5_hl hdf5 m \
 	nvToolsExt \
-	opencv_core opencv_highgui opencv_imgproc
+	opencv_core opencv_highgui opencv_imgproc \
+	gomp
 PYTHON_LIBRARIES := boost_python python2.7
 WARNINGS := -Wall -Wno-sign-compare
 
@@ -350,6 +351,9 @@ LIBRARY_DIRS += $(LIB_BUILD_DIR)
 
 # Automatic dependency generation (nvcc is handled separately)
 CXXFLAGS += -MMD -MP
+
+#openmp
+CXXFLAGS += -fopenmp
 
 # Complete build flags.
 COMMON_FLAGS += $(foreach includedir,$(INCLUDE_DIRS),-I$(includedir))
