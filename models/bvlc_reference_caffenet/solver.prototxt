@@ -8,14 +8,14 @@ lr_policy: "multistep"
 gamma: 0.1
 #stepsize: 60000
 #stepsize: 80000
-stepvalue: 60000
-stepvalue: 120000
+#stepvalue: 60000
+stepvalue: 180000
 #stepvalue: 130000
 #stepvalue: 140000
 #stepvalue: 150000
 
 display: 20
-max_iter: 160000
+max_iter: 240000
 momentum: 0.9
 #weight_decay: 0.0005
 #weight_decay: 0.0001
