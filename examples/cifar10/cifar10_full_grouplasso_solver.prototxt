@@ -13,8 +13,8 @@ test_iter: 100
 test_interval: 1000
 
 # The base learning rate, momentum and the weight decay of the network.
-base_lr: 0.001
-#base_lr: 0.0001
+#base_lr: 0.001
+base_lr: 0.0001
 momentum: 0.9
 
 #weight_decay: 0.004
@@ -29,21 +29,26 @@ momentum: 0.9
 #group_weight_decay: 0.006
 #weight_decay: 0.0004
 #group_weight_decay: 0.007
-weight_decay: 0.0003
-group_weight_decay: 0.006
+
+#weight_decay: 0.0003
+#group_weight_decay: 0.006
+
+weight_decay: 0.0004
+group_weight_decay: 0.000
 
 regularization_type: "L1"
 
 # The learning rate policy
 lr_policy: "multistep"
 gamma: 0.1
-stepvalue: 100000
+stepvalue: 240000
+stepvalue: 260000
 
 # Display every 200 iterations
 display: 200
 
 # The maximum number of iterations
-max_iter: 160000
+max_iter: 300000
 
 # snapshot intermediate results
 snapshot: 20000
