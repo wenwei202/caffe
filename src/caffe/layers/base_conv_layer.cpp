@@ -8,43 +8,6 @@
 
 namespace caffe {
 
-#ifdef FOR_SCNN_PAPER
-template <typename Dtype>
-void BaseConvolutionLayer<Dtype>::WeightAlign(){
-	//move nonzero weights to continuous memory space
-	int slice_sum = 0;
-	CHECK_EQ(forward_channel_group_sizes_.size(),group_);
-	CHECK_EQ(forward_output_group_sizes_.size(),group_);
-	for(int ii=0;ii<group_;ii++){
-		slice_sum += forward_channel_group_sizes_[ii]*forward_output_group_sizes_[ii];
-	}
-	//weight_buffer_.Reshape(1,(this->blobs_[0]->shape(0)/group_) * forward_channels_.size(),this->blobs_[0]->shape(2),this->blobs_[0]->shape(3));
-	weight_buffer_.Reshape(1,slice_sum,this->blobs_[0]->shape(2),this->blobs_[0]->shape(3));
-	int slice_size = weight_buffer_.shape(2)*weight_buffer_.shape(3);
-	int group_output_size = num_output_/group_;
-	int group_channel_size = channels_/group_;
-	int slice_index = 0;
-	for(int n=0;n<this->blobs_[0]->shape(0);n++){
-		for(int c=0;c<this->blobs_[0]->shape(1);c++){
-			int forward_c = c + (n/group_output_size)*group_channel_size;
-			CHECK_LT(forward_c,channels_)
-					 << "Input channel index is out of boundary";
-			if(forwarding_channel_mask_[forward_c] && forwarding_output_mask_[n]){
-				int src_offset = this->blobs_[0]->offset(n,c,0,0);
-				CHECK_LT(slice_index,slice_sum)
-					<<"Weight slice is out of boundary";
-				int dst_offset = weight_buffer_.offset(0,slice_index,0,0);
-				caffe_copy(slice_size,this->blobs_[0]->cpu_data()+src_offset,weight_buffer_.mutable_cpu_data()+dst_offset);
-				slice_index++;
-			}
-		}
-	}
-	CHECK_EQ(slice_index,slice_sum)
-		<< "Not enough weight slices are stored";
-	//this->blobs_[0]->Snapshot(Layer<Dtype>::layer_param().name()+".blob");
-}
-#endif
-
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::WeightAlign(){
 	is_sparse_format_weights_ = false;
@@ -292,62 +255,7 @@ void BaseConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
   weight_offset_ = conv_out_channels_ * kernel_dim_ / group_;
   // Propagate gradients to the parameters (as directed by backward pass).
   this->param_propagate_down_.resize(this->blobs_.size(), true);
-#ifdef FOR_SCNN_PAPER
-  //For partial forwarding
-  CHECK(!reverse_dimensions()
-		  || ((conv_param.forward_channels_size()==channels_ || conv_param.forward_channels_size()==0)
-		  && (conv_param.forward_outputs_size()==0 || conv_param.forward_outputs_size()==num_output_)))
-  			  << "Partial forwarding is unsupported for deconv";
-  if(!conv_param.forward_channels_size()){
-	  for(int ii=0;ii<channels_;ii++){
-		  forward_channels_.push_back(ii);
-	  }
-  }else{
-	  for(int ii=0;ii<conv_param.forward_channels_size();ii++){
-	  	  	forward_channels_.push_back(conv_param.forward_channels(ii));
-	  }
-  }
-  forwarding_channel_mask_ = vector<int> (channels_,0);
-  for(int ii=0;ii<forward_channels_.size();ii++){
-	  forwarding_channel_mask_[forward_channels_[ii]]=1;
-  }
 
-
-  if(!conv_param.forward_outputs_size()){
-  	  for(int ii=0;ii<num_output_;ii++){
-  	  	  forward_outputs_.push_back(ii);
-  	  }
-  }else{
-	  for(int ii=0;ii<conv_param.forward_outputs_size();ii++){
-	  	  forward_outputs_.push_back(conv_param.forward_outputs(ii));
-	  }
-  }
-  forwarding_output_mask_ = vector<int> (num_output_,0);
-    for(int ii=0;ii<forward_outputs_.size();ii++){
-    	forwarding_output_mask_[forward_outputs_[ii]]=1;
-  }
-
-  is_skip_channels_ = forward_channels_.size()<channels_;
-
-  forward_channel_group_sizes_ = vector<int> (group_,0);
-  int group_size = channels_/group_;
-  for(int forward_c=0;forward_c<forward_channels_.size();forward_c++){
-	  int c = forward_channels_[forward_c];
-	  CHECK_LT(c,channels_)
-  		  << "Input channel index is out of boundary";
-	  forward_channel_group_sizes_[c/group_size]++;
-  }
-  group_size = num_output_/group_;//change it
-  forward_output_group_sizes_ = vector<int> (group_,0);
-  for(int forward_n=0;forward_n<forward_outputs_.size();forward_n++){
-  	  int n = forward_outputs_[forward_n];
-  	  CHECK_LT(n,num_output_)
-    		  << "output map index is out of boundary";
-  	forward_output_group_sizes_[n/group_size]++;
-  }
-
-  is_scnn_ = is_skip_channels_ || forward_outputs_.size()<num_output_;
-#endif
   is_concatenating_weights_features_ = false;
   dense_feature_map_mask_.Reshape(1,1,1,channels_);
   squeezed_weight_buffer_.Reshape(this->blobs_[0]->shape(0),this->blobs_[0]->shape(1),this->blobs_[0]->shape(2),this->blobs_[0]->shape(3));
@@ -443,9 +351,7 @@ template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
     const Dtype* weights, Dtype* output, bool skip_im2col) {
   const Dtype* col_buff = input;
-  // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
-  // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
-  // WARNING WARNING WARNING, DOESN'T WORK FOR SCNN PAPER ANYMORE
+
   Timer timer;
   timer.Start();
   if (!is_1x1_ ||  is_concatenating_weights_features_) {
@@ -471,18 +377,10 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
     	  LOG(INFO) << tmp_i<<"\t"<<col_buf_mask_.cpu_data()[tmp_i];
   }*/
 
-#ifdef FOR_SCNN_PAPER
-  int cur_weight_offset = 0;
-  int cur_col_offset = 0;
-  int cur_output_offset = 0;
-#endif
   int offset_sum = 0;
   Timer total_timer;
   total_timer.Start();
   for (int g = 0; g < group_; ++g) {
-#ifdef FOR_SCNN_PAPER
-	  if(!is_scnn_){
-#endif
 		  if(is_concatenating_weights_features_){
 //			  int left_cols = 0;
 //			  caffe_cpu_del_zero_cols(conv_out_channels_ /group_,
@@ -551,23 +449,6 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 			  }
 			  //LOG(INFO)<<"mkl_get_max_threads="<<mkl_get_max_threads();
 		  }
-#ifdef FOR_SCNN_PAPER
-	  }else{
-		  //caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, conv_out_channels_ /
-		  //    group_, conv_out_spatial_dim_, forward_channel_group_sizes_[g] * kernel_h_ * kernel_w_,
-		  //    (Dtype)1., weight_buffer_.cpu_data() + cur_weight_offset, col_buff + cur_col_offset,
-		  //    (Dtype)0., output + output_offset_ * g);
-		  //cur_weight_offset += (num_output_ / group_) * forward_channel_group_sizes_[g] * kernel_h_ * kernel_w_;
-		  //cur_col_offset += conv_out_spatial_dim_ * forward_channel_group_sizes_[g] * kernel_h_ * kernel_w_;
-		  caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, forward_output_group_sizes_[g],
-			  conv_out_spatial_dim_, forward_channel_group_sizes_[g] * kernel_h_ * kernel_w_,
-	  	      (Dtype)1., weight_buffer_.cpu_data() + cur_weight_offset, col_buff + cur_col_offset,
-	  	      (Dtype)0., output + cur_output_offset);
-		  cur_weight_offset += forward_output_group_sizes_[g] * forward_channel_group_sizes_[g] * kernel_h_ * kernel_w_;
-		  cur_col_offset += conv_out_spatial_dim_ * forward_channel_group_sizes_[g] * kernel_h_ * kernel_w_;
-		  cur_output_offset += forward_output_group_sizes_[g] * conv_out_spatial_dim_;
-	  }
-#endif
   }
   float mm_passed_time = total_timer.MicroSeconds();
   //LOG(INFO)<<this->layer_param().name()<<"\t group all"<<": "<< lowering_passed_time*100/(mm_passed_time+lowering_passed_time)<<" % (Lowering Over Matrix Multiplying Timing)";

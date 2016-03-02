@@ -97,20 +97,9 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   bool is_1x1_;
   bool force_nd_im2col_;
 
-#ifdef FOR_SCNN_PAPER
-  bool is_skip_channels_;
-  bool is_scnn_;
-  vector<int> forward_outputs_;
-  vector<int> forward_channels_;
-  vector<int> forward_channel_group_sizes_;
-  vector<int> forward_output_group_sizes_;
-  vector<int> forwarding_channel_mask_;
-  vector<int> forwarding_output_mask_;
-#endif
-
  private:
   // wrap im2col/col2im so we don't have to remember the (long) argument lists
-  inline void conv_im2col_cpu(const Dtype* data, Dtype* col_buff,int* all_zero_mask = NULL, int* map_mask = NULL) {
+  inline void conv_im2col_cpu(const Dtype* data, Dtype* col_buff,int* all_zero_mask = NULL) {
     if (!force_nd_im2col_ && num_spatial_axes_ == 2) {
       im2col_cpu(data, conv_in_channels_,
           conv_input_shape_.cpu_data()[1], conv_input_shape_.cpu_data()[2],
@@ -118,7 +107,7 @@ class BaseConvolutionLayer : public Layer<Dtype> {
           pad_.cpu_data()[0], pad_.cpu_data()[1],
           stride_.cpu_data()[0], stride_.cpu_data()[1],
           dilation_.cpu_data()[0], dilation_.cpu_data()[1], col_buff,
-          all_zero_mask, map_mask);
+          all_zero_mask);
     } else {
       im2col_nd_cpu(data, num_spatial_axes_, conv_input_shape_.cpu_data(),
           col_buffer_shape_.data(), kernel_shape_.cpu_data(),

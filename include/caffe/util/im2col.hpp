@@ -16,7 +16,7 @@ void im2col_cpu(const Dtype* data_im, const int channels,
     const int pad_h, const int pad_w, const int stride_h,
     const int stride_w, const int dilation_h, const int dilation_w,
     Dtype* data_col,
-    int* all_zero_mask = NULL, int* map_mask = NULL);
+    int* all_zero_mask = NULL);
 
 template <typename Dtype>
 void col2im_nd_cpu(const Dtype* data_col, const int num_spatial_axes,
