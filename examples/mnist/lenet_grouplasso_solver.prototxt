@@ -1,0 +1,66 @@
+# The train/test net protocol buffer definition
+net: "examples/mnist/lenet_train_test.prototxt"
+# test_iter specifies how many forward passes the test should carry out.
+# In the case of MNIST, we have test batch size 100 and 100 test iterations,
+# covering the full 10,000 testing images.
+test_iter: 100
+# Carry out testing every 500 training iterations.
+test_interval: 500
+# The base learning rate, momentum and the weight decay of the network.
+base_lr: 0.01
+#base_lr: 0.001
+momentum: 0.9
+
+#weight_decay: 0.0005
+
+#weight_decay: 0.001
+#group_weight_decay: 0.001
+
+#weight_decay: 0.001
+#group_weight_decay: 0.005
+
+#weight_decay: 0.002
+#group_weight_decay: 0.01
+
+#weight_decay: 0.005
+#group_weight_decay: 0.03
+
+#weight_decay: 0.003
+#group_weight_decay: 0.02
+
+#weight_decay: 0.01
+#group_weight_decay: 0.01
+
+#weight_decay: 0.002
+#group_weight_decay: 0.02
+
+# presented in intel slides
+#weight_decay: 0.001
+#group_weight_decay: 0.01
+
+#98.46% finetune from lenet 5x 22x
+weight_decay: 0.0005
+group_weight_decay: 0.01
+
+#weight_decay: 0.0015
+#group_weight_decay: 0.015
+
+regularization_type: "L2"
+
+# The learning rate policy
+#lr_policy: "inv"
+gamma: 0.1
+#power: 0.75
+lr_policy: "multistep"
+#stepvalue: 6000
+stepvalue: 8000
+
+# Display every 100 iterations
+display: 100
+# The maximum number of iterations
+max_iter: 10000
+# snapshot intermediate results
+snapshot: 2000
+snapshot_prefix: "examples/mnist/lenet_grouplasso"
+# solver mode: CPU or GPU
+solver_mode: GPU

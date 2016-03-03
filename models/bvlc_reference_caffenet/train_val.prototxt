@@ -45,7 +45,7 @@ layer {
 #    mean_value: 104
 #    mean_value: 117
 #    mean_value: 123
-#    mirror: true
+#    mirror: false
 #  }
   data_param {
     source: "examples/imagenet/ilsvrc12_val_lmdb"
@@ -61,7 +61,7 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1
-    group_decay_mult: 1.0
+    group_decay_mult: 0.0
   }
   param {
     lr_mult: 2

@@ -45,7 +45,7 @@ layer {
   }
   param {
     lr_mult: 2
-    decay_mult: 0.0
+    decay_mult: 1.0
   }
   convolution_param {
     num_output: 32
@@ -102,7 +102,7 @@ layer {
   }
   param {
     lr_mult: 2
-    decay_mult: 0.0
+    decay_mult: 1.0
   }
   convolution_param {
     num_output: 32
@@ -154,12 +154,12 @@ layer {
   top: "conv3"
   param {
     lr_mult: 1
-    decay_mult: 1.5
-    group_decay_mult: 1.5
+    decay_mult: 1.0
+    group_decay_mult: 1.0
   }
   param {
     lr_mult: 2
-    decay_mult: 0.0
+    decay_mult: 1.0
   }
   convolution_param {
     num_output: 64
@@ -199,6 +199,7 @@ layer {
   top: "ip1"
   param {
     lr_mult: 1
+#    decay_mult: 250
     decay_mult: 0
   }
   param {

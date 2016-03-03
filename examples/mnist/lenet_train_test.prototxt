@@ -45,7 +45,7 @@ layer {
   }
   param {
     lr_mult: 2
-    decay_mult: 0.0
+#    decay_mult: 0.0
   }
   convolution_param {
     num_output: 20
@@ -82,7 +82,7 @@ layer {
   }
   param {
     lr_mult: 2
-    decay_mult: 0.0
+ #   decay_mult: 0.0
   }
   convolution_param {
     num_output: 50
@@ -114,11 +114,11 @@ layer {
   top: "ip1"
   param {
     lr_mult: 1
-    decay_mult: 0.0
+ #   decay_mult: 0.0
   }
   param {
     lr_mult: 2
-    decay_mult: 0.0
+ #   decay_mult: 0.0
   }
   inner_product_param {
     num_output: 500
@@ -143,11 +143,11 @@ layer {
   top: "ip2"
   param {
     lr_mult: 1
-    decay_mult: 0.0
+#    decay_mult: 0.0
   }
   param {
     lr_mult: 2
-    decay_mult: 0.0
+#    decay_mult: 0.0
   }
   inner_product_param {
     num_output: 10

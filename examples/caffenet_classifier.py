@@ -29,7 +29,7 @@ import os
 #    #!../scripts/download_model_binary.py ../models/bvlc_reference_caffenet
 #    os.system("./scripts/download_model_binary.py ./models/bvlc_reference_caffenet")
 
-## GPU mode
+# GPU mode
 #caffe.set_device(2)
 #caffe.set_mode_gpu()
 
@@ -43,9 +43,9 @@ caffe.set_mode_cpu()
 #                '/home/wew57/bincaffe/models/eilab_reference_sparsenet/l1_0001weighdecay_0001grpdecay_001lr_80000stepsize_160000iter/sparsenet_train_iter_160000.caffemodel',
 #                caffe.TEST)
 
-net = caffe.Net(caffe_root + 'models/eilab_reference_sparsenet/deploy_scnn.prototxt',
-                'models/eilab_reference_sparsenet/sparsenet_train_iter_160000.caffemodel',
-                caffe.TEST)
+# net = caffe.Net(caffe_root + 'models/eilab_reference_sparsenet/deploy_scnn.prototxt',
+#                 'models/eilab_reference_sparsenet/sparsenet_train_iter_160000.caffemodel',
+#                 caffe.TEST)
 
 #net = caffe.Net(caffe_root + 'examples/cifar10/cifar10_quick_scnn.prototxt',
 #                caffe_root + 'examples/cifar10/cifar10_quick_iter_5000_sparsenet.caffemodel',
@@ -55,9 +55,14 @@ net = caffe.Net(caffe_root + 'models/eilab_reference_sparsenet/deploy_scnn.proto
 #                caffe_root + 'models/eilab_reference_sparsenet/sparsenet_train_iter_10000_l1.caffemodel',
 #                caffe.TEST)
 
-#net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
+# net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
 #               caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
-#               caffe.TEST)
+#              caffe.TEST)
+
+net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
+              #caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.519_intel.caffemodel',
+                caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.54214_1.0e-3.caffemodel',
+              caffe.TEST)
 
 # input preprocessing: 'data' is the name of the input blob == net.inputs[0]
 #transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})

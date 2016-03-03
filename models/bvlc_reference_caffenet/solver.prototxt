@@ -3,12 +3,20 @@ test_iter: 1000
 test_interval: 1000
 #base_lr: 0.01
 base_lr: 0.001
-lr_policy: "step"
+#lr_policy: "step"
+lr_policy: "multistep"
 gamma: 0.1
-stepsize: 60000
+#stepsize: 60000
 #stepsize: 80000
+#stepvalue: 60000
+stepvalue: 300000
+stepvalue: 400000
+#stepvalue: 130000
+#stepvalue: 140000
+#stepvalue: 150000
+
 display: 20
-max_iter: 160000
+max_iter: 450000
 momentum: 0.9
 #weight_decay: 0.0005
 #weight_decay: 0.0001
@@ -34,8 +42,34 @@ momentum: 0.9
 #weight_decay: 1e-5
 #group_weight_decay: 1e-3
 
-weight_decay: 1e-5
-group_weight_decay: 2e-3
+#51.9%
+#weight_decay: 1e-5
+#group_weight_decay: 2e-3
+
+#52.353% fine-tuned from 51.9%
+#weight_decay: 0
+#group_weight_decay: 2e-3
+
+
+#52.49% fine-tuned from 52.353% speedup 1.06X2.57X6.98X6.41X20.76X7.07X10.05X4.52X
+#weight_decay: 0
+#group_weight_decay: 2e-3
+
+#55.41% fine-tuned from 52.49% without regularization 1.04X 1.17X 1.98X 2.23X 3.80X2.48X 2.81X 2.01X
+#weight_decay: 0
+#group_weight_decay: 0
+
+#53.518% finetuned from 52.49%
+#weight_decay: 0
+#group_weight_decay: 1.5e-3
+
+#54.214% finetuned from 53.518%, 1.10X 2.10X 5.17X 7.29X 22.37X 7.79X 7.85X 3.87X
+#weight_decay: 0
+#group_weight_decay: 1.0e-3
+
+#??.??% L1 finetuned from caffenet
+weight_decay: 9.0e-5
+group_weight_decay: 0.0
 
 regularization_type: "L1"
 snapshot: 5000

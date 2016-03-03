@@ -6,7 +6,8 @@ import os
 import matplotlib.pyplot as plt
 import argparse
 import caffeparser
-
+# --prototxt models/bvlc_reference_caffenet/train_val.prototxt --origimodel models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel --tunedmodel /home/wew57/github/caffe_gpu0/models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_120000.caffemodel
+# --prototxt examples/mnist/lenet_train_test.prototxt --origimodel examples/mnist/lenet_iter_10000.caffemodel --tunedmodel examples/mnist/lenet_grouplasso_iter_10000.caffemodel
 def show_filters(net,layername):
     weights = net.params[layername][0].data
     if len(weights.shape) < 3:
@@ -47,9 +48,13 @@ if __name__ == "__main__":
 # --prototxt /home/wew57/bincaffe/models/eilab_reference_sparsenet/train_val_scnn.prototxt  --origimodel /home/wew57/bincaffe/models/eilab_reference_sparsenet/eilab_reference_sparsenet_zerout.caffemodel --tunedmodel /home/wew57/bincaffe/models/eilab_reference_sparsenet/sparsenet_train_iter_160000.caffemodel
 # --prototxt examples/cifar10/cifar10_full_train_test.prototxt --origimodel examples/cifar10/cifar10_full_step_iter_200000.caffemodel --tunedmodel examples/cifar10/cifar10_full_grouplasso_iter_100000.caffemodel
 # --prototxt examples/mnist/lenet_train_test.prototxt --origimodel examples/mnist/lenet_iter_10000.caffemodel --tunedmodel examples/mnist/lenet_grouplasso_iter_10000.caffemodel
-    caffe.set_mode_cpu()
-    orig_net = caffe.Net(prototxt,original_caffemodel, caffe.TRAIN)
-    tuned_net = caffe.Net(prototxt,fine_tuned_caffemodel, caffe.TRAIN)
+#    caffe.set_mode_cpu()
+    # GPU mode
+    caffe.set_device(1)
+    caffe.set_mode_gpu()
+    orig_net = caffe.Net(prototxt,original_caffemodel, caffe.TEST)
+    tuned_net = caffe.Net(prototxt,fine_tuned_caffemodel, caffe.TEST)
+    #orig_net = tuned_net
     print("blobs {}\nparams {}".format(orig_net.blobs.keys(), orig_net.params.keys()))
     print("blobs {}\nparams {}".format(tuned_net.blobs.keys(), tuned_net.params.keys()))
     #show_filters(tuned_net,'conv1')

@@ -127,9 +127,6 @@ void caffe_cpu_sparse_dense2csr(const int M, const int N,
     Dtype* A,
     Dtype* A_nonzero_buf, int* A_nonzero_idx_buf, int* A_idx_pointer_buf);
 
-template <typename Dtype>
-int caffe_cpu_hamming_distance(const int n, const Dtype* x, const Dtype* y);
-
 // Returns the sum of the absolute values of the elements of vector x
 template <typename Dtype>
 Dtype caffe_cpu_asum(const int n, const Dtype* x);
@@ -298,10 +295,6 @@ void caffe_gpu_rng_bernoulli(const int n, const Dtype p, int* r);
 
 template <typename Dtype>
 void caffe_gpu_dot(const int n, const Dtype* x, const Dtype* y, Dtype* out);
-
-template <typename Dtype>
-uint32_t caffe_gpu_hamming_distance(const int n, const Dtype* x,
-                                    const Dtype* y);
 
 template <typename Dtype>
 void caffe_gpu_asum(const int n, const Dtype* x, Dtype* y);
