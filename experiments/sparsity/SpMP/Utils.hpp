@@ -107,6 +107,7 @@ bool isInversePerm(const int *perm, const int *inversePerm, int len);
  */
 void reorderVectorOutOfPlace(double *dst, const double *src, const int *perm, int len);
 void reorderVectorOutOfPlaceWithInversePerm(double *dst, const double *src, const int *inversePerm, int len);
+void reorderVectorOutOfPlaceWithInversePerm(float *dst, const float *src, const int *inversePerm, int len);
 
 void reorderVectorOutOfPlace(int *dst, const int *src, const int *perm, int len);
 void reorderVectorOutOfPlaceWithInversePerm(int *dst, const int *src, const int *inversePerm, int len);

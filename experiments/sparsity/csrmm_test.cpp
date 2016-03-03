@@ -254,10 +254,8 @@ public :
     delete A;
   }
 
-  template<int WIDTH, int WOUT, int PAD>
-  void conv_(float *in, float *out, int stride, bool serial = false) {
+  void conv(float *in, float *out, int stride, bool serial = false) {
     int begin, end;
-
     if (serial) {
       begin = 0;
       end = A->m;
@@ -273,121 +271,26 @@ public :
       end = tid == nthreads - 1 ? A->m : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*(tid + 1)) - A->rowptr;
     }
 
-    if (1 == stride) {
-#if 0
-      float sum[WOUT];
-
-      for (int h = 0; h < WOUT; ++h) {
-        float *in_temp = in + h*(width + PAD);
-
-        for (int i = begin; i < end; ++i) {
-          for (int w = 0; w < WOUT; ++w) {
-            sum[w] = 0;
-          }
-
-          for (int i = A->rowptr[i]; i < A->rowptr[i + 1]; ++i) {
-            float c = values[i];
-            int off = A->colidx[i];
-
-            for (int w = 0; w < WOUT; ++w) {
-              sum[w] += c*in_temp[off + w];
-            }
-          }
-
-          for (int w = 0; w < WOUT; ++w) {
-            out[(i*WOUT + h)*WOUT + w] = sum[w];
-          }
-        }
-      }
-#else
-      float sum[WOUT*WOUT];
-
-      for (int i = begin; i < end; ++i) {
-        for (int w = 0; w < WOUT*WOUT; ++w) {
-          sum[w] = 0;
-        }
-
-        for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-          float c = values[j];
-          int off = A->colidx[j];
-
-          for (int h = 0; h < WOUT; ++h) {
-            for (int w = 0; w < WOUT; ++w) {
-              sum[h*WOUT + w] += c*in[off + h*(WIDTH + PAD) + w];
-            }
-          }
-        }
-
-        for (int w = 0; w < WOUT*WOUT; ++w) {
-          out[i*WOUT*WOUT + w] = sum[w];
-        }
-      }
-#endif
-    }
-    else {
-      for (int h = 0; h < WOUT; ++h) {
-        for (int w = 0; w < WOUT; ++w) {
-          float *in_temp = in + stride*(h*(WIDTH + PAD) + w);
-
-          for (int i = begin; i < end; ++i) {
-            float sum = 0;
-
-            for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-              float c =values[j];
-              sum += c*in_temp[A->colidx[j]];
-            }
-
-            out[(i*WOUT + h)*WOUT + w] = sum;
-          }
-        }
-      }
-    } // stride != 1
-  }
-
-  void conv(float *in, float *out, int stride, bool serial = false) {
     if (width == 13 && pad == 1 && stride == 1 && k == 3) {
-      //return conv_<13, 13, 1>(in, out, stride, serial);
       int WIDTH = 13;
       int WOUT = 13;
       int PAD = 1;
       
-      int begin, end;
-
-      if (serial) {
-        begin = 0;
-        end = A->m;
-      }
-      else {
-        int nthreads = omp_get_num_threads();
-        int tid = omp_get_thread_num();
-
-        int total_work = A->rowptr[A->m];
-        int work_per_thread = (total_work + nthreads - 1)/nthreads;
-
-        begin = tid == 0 ? 0 : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*tid) - A->rowptr;
-        end = tid == nthreads - 1 ? A->m : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*(tid + 1)) - A->rowptr;
-      }
-
-#define INTRINSIC
-#ifdef INTRINSIC
       __m256 sum[(WOUT + 1)/2][2];
       __declspec(aligned(64)) float sum_temp[8];
-#else
-      float sum[16];
-#endif
 
       for (int i = begin; i < end; ++i) {
-#ifdef INTRINSIC
         if (A->rowptr[i + 1] == A->rowptr[i]) continue;
 
         // Upper half of images
+        int hbegin = 0, hend = (WOUT + 1)/2;
         int j = A->rowptr[i];
         __m256 c = _mm256_set1_ps(values[j]);
         int off = A->colidx[j];
 
-        for (int h = 0; h < WOUT/2; ++h) {
-          sum[h][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
-          sum[h][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
         }
 
         int jbegin = A->rowptr[i] + 1;
@@ -397,71 +300,48 @@ public :
           c = _mm256_set1_ps(values[j]);
           off = A->colidx[j];
 
-          for (int h = 0; h < WOUT/2; ++h) {
-            sum[h][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h][0]);
-            sum[h][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h][1]);
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
           }
         }
 
-        for (int h = 0; h < WOUT/2; ++h) {
-          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h][0]);
-          _mm256_store_ps(sum_temp, sum[h][1]);
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin][0]);
+          _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
           for (int w = 8; w < WOUT; ++w) {
             out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
           }
         }
 
         // Lower half of images
+        hbegin = (WOUT + 1)/2; hend = WOUT;
         j = A->rowptr[i];
         c = _mm256_set1_ps(values[j]);
         off = A->colidx[j];
 
-        for (int h = WOUT/2; h < WOUT; ++h) {
-          sum[h - WOUT/2][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
-          sum[h - WOUT/2][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
         }
 
         for (j = jbegin; j < jend; ++j) {
           c = _mm256_set1_ps(values[j]);
           off = A->colidx[j];
 
-          for (int h = WOUT/2; h < WOUT; ++h) {
-            sum[h - WOUT/2][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - WOUT/2][0]);
-            sum[h - WOUT/2][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - WOUT/2][1]);
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
           }
         }
 
-        for (int h = WOUT/2; h < WOUT; ++h) {
-          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - WOUT/2][0]);
-          _mm256_store_ps(sum_temp, sum[h - WOUT/2][1]);
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin][0]);
+          _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
           for (int w = 8; w < WOUT; ++w) {
             out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
           }
         }
-#else
-        for (int h = 0; h < WOUT; ++h) {
-          for (int w = 0; w < WOUT; ++w) {
-            sum[h*16 + w] = 0;
-          }
-        }
-
-        for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-          float c = values[j];
-          int off = A->colidx[j];
-
-          for (int h = 0; h < WOUT; ++h) {
-            for (int w = 0; w < WOUT; ++w) {
-              sum[h*16 + w] += c*in[off + h*(WIDTH + PAD) + w];
-            }
-          }
-        }
-
-        for (int h = 0; h < WOUT; ++h) {
-          for (int w = 0; w < WOUT; ++w) {
-            out[i*WOUT*WOUT + h*WOUT + w] = sum[h*16 + w];
-          }
-        }
-#endif
       }
 
       return;
@@ -472,45 +352,21 @@ public :
       int WOUT = 27;
       int PAD = 2;
       
-      int begin, end;
-
-      if (serial) {
-        begin = 0;
-        end = A->m;
-      }
-      else {
-        int nthreads = omp_get_num_threads();
-        int tid = omp_get_thread_num();
-
-        int total_work = A->rowptr[A->m];
-        int work_per_thread = (total_work + nthreads - 1)/nthreads;
-
-        begin = tid == 0 ? 0 : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*tid) - A->rowptr;
-        end = tid == nthreads - 1 ? A->m : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*(tid + 1)) - A->rowptr;
-      }
-
-#ifdef INTRINSIC
-      __m256 sum[(WOUT + 1)/2][4];
+      __m256 sum[(WOUT + 1)/4][2];
       __declspec(aligned(64)) float sum_temp[8];
-#else
-      float sum[32];
-#endif
 
       for (int i = begin; i < end; ++i) {
-#ifdef INTRINSIC
         if (A->rowptr[i + 1] == A->rowptr[i]) continue;
 
-        // Upper half of images
-
+        // (0, 0) block
+        int hbegin = 0, hend = (WOUT + 1)/4;
         int j = A->rowptr[i];
         __m256 c = _mm256_set1_ps(values[j]);
         int off = A->colidx[j];
 
-        for (int h = 0; h < WOUT/2; ++h) {
-          sum[h][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
-          sum[h][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
-          sum[h][2] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
-          sum[h][3] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24));
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
         }
 
         int jbegin = A->rowptr[i] + 1;
@@ -520,102 +376,241 @@ public :
           c = _mm256_set1_ps(values[j]);
           off = A->colidx[j];
 
-          for (int h = 0; h < WOUT/2; ++h) {
-            sum[h][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h][0]);
-            sum[h][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h][1]);
-            sum[h][2] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h][2]);
-            sum[h][3] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24), sum[h][3]);
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
           }
         }
 
-        for (int h = 0; h < WOUT/2; ++h) {
-          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h][0]);
-          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 8, sum[h][1]);
-          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 16, sum[h][2]);
-          _mm256_store_ps(sum_temp, sum[h][3]);
-          for (int w = 24; w < WOUT; ++w) {
-            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
-          }
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin][0]);
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 8, sum[h - hbegin][1]);
         }
 
-        // Lower half of images
+        // (0, 1) block
         j = A->rowptr[i];
         c = _mm256_set1_ps(values[j]);
         off = A->colidx[j];
 
-        for (int h = WOUT/2; h < WOUT; ++h) {
-          sum[h - WOUT/2][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
-          sum[h - WOUT/2][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
-          sum[h - WOUT/2][2] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
-          sum[h - WOUT/2][3] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24));
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24));
         }
 
         for (j = jbegin; j < jend; ++j) {
           c = _mm256_set1_ps(values[j]);
           off = A->colidx[j];
 
-          for (int h = WOUT/2; h < WOUT; ++h) {
-            sum[h - WOUT/2][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - WOUT/2][0]);
-            sum[h - WOUT/2][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - WOUT/2][1]);
-            sum[h - WOUT/2][2] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - WOUT/2][2]);
-            sum[h - WOUT/2][3] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24), sum[h - WOUT/2][3]);
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24), sum[h - hbegin][1]);
           }
         }
 
-        for (int h = WOUT/2; h < WOUT; ++h) {
-          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - WOUT/2][0]);
-          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 8, sum[h - WOUT/2][1]);
-          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 16, sum[h - WOUT/2][2]);
-          _mm256_store_ps(sum_temp, sum[h - WOUT/2][3]);
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 16, sum[h - hbegin][0]);
+          _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
           for (int w = 24; w < WOUT; ++w) {
             out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
           }
         }
 
-#else
-        for (int h = 0; h < WOUT; ++h) {
-          for (int w = 0; w < WOUT; ++w) {
-            sum[h*16 + w] = 0;
+        // (1, 0) block
+        hbegin = (WOUT + 1)/4; hend = (WOUT + 1)/4*2;
+
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm256_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
           }
         }
 
-        for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-          float c = values[j];
-          int off = A->colidx[j];
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin][0]);
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 8, sum[h - hbegin][1]);
+        }
 
-          for (int h = 0; h < WOUT; ++h) {
-            for (int w = 0; w < WOUT; ++w) {
-              sum[h*16 + w] += c*in[off + h*(WIDTH + PAD) + w];
-            }
+        // (1, 1) block
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm256_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24), sum[h - hbegin][1]);
           }
         }
 
-        for (int h = 0; h < WOUT; ++h) {
-          for (int w = 0; w < WOUT; ++w) {
-            out[i*WOUT*WOUT + h*WOUT + w] = sum[h*16 + w];
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 16, sum[h - hbegin][0]);
+          _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
+          for (int w = 24; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
           }
         }
-#endif
+
+        // (2, 0) block
+        hbegin = (WOUT + 1)/4*2; hend = (WOUT + 1)/4*3;
+
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm256_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin][0]);
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 8, sum[h - hbegin][1]);
+        }
+
+        // (2, 1) block
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm256_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24), sum[h - hbegin][1]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 16, sum[h - hbegin][0]);
+          _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
+          for (int w = 24; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
+          }
+        }
+
+        // (3, 0) block
+        hbegin = (WOUT + 1)/4*3; hend = WOUT;
+
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm256_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin][0]);
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 8, sum[h - hbegin][1]);
+        }
+
+        // (3, 1) block
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+          sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm256_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24), sum[h - hbegin][1]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 16, sum[h - hbegin][0]);
+          _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
+          for (int w = 24; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
+          }
+        }
       }
-
       return;
     }
+    else if (width == 227 && pad == 0 && stride == 4 && k == 11) {
+      int wOut = (width + 2*pad - k)/stride + 1;
 
-    int begin, end;
+      float sum[wOut];
 
-    if (serial) {
-      begin = 0;
-      end = A->m;
-    }
-    else {
-      int nthreads = omp_get_num_threads();
-      int tid = omp_get_thread_num();
+      for (int h = 0; h < wOut; ++h) {
+        //for (int w = 0; w < wOut; ++w) {
+          float *in_temp = in + stride*(h*(width + pad));
 
-      int total_work = A->rowptr[A->m];
-      int work_per_thread = (total_work + nthreads - 1)/nthreads;
+          for (int i = begin; i < end; ++i) {
+            for (int w = 0; w < wOut; ++w) {
+              sum[w] = 0;
+            }
 
-      begin = tid == 0 ? 0 : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*tid) - A->rowptr;
-      end = tid == nthreads - 1 ? A->m : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*(tid + 1)) - A->rowptr;
+            for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
+              float c = values[j];
+              int off = A->colidx[j];
+              for (int w = 0; w < wOut; ++w) {
+                sum[w] += c*in_temp[off + stride*w];
+              }
+            }
+
+            for (int w = 0; w < wOut; ++w) {
+              out[(i*wOut + h)*wOut + w] = sum[w];
+            }
+          }
+        //}
+      }
+      return;
     }
 
     int wOut = (width + 2*pad - k)/stride + 1;
@@ -893,6 +888,7 @@ int main(int argc, char *argv[])
       }
     }
 
+#if 0
     for (int iter = 0; iter < REPEAT; ++iter) {
       flushLlc();
 
@@ -917,8 +913,10 @@ int main(int argc, char *argv[])
         }
       }
     }
+#endif
   }
 
+#if 0
 #pragma omp parallel
   {
     int tid = omp_get_thread_num();
@@ -957,6 +955,7 @@ int main(int argc, char *argv[])
       }
     }
   } // omp parallel
+#endif
 
   // 2. Test our own CSRMM
 #pragma omp parallel
@@ -1163,6 +1162,7 @@ int main(int argc, char *argv[])
     printf("BW is reduced by BFS reordering: %d -> %d\n", A->getBandwidth(), AReordered->getBandwidth());
     printf("Average width is reduced by BFS reordering: (%g, %g) -> (%g, %g)\n", A->getAverageWidth(), AT->getAverageWidth(), AReordered->getBandwidth(), ATReordered->getAverageWidth());
 
+#if 0
     // 3. Test MKL CSRMM with reordering
     for (int iter = 0; iter < REPEAT; ++iter) {
       flushLlc();
@@ -1266,6 +1266,7 @@ int main(int argc, char *argv[])
         }
       }
     } // omp parallel
+#endif
 
     // 4. Test our own CSRMM with reordering
 #pragma omp parallel
