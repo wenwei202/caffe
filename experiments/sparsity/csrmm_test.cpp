@@ -391,7 +391,7 @@ public :
         }
 
         int jbegin = A->rowptr[i] + 1;
-        int jend = A->rowptr[i] + 1 + (A->rowptr[i + 1] - A->rowptr[i] - 1);
+        int jend = A->rowptr[i + 1];
 
         for (j = jbegin; j < jend; ++j) {
           c = _mm256_set1_ps(values[j]);
@@ -490,31 +490,37 @@ public :
       }
 
 #ifdef INTRINSIC
-      __m256 sum[WOUT][4];
+      __m256 sum[(WOUT + 1)/2][4];
       __declspec(aligned(64)) float sum_temp[8];
 #else
       float sum[32];
 #endif
 
       for (int i = begin; i < end; ++i) {
+#ifdef INTRINSIC
         if (A->rowptr[i + 1] == A->rowptr[i]) continue;
 
-#ifdef INTRINSIC
+        // Upper half of images
+
         int j = A->rowptr[i];
         __m256 c = _mm256_set1_ps(values[j]);
         int off = A->colidx[j];
-        for (int h = 0; h < WOUT; ++h) {
+
+        for (int h = 0; h < WOUT/2; ++h) {
           sum[h][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
           sum[h][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
           sum[h][2] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
           sum[h][3] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24));
         }
 
-        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
+        int jbegin = A->rowptr[i] + 1;
+        int jend = A->rowptr[i + 1];
+
+        for (j = jbegin; j < jend; ++j) {
           c = _mm256_set1_ps(values[j]);
           off = A->colidx[j];
 
-          for (int h = 0; h < WOUT; ++h) {
+          for (int h = 0; h < WOUT/2; ++h) {
             sum[h][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h][0]);
             sum[h][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h][1]);
             sum[h][2] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h][2]);
@@ -522,7 +528,7 @@ public :
           }
         }
 
-        for (int h = 0; h < WOUT; ++h) {
+        for (int h = 0; h < WOUT/2; ++h) {
           _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h][0]);
           _mm256_store_ps(out + (i*WOUT + h)*WOUT + 8, sum[h][1]);
           _mm256_store_ps(out + (i*WOUT + h)*WOUT + 16, sum[h][2]);
@@ -531,6 +537,41 @@ public :
             out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
           }
         }
+
+        // Lower half of images
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = WOUT/2; h < WOUT; ++h) {
+          sum[h - WOUT/2][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h - WOUT/2][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+          sum[h - WOUT/2][2] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+          sum[h - WOUT/2][3] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm256_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = WOUT/2; h < WOUT; ++h) {
+            sum[h - WOUT/2][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - WOUT/2][0]);
+            sum[h - WOUT/2][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - WOUT/2][1]);
+            sum[h - WOUT/2][2] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - WOUT/2][2]);
+            sum[h - WOUT/2][3] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24), sum[h - WOUT/2][3]);
+          }
+        }
+
+        for (int h = WOUT/2; h < WOUT; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - WOUT/2][0]);
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 8, sum[h - WOUT/2][1]);
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 16, sum[h - WOUT/2][2]);
+          _mm256_store_ps(sum_temp, sum[h - WOUT/2][3]);
+          for (int w = 24; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
+          }
+        }
+
 #else
         for (int h = 0; h < WOUT; ++h) {
           for (int w = 0; w < WOUT; ++w) {
