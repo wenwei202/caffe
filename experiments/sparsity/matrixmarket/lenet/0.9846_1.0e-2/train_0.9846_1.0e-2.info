@@ -1,0 +1,1091 @@
+I0224 22:06:22.536854  9577 caffe.cpp:114] Use GPU with device ID 2
+I0224 22:06:24.937248  9577 caffe.cpp:122] Starting Optimization
+I0224 22:06:24.937443  9577 solver.cpp:33] Initializing solver from parameters: 
+test_iter: 100
+test_interval: 500
+base_lr: 0.001
+display: 100
+max_iter: 50000
+lr_policy: "multistep"
+momentum: 0.9
+weight_decay: 0.0005
+snapshot: 2000
+snapshot_prefix: "examples/mnist/lenet_grouplasso"
+solver_mode: GPU
+net: "examples/mnist/lenet_train_test.prototxt"
+regularization_type: "L2"
+group_weight_decay: 0.01
+I0224 22:06:25.007114  9577 solver.cpp:72] Creating training net from net file: examples/mnist/lenet_train_test.prototxt
+I0224 22:06:25.007659  9577 net.cpp:289] The NetState phase (0) differed from the phase (1) specified by a rule in layer mnist
+I0224 22:06:25.007686  9577 net.cpp:289] The NetState phase (0) differed from the phase (1) specified by a rule in layer accuracy
+I0224 22:06:25.007786  9577 net.cpp:44] Initializing net from parameters: 
+name: "LeNet"
+state {
+  phase: TRAIN
+}
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TRAIN
+  }
+  transform_param {
+    scale: 0.00390625
+  }
+  data_param {
+    source: "examples/mnist/mnist_train_lmdb"
+    batch_size: 64
+    backend: LMDB
+  }
+}
+layer {
+  name: "conv1"
+  type: "Convolution"
+  bottom: "data"
+  top: "conv1"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    group_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 20
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "pool1"
+  type: "Pooling"
+  bottom: "conv1"
+  top: "pool1"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "conv2"
+  type: "Convolution"
+  bottom: "pool1"
+  top: "conv2"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    group_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 50
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "pool2"
+  type: "Pooling"
+  bottom: "conv2"
+  top: "pool2"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "ip1"
+  type: "InnerProduct"
+  bottom: "pool2"
+  top: "ip1"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 500
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "ip1"
+  top: "ip1"
+}
+layer {
+  name: "ip2"
+  type: "InnerProduct"
+  bottom: "ip1"
+  top: "ip2"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 10
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "ip2"
+  bottom: "label"
+  top: "loss"
+}
+I0224 22:06:25.007864  9577 layer_factory.hpp:74] Creating layer mnist
+I0224 22:06:25.007905  9577 net.cpp:92] Creating Layer mnist
+I0224 22:06:25.007918  9577 net.cpp:370] mnist -> data
+I0224 22:06:25.007946  9577 net.cpp:370] mnist -> label
+I0224 22:06:25.007973  9577 net.cpp:122] Setting up mnist
+I0224 22:06:25.008086  9577 db_lmdb.cpp:22] Opened lmdb examples/mnist/mnist_train_lmdb
+I0224 22:06:25.008133  9577 data_layer.cpp:52] output data size: 64,1,28,28
+I0224 22:06:25.008301  9577 net.cpp:129] Top shape: 64 1 28 28 (50176)
+I0224 22:06:25.008317  9577 net.cpp:129] Top shape: 64 (64)
+I0224 22:06:25.008327  9577 layer_factory.hpp:74] Creating layer conv1
+I0224 22:06:25.008342  9577 net.cpp:92] Creating Layer conv1
+I0224 22:06:25.008352  9577 net.cpp:412] conv1 <- data
+I0224 22:06:25.008369  9577 net.cpp:370] conv1 -> conv1
+I0224 22:06:25.008384  9577 net.cpp:122] Setting up conv1
+I0224 22:06:25.008913  9577 net.cpp:129] Top shape: 64 20 24 24 (737280)
+I0224 22:06:25.008937  9577 layer_factory.hpp:74] Creating layer pool1
+I0224 22:06:25.008958  9577 net.cpp:92] Creating Layer pool1
+I0224 22:06:25.008968  9577 net.cpp:412] pool1 <- conv1
+I0224 22:06:25.008985  9577 net.cpp:370] pool1 -> pool1
+I0224 22:06:25.009012  9577 net.cpp:122] Setting up pool1
+I0224 22:06:25.009032  9577 net.cpp:129] Top shape: 64 20 12 12 (184320)
+I0224 22:06:25.009040  9577 layer_factory.hpp:74] Creating layer conv2
+I0224 22:06:25.009054  9577 net.cpp:92] Creating Layer conv2
+I0224 22:06:25.009062  9577 net.cpp:412] conv2 <- pool1
+I0224 22:06:25.009074  9577 net.cpp:370] conv2 -> conv2
+I0224 22:06:25.009085  9577 net.cpp:122] Setting up conv2
+I0224 22:06:25.009313  9577 net.cpp:129] Top shape: 64 50 8 8 (204800)
+I0224 22:06:25.009330  9577 layer_factory.hpp:74] Creating layer pool2
+I0224 22:06:25.009340  9577 net.cpp:92] Creating Layer pool2
+I0224 22:06:25.009347  9577 net.cpp:412] pool2 <- conv2
+I0224 22:06:25.009368  9577 net.cpp:370] pool2 -> pool2
+I0224 22:06:25.009379  9577 net.cpp:122] Setting up pool2
+I0224 22:06:25.009390  9577 net.cpp:129] Top shape: 64 50 4 4 (51200)
+I0224 22:06:25.009397  9577 layer_factory.hpp:74] Creating layer ip1
+I0224 22:06:25.009408  9577 net.cpp:92] Creating Layer ip1
+I0224 22:06:25.009415  9577 net.cpp:412] ip1 <- pool2
+I0224 22:06:25.009428  9577 net.cpp:370] ip1 -> ip1
+I0224 22:06:25.009440  9577 net.cpp:122] Setting up ip1
+I0224 22:06:25.014736  9577 net.cpp:129] Top shape: 64 500 (32000)
+I0224 22:06:25.014786  9577 layer_factory.hpp:74] Creating layer relu1
+I0224 22:06:25.015904  9577 net.cpp:92] Creating Layer relu1
+I0224 22:06:25.015954  9577 net.cpp:412] relu1 <- ip1
+I0224 22:06:25.015969  9577 net.cpp:359] relu1 -> ip1 (in-place)
+I0224 22:06:25.015981  9577 net.cpp:122] Setting up relu1
+I0224 22:06:25.016007  9577 net.cpp:129] Top shape: 64 500 (32000)
+I0224 22:06:25.016017  9577 layer_factory.hpp:74] Creating layer ip2
+I0224 22:06:25.016031  9577 net.cpp:92] Creating Layer ip2
+I0224 22:06:25.016037  9577 net.cpp:412] ip2 <- ip1
+I0224 22:06:25.016047  9577 net.cpp:370] ip2 -> ip2
+I0224 22:06:25.016059  9577 net.cpp:122] Setting up ip2
+I0224 22:06:25.016127  9577 net.cpp:129] Top shape: 64 10 (640)
+I0224 22:06:25.016157  9577 layer_factory.hpp:74] Creating layer loss
+I0224 22:06:25.016173  9577 net.cpp:92] Creating Layer loss
+I0224 22:06:25.016181  9577 net.cpp:412] loss <- ip2
+I0224 22:06:25.016190  9577 net.cpp:412] loss <- label
+I0224 22:06:25.016201  9577 net.cpp:370] loss -> loss
+I0224 22:06:25.016212  9577 net.cpp:122] Setting up loss
+I0224 22:06:25.016224  9577 layer_factory.hpp:74] Creating layer loss
+I0224 22:06:25.016252  9577 net.cpp:129] Top shape: (1)
+I0224 22:06:25.016260  9577 net.cpp:131]     with loss weight 1
+I0224 22:06:25.016293  9577 net.cpp:194] loss needs backward computation.
+I0224 22:06:25.016327  9577 net.cpp:194] ip2 needs backward computation.
+I0224 22:06:25.016383  9577 net.cpp:194] relu1 needs backward computation.
+I0224 22:06:25.016391  9577 net.cpp:194] ip1 needs backward computation.
+I0224 22:06:25.016398  9577 net.cpp:194] pool2 needs backward computation.
+I0224 22:06:25.016407  9577 net.cpp:194] conv2 needs backward computation.
+I0224 22:06:25.016414  9577 net.cpp:194] pool1 needs backward computation.
+I0224 22:06:25.016422  9577 net.cpp:194] conv1 needs backward computation.
+I0224 22:06:25.016430  9577 net.cpp:196] mnist does not need backward computation.
+I0224 22:06:25.016438  9577 net.cpp:237] This network produces output loss
+I0224 22:06:25.016455  9577 net.cpp:491] Collecting Learning Rate and Weight Decay.
+I0224 22:06:25.016469  9577 net.cpp:249] Network initialization done.
+I0224 22:06:25.016476  9577 net.cpp:250] Memory required for data: 5169924
+I0224 22:06:25.016911  9577 solver.cpp:156] Creating test net (#0) specified by net file: examples/mnist/lenet_train_test.prototxt
+I0224 22:06:25.016979  9577 net.cpp:289] The NetState phase (1) differed from the phase (0) specified by a rule in layer mnist
+I0224 22:06:25.017097  9577 net.cpp:44] Initializing net from parameters: 
+name: "LeNet"
+state {
+  phase: TEST
+}
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TEST
+  }
+  transform_param {
+    scale: 0.00390625
+  }
+  data_param {
+    source: "examples/mnist/mnist_test_lmdb"
+    batch_size: 100
+    backend: LMDB
+  }
+}
+layer {
+  name: "conv1"
+  type: "Convolution"
+  bottom: "data"
+  top: "conv1"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    group_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 20
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "pool1"
+  type: "Pooling"
+  bottom: "conv1"
+  top: "pool1"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "conv2"
+  type: "Convolution"
+  bottom: "pool1"
+  top: "conv2"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    group_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 50
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "pool2"
+  type: "Pooling"
+  bottom: "conv2"
+  top: "pool2"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "ip1"
+  type: "InnerProduct"
+  bottom: "pool2"
+  top: "ip1"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 500
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "ip1"
+  top: "ip1"
+}
+layer {
+  name: "ip2"
+  type: "InnerProduct"
+  bottom: "ip1"
+  top: "ip2"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 10
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "accuracy"
+  type: "Accuracy"
+  bottom: "ip2"
+  bottom: "label"
+  top: "accuracy"
+  include {
+    phase: TEST
+  }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "ip2"
+  bottom: "label"
+  top: "loss"
+}
+I0224 22:06:25.017367  9577 layer_factory.hpp:74] Creating layer mnist
+I0224 22:06:25.017410  9577 net.cpp:92] Creating Layer mnist
+I0224 22:06:25.017421  9577 net.cpp:370] mnist -> data
+I0224 22:06:25.017437  9577 net.cpp:370] mnist -> label
+I0224 22:06:25.017449  9577 net.cpp:122] Setting up mnist
+I0224 22:06:25.017580  9577 db_lmdb.cpp:22] Opened lmdb examples/mnist/mnist_test_lmdb
+I0224 22:06:25.017619  9577 data_layer.cpp:52] output data size: 100,1,28,28
+I0224 22:06:25.017806  9577 net.cpp:129] Top shape: 100 1 28 28 (78400)
+I0224 22:06:25.017819  9577 net.cpp:129] Top shape: 100 (100)
+I0224 22:06:25.017828  9577 layer_factory.hpp:74] Creating layer label_mnist_1_split
+I0224 22:06:25.017838  9577 net.cpp:92] Creating Layer label_mnist_1_split
+I0224 22:06:25.017848  9577 net.cpp:412] label_mnist_1_split <- label
+I0224 22:06:25.017877  9577 net.cpp:370] label_mnist_1_split -> label_mnist_1_split_0
+I0224 22:06:25.017890  9577 net.cpp:370] label_mnist_1_split -> label_mnist_1_split_1
+I0224 22:06:25.017901  9577 net.cpp:122] Setting up label_mnist_1_split
+I0224 22:06:25.017912  9577 net.cpp:129] Top shape: 100 (100)
+I0224 22:06:25.017920  9577 net.cpp:129] Top shape: 100 (100)
+I0224 22:06:25.017927  9577 layer_factory.hpp:74] Creating layer conv1
+I0224 22:06:25.017943  9577 net.cpp:92] Creating Layer conv1
+I0224 22:06:25.017952  9577 net.cpp:412] conv1 <- data
+I0224 22:06:25.017962  9577 net.cpp:370] conv1 -> conv1
+I0224 22:06:25.017976  9577 net.cpp:122] Setting up conv1
+I0224 22:06:25.018013  9577 net.cpp:129] Top shape: 100 20 24 24 (1152000)
+I0224 22:06:25.018028  9577 layer_factory.hpp:74] Creating layer pool1
+I0224 22:06:25.018036  9577 net.cpp:92] Creating Layer pool1
+I0224 22:06:25.018044  9577 net.cpp:412] pool1 <- conv1
+I0224 22:06:25.018054  9577 net.cpp:370] pool1 -> pool1
+I0224 22:06:25.018064  9577 net.cpp:122] Setting up pool1
+I0224 22:06:25.018076  9577 net.cpp:129] Top shape: 100 20 12 12 (288000)
+I0224 22:06:25.018084  9577 layer_factory.hpp:74] Creating layer conv2
+I0224 22:06:25.018097  9577 net.cpp:92] Creating Layer conv2
+I0224 22:06:25.018105  9577 net.cpp:412] conv2 <- pool1
+I0224 22:06:25.018124  9577 net.cpp:370] conv2 -> conv2
+I0224 22:06:25.018134  9577 net.cpp:122] Setting up conv2
+I0224 22:06:25.018378  9577 net.cpp:129] Top shape: 100 50 8 8 (320000)
+I0224 22:06:25.018393  9577 layer_factory.hpp:74] Creating layer pool2
+I0224 22:06:25.018404  9577 net.cpp:92] Creating Layer pool2
+I0224 22:06:25.018410  9577 net.cpp:412] pool2 <- conv2
+I0224 22:06:25.018422  9577 net.cpp:370] pool2 -> pool2
+I0224 22:06:25.018432  9577 net.cpp:122] Setting up pool2
+I0224 22:06:25.018443  9577 net.cpp:129] Top shape: 100 50 4 4 (80000)
+I0224 22:06:25.018451  9577 layer_factory.hpp:74] Creating layer ip1
+I0224 22:06:25.018465  9577 net.cpp:92] Creating Layer ip1
+I0224 22:06:25.018472  9577 net.cpp:412] ip1 <- pool2
+I0224 22:06:25.018482  9577 net.cpp:370] ip1 -> ip1
+I0224 22:06:25.018493  9577 net.cpp:122] Setting up ip1
+I0224 22:06:25.023389  9577 net.cpp:129] Top shape: 100 500 (50000)
+I0224 22:06:25.023442  9577 layer_factory.hpp:74] Creating layer relu1
+I0224 22:06:25.023460  9577 net.cpp:92] Creating Layer relu1
+I0224 22:06:25.023469  9577 net.cpp:412] relu1 <- ip1
+I0224 22:06:25.023483  9577 net.cpp:359] relu1 -> ip1 (in-place)
+I0224 22:06:25.023494  9577 net.cpp:122] Setting up relu1
+I0224 22:06:25.023504  9577 net.cpp:129] Top shape: 100 500 (50000)
+I0224 22:06:25.023511  9577 layer_factory.hpp:74] Creating layer ip2
+I0224 22:06:25.023524  9577 net.cpp:92] Creating Layer ip2
+I0224 22:06:25.023532  9577 net.cpp:412] ip2 <- ip1
+I0224 22:06:25.023545  9577 net.cpp:370] ip2 -> ip2
+I0224 22:06:25.023556  9577 net.cpp:122] Setting up ip2
+I0224 22:06:25.023622  9577 net.cpp:129] Top shape: 100 10 (1000)
+I0224 22:06:25.023633  9577 layer_factory.hpp:74] Creating layer ip2_ip2_0_split
+I0224 22:06:25.023646  9577 net.cpp:92] Creating Layer ip2_ip2_0_split
+I0224 22:06:25.023655  9577 net.cpp:412] ip2_ip2_0_split <- ip2
+I0224 22:06:25.023674  9577 net.cpp:370] ip2_ip2_0_split -> ip2_ip2_0_split_0
+I0224 22:06:25.023732  9577 net.cpp:370] ip2_ip2_0_split -> ip2_ip2_0_split_1
+I0224 22:06:25.023772  9577 net.cpp:122] Setting up ip2_ip2_0_split
+I0224 22:06:25.023787  9577 net.cpp:129] Top shape: 100 10 (1000)
+I0224 22:06:25.023795  9577 net.cpp:129] Top shape: 100 10 (1000)
+I0224 22:06:25.023803  9577 layer_factory.hpp:74] Creating layer accuracy
+I0224 22:06:25.023818  9577 net.cpp:92] Creating Layer accuracy
+I0224 22:06:25.023825  9577 net.cpp:412] accuracy <- ip2_ip2_0_split_0
+I0224 22:06:25.023844  9577 net.cpp:412] accuracy <- label_mnist_1_split_0
+I0224 22:06:25.023862  9577 net.cpp:370] accuracy -> accuracy
+I0224 22:06:25.023874  9577 net.cpp:122] Setting up accuracy
+I0224 22:06:25.023883  9577 net.cpp:129] Top shape: (1)
+I0224 22:06:25.023891  9577 layer_factory.hpp:74] Creating layer loss
+I0224 22:06:25.023901  9577 net.cpp:92] Creating Layer loss
+I0224 22:06:25.023910  9577 net.cpp:412] loss <- ip2_ip2_0_split_1
+I0224 22:06:25.023917  9577 net.cpp:412] loss <- label_mnist_1_split_1
+I0224 22:06:25.023926  9577 net.cpp:370] loss -> loss
+I0224 22:06:25.023936  9577 net.cpp:122] Setting up loss
+I0224 22:06:25.023947  9577 layer_factory.hpp:74] Creating layer loss
+I0224 22:06:25.023970  9577 net.cpp:129] Top shape: (1)
+I0224 22:06:25.023979  9577 net.cpp:131]     with loss weight 1
+I0224 22:06:25.023998  9577 net.cpp:194] loss needs backward computation.
+I0224 22:06:25.024005  9577 net.cpp:196] accuracy does not need backward computation.
+I0224 22:06:25.024013  9577 net.cpp:194] ip2_ip2_0_split needs backward computation.
+I0224 22:06:25.024020  9577 net.cpp:194] ip2 needs backward computation.
+I0224 22:06:25.024029  9577 net.cpp:194] relu1 needs backward computation.
+I0224 22:06:25.024036  9577 net.cpp:194] ip1 needs backward computation.
+I0224 22:06:25.024044  9577 net.cpp:194] pool2 needs backward computation.
+I0224 22:06:25.024052  9577 net.cpp:194] conv2 needs backward computation.
+I0224 22:06:25.024066  9577 net.cpp:194] pool1 needs backward computation.
+I0224 22:06:25.024075  9577 net.cpp:194] conv1 needs backward computation.
+I0224 22:06:25.024083  9577 net.cpp:196] label_mnist_1_split does not need backward computation.
+I0224 22:06:25.025142  9577 net.cpp:196] mnist does not need backward computation.
+I0224 22:06:25.025190  9577 net.cpp:237] This network produces output accuracy
+I0224 22:06:25.025202  9577 net.cpp:237] This network produces output loss
+I0224 22:06:25.025224  9577 net.cpp:491] Collecting Learning Rate and Weight Decay.
+I0224 22:06:25.025238  9577 net.cpp:249] Network initialization done.
+I0224 22:06:25.025244  9577 net.cpp:250] Memory required for data: 8086808
+I0224 22:06:25.025306  9577 solver.cpp:43] Solver scaffolding done.
+I0224 22:06:25.025332  9577 caffe.cpp:127] Resuming from examples/mnist/lenet_grouplasso_iter_40000.solverstate
+I0224 22:06:25.025341  9577 solver.cpp:322] Solving LeNet
+I0224 22:06:25.025348  9577 solver.cpp:323] Learning Rate Policy: multistep
+I0224 22:06:25.025354  9577 solver.cpp:326] Restoring previous solver status from examples/mnist/lenet_grouplasso_iter_40000.solverstate
+I0224 22:06:25.038578  9577 base_conv_layer.cpp:52] layer	conv1	has sparsity of 0.832
+I0224 22:06:25.038970  9577 base_conv_layer.cpp:74] Sparse storage format of weights in GPU model  is unimplemented!
+I0224 22:06:25.038988  9577 base_conv_layer.cpp:107] conv1 column sparsity: 0.72
+I0224 22:06:25.039319  9577 base_conv_layer.cpp:52] layer	conv2	has sparsity of 0.95812
+I0224 22:06:25.053436  9577 base_conv_layer.cpp:74] Sparse storage format of weights in GPU model  is unimplemented!
+I0224 22:06:25.053501  9577 base_conv_layer.cpp:107] conv2 column sparsity: 0.95
+I0224 22:06:25.053937  9577 solver.cpp:879] SGDSolver: restoring history
+I0224 22:06:25.113700  9577 solver.cpp:366] Iteration 40000, Testing net (#0)
+I0224 22:06:28.300868  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9847
+I0224 22:06:28.300925  9577 solver.cpp:415]     Test net output #1: loss = 0.0491788 (* 1 = 0.0491788 loss)
+I0224 22:06:28.313611  9577 solver.cpp:216] Iteration 40000, loss = 0.0345121
+I0224 22:06:28.313635  9577 solver.cpp:231]     Train net output #0: loss = 0.0345121 (* 1 = 0.0345121 loss)
+I0224 22:06:28.313655  9577 solver.cpp:558] Iteration 40000, lr = 0.001
+I0224 22:06:28.321503  9577 solver.cpp:570]     Sparsity %: 83.2 0 95.812 4 8.488 64.2 6.34 40 
+I0224 22:06:28.323765  9577 solver.cpp:241]     Total regularization terms: 0.210712 loss+regular. : 0.245224
+I0224 22:06:30.098494  9577 solver.cpp:216] Iteration 40100, loss = 0.0788828
+I0224 22:06:30.098546  9577 solver.cpp:231]     Train net output #0: loss = 0.0788828 (* 1 = 0.0788828 loss)
+I0224 22:06:30.098557  9577 solver.cpp:558] Iteration 40100, lr = 0.001
+I0224 22:06:30.104972  9577 solver.cpp:570]     Sparsity %: 81.4 0 95.84 4 8.4925 64.2 6.34 40 
+I0224 22:06:30.105613  9577 solver.cpp:241]     Total regularization terms: 0.210314 loss+regular. : 0.289196
+I0224 22:06:35.106376  9577 solver.cpp:216] Iteration 40200, loss = 0.0859734
+I0224 22:06:35.106446  9577 solver.cpp:231]     Train net output #0: loss = 0.0859734 (* 1 = 0.0859734 loss)
+I0224 22:06:35.106458  9577 solver.cpp:558] Iteration 40200, lr = 0.001
+I0224 22:06:35.113505  9577 solver.cpp:570]     Sparsity %: 82.4 0 95.596 4 8.50025 64.2 6.34 30 
+I0224 22:06:35.114150  9577 solver.cpp:241]     Total regularization terms: 0.210677 loss+regular. : 0.296651
+I0224 22:06:38.447435  9577 solver.cpp:216] Iteration 40300, loss = 0.036071
+I0224 22:06:38.447510  9577 solver.cpp:231]     Train net output #0: loss = 0.036071 (* 1 = 0.036071 loss)
+I0224 22:06:38.447523  9577 solver.cpp:558] Iteration 40300, lr = 0.001
+I0224 22:06:38.473498  9577 solver.cpp:570]     Sparsity %: 83.2 0 95.82 4 8.5055 64.2 6.34 30 
+I0224 22:06:38.485368  9577 solver.cpp:241]     Total regularization terms: 0.210857 loss+regular. : 0.246928
+I0224 22:06:44.690013  9577 solver.cpp:216] Iteration 40400, loss = 0.0246327
+I0224 22:06:44.690083  9577 solver.cpp:231]     Train net output #0: loss = 0.0246327 (* 1 = 0.0246327 loss)
+I0224 22:06:44.690095  9577 solver.cpp:558] Iteration 40400, lr = 0.001
+I0224 22:06:44.716497  9577 solver.cpp:570]     Sparsity %: 83.8 0 95.864 4 8.5135 64.2 6.34 40 
+I0224 22:06:44.728427  9577 solver.cpp:241]     Total regularization terms: 0.210512 loss+regular. : 0.235144
+I0224 22:06:50.910344  9577 solver.cpp:366] Iteration 40500, Testing net (#0)
+I0224 22:06:54.829422  9577 solver.cpp:415]     Test net output #0: accuracy = 0.986
+I0224 22:06:54.829537  9577 solver.cpp:415]     Test net output #1: loss = 0.0470181 (* 1 = 0.0470181 loss)
+I0224 22:06:54.867102  9577 solver.cpp:216] Iteration 40500, loss = 0.0320523
+I0224 22:06:54.867163  9577 solver.cpp:231]     Train net output #0: loss = 0.0320523 (* 1 = 0.0320523 loss)
+I0224 22:06:54.867177  9577 solver.cpp:558] Iteration 40500, lr = 0.001
+I0224 22:06:54.894572  9577 solver.cpp:570]     Sparsity %: 82.8 0 95.808 4 8.5205 64.2 6.34 40 
+I0224 22:06:54.907076  9577 solver.cpp:241]     Total regularization terms: 0.210461 loss+regular. : 0.242513
+I0224 22:07:01.219934  9577 solver.cpp:216] Iteration 40600, loss = 0.0475527
+I0224 22:07:01.220003  9577 solver.cpp:231]     Train net output #0: loss = 0.0475528 (* 1 = 0.0475528 loss)
+I0224 22:07:01.220016  9577 solver.cpp:558] Iteration 40600, lr = 0.001
+I0224 22:07:01.227870  9577 solver.cpp:570]     Sparsity %: 84 0 95.948 4 8.5285 64.2 6.34 40 
+I0224 22:07:01.228755  9577 solver.cpp:241]     Total regularization terms: 0.210146 loss+regular. : 0.257699
+I0224 22:07:07.622056  9577 solver.cpp:216] Iteration 40700, loss = 0.0480103
+I0224 22:07:07.622110  9577 solver.cpp:231]     Train net output #0: loss = 0.0480104 (* 1 = 0.0480104 loss)
+I0224 22:07:07.622122  9577 solver.cpp:558] Iteration 40700, lr = 0.001
+I0224 22:07:07.644577  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.78 4 8.5375 64.2 6.38 40 
+I0224 22:07:07.645380  9577 solver.cpp:241]     Total regularization terms: 0.209989 loss+regular. : 0.257999
+I0224 22:07:13.941772  9577 solver.cpp:216] Iteration 40800, loss = 0.0858662
+I0224 22:07:13.941844  9577 solver.cpp:231]     Train net output #0: loss = 0.0858662 (* 1 = 0.0858662 loss)
+I0224 22:07:13.941859  9577 solver.cpp:558] Iteration 40800, lr = 0.001
+I0224 22:07:13.970290  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.576 4 8.546 64.2 6.38 40 
+I0224 22:07:13.983289  9577 solver.cpp:241]     Total regularization terms: 0.210233 loss+regular. : 0.296099
+I0224 22:07:20.270741  9577 solver.cpp:216] Iteration 40900, loss = 0.115853
+I0224 22:07:20.270812  9577 solver.cpp:231]     Train net output #0: loss = 0.115853 (* 1 = 0.115853 loss)
+I0224 22:07:20.270824  9577 solver.cpp:558] Iteration 40900, lr = 0.001
+I0224 22:07:20.298192  9577 solver.cpp:570]     Sparsity %: 84 0 95.832 4 8.5515 64.2 6.4 40 
+I0224 22:07:20.310377  9577 solver.cpp:241]     Total regularization terms: 0.209945 loss+regular. : 0.325798
+I0224 22:07:26.552605  9577 solver.cpp:366] Iteration 41000, Testing net (#0)
+I0224 22:07:30.633033  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9868
+I0224 22:07:30.633103  9577 solver.cpp:415]     Test net output #1: loss = 0.0464993 (* 1 = 0.0464993 loss)
+I0224 22:07:30.664954  9577 solver.cpp:216] Iteration 41000, loss = 0.0292415
+I0224 22:07:30.664978  9577 solver.cpp:231]     Train net output #0: loss = 0.0292415 (* 1 = 0.0292415 loss)
+I0224 22:07:30.664990  9577 solver.cpp:558] Iteration 41000, lr = 0.001
+I0224 22:07:30.686331  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.956 4 8.5565 64.2 6.4 40 
+I0224 22:07:30.704828  9577 solver.cpp:241]     Total regularization terms: 0.209072 loss+regular. : 0.238314
+I0224 22:07:36.974412  9577 solver.cpp:216] Iteration 41100, loss = 0.00976411
+I0224 22:07:36.974483  9577 solver.cpp:231]     Train net output #0: loss = 0.00976414 (* 1 = 0.00976414 loss)
+I0224 22:07:36.974498  9577 solver.cpp:558] Iteration 41100, lr = 0.001
+I0224 22:07:37.003537  9577 solver.cpp:570]     Sparsity %: 81.8 0 95.552 4 8.5625 64.2 6.42 40 
+I0224 22:07:37.009466  9577 solver.cpp:241]     Total regularization terms: 0.209407 loss+regular. : 0.219172
+I0224 22:07:43.259140  9577 solver.cpp:216] Iteration 41200, loss = 0.0129473
+I0224 22:07:43.259209  9577 solver.cpp:231]     Train net output #0: loss = 0.0129473 (* 1 = 0.0129473 loss)
+I0224 22:07:43.259222  9577 solver.cpp:558] Iteration 41200, lr = 0.001
+I0224 22:07:43.286020  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.736 4 8.56725 64.2 6.42 30 
+I0224 22:07:43.293002  9577 solver.cpp:241]     Total regularization terms: 0.209833 loss+regular. : 0.22278
+I0224 22:07:49.539938  9577 solver.cpp:216] Iteration 41300, loss = 0.012779
+I0224 22:07:49.540009  9577 solver.cpp:231]     Train net output #0: loss = 0.012779 (* 1 = 0.012779 loss)
+I0224 22:07:49.540024  9577 solver.cpp:558] Iteration 41300, lr = 0.001
+I0224 22:07:49.568038  9577 solver.cpp:570]     Sparsity %: 83.4 0 95.78 4 8.57175 64.2 6.42 40 
+I0224 22:07:49.575108  9577 solver.cpp:241]     Total regularization terms: 0.209662 loss+regular. : 0.222441
+I0224 22:07:55.824007  9577 solver.cpp:216] Iteration 41400, loss = 0.00832342
+I0224 22:07:55.824075  9577 solver.cpp:231]     Train net output #0: loss = 0.0083234 (* 1 = 0.0083234 loss)
+I0224 22:07:55.824089  9577 solver.cpp:558] Iteration 41400, lr = 0.001
+I0224 22:07:55.851070  9577 solver.cpp:570]     Sparsity %: 83.8 0 95.776 4 8.5775 64.2 6.44 40 
+I0224 22:07:55.858055  9577 solver.cpp:241]     Total regularization terms: 0.209267 loss+regular. : 0.217591
+I0224 22:08:02.098839  9577 solver.cpp:366] Iteration 41500, Testing net (#0)
+I0224 22:08:06.296597  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9876
+I0224 22:08:06.296668  9577 solver.cpp:415]     Test net output #1: loss = 0.0458819 (* 1 = 0.0458819 loss)
+I0224 22:08:06.307714  9577 solver.cpp:216] Iteration 41500, loss = 0.061202
+I0224 22:08:06.307737  9577 solver.cpp:231]     Train net output #0: loss = 0.061202 (* 1 = 0.061202 loss)
+I0224 22:08:06.307750  9577 solver.cpp:558] Iteration 41500, lr = 0.001
+I0224 22:08:06.315764  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.92 6 8.5815 64.2 6.46 40 
+I0224 22:08:06.316606  9577 solver.cpp:241]     Total regularization terms: 0.209216 loss+regular. : 0.270418
+I0224 22:08:12.687294  9577 solver.cpp:216] Iteration 41600, loss = 0.0714361
+I0224 22:08:12.687347  9577 solver.cpp:231]     Train net output #0: loss = 0.0714361 (* 1 = 0.0714361 loss)
+I0224 22:08:12.687358  9577 solver.cpp:558] Iteration 41600, lr = 0.001
+I0224 22:08:12.715966  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.92 4 8.588 64.2 6.48 40 
+I0224 22:08:12.722496  9577 solver.cpp:241]     Total regularization terms: 0.20911 loss+regular. : 0.280546
+I0224 22:08:19.005774  9577 solver.cpp:216] Iteration 41700, loss = 0.0273379
+I0224 22:08:19.005844  9577 solver.cpp:231]     Train net output #0: loss = 0.0273379 (* 1 = 0.0273379 loss)
+I0224 22:08:19.005857  9577 solver.cpp:558] Iteration 41700, lr = 0.001
+I0224 22:08:19.033345  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.776 6 8.5945 64.2 6.48 40 
+I0224 22:08:19.046249  9577 solver.cpp:241]     Total regularization terms: 0.209155 loss+regular. : 0.236493
+I0224 22:08:25.340097  9577 solver.cpp:216] Iteration 41800, loss = 0.020907
+I0224 22:08:25.340170  9577 solver.cpp:231]     Train net output #0: loss = 0.020907 (* 1 = 0.020907 loss)
+I0224 22:08:25.340183  9577 solver.cpp:558] Iteration 41800, lr = 0.001
+I0224 22:08:25.367300  9577 solver.cpp:570]     Sparsity %: 83.8 0 95.808 4 8.60075 64.4 6.48 40 
+I0224 22:08:25.379842  9577 solver.cpp:241]     Total regularization terms: 0.209089 loss+regular. : 0.229996
+I0224 22:08:31.661056  9577 solver.cpp:216] Iteration 41900, loss = 0.105147
+I0224 22:08:31.661119  9577 solver.cpp:231]     Train net output #0: loss = 0.105147 (* 1 = 0.105147 loss)
+I0224 22:08:31.661131  9577 solver.cpp:558] Iteration 41900, lr = 0.001
+I0224 22:08:31.688480  9577 solver.cpp:570]     Sparsity %: 83.4 0 95.784 4 8.6065 64.4 6.48 40 
+I0224 22:08:31.700901  9577 solver.cpp:241]     Total regularization terms: 0.208497 loss+regular. : 0.313644
+I0224 22:08:37.942942  9577 solver.cpp:433] Snapshotting to examples/mnist/lenet_grouplasso_iter_42000.caffemodel
+I0224 22:08:37.950630  9577 solver.cpp:441] Snapshotting solver state to examples/mnist/lenet_grouplasso_iter_42000.solverstate
+I0224 22:08:37.954012  9577 solver.cpp:366] Iteration 42000, Testing net (#0)
+I0224 22:08:42.059335  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9863
+I0224 22:08:42.059397  9577 solver.cpp:415]     Test net output #1: loss = 0.0478968 (* 1 = 0.0478968 loss)
+I0224 22:08:42.094455  9577 solver.cpp:216] Iteration 42000, loss = 0.0153294
+I0224 22:08:42.094478  9577 solver.cpp:231]     Train net output #0: loss = 0.0153295 (* 1 = 0.0153295 loss)
+I0224 22:08:42.094491  9577 solver.cpp:558] Iteration 42000, lr = 0.001
+I0224 22:08:42.120019  9577 solver.cpp:570]     Sparsity %: 83.2 0 95.788 4 8.61175 64.4 6.48 40 
+I0224 22:08:42.132215  9577 solver.cpp:241]     Total regularization terms: 0.208267 loss+regular. : 0.223597
+I0224 22:08:48.423135  9577 solver.cpp:216] Iteration 42100, loss = 0.020551
+I0224 22:08:48.423198  9577 solver.cpp:231]     Train net output #0: loss = 0.020551 (* 1 = 0.020551 loss)
+I0224 22:08:48.423210  9577 solver.cpp:558] Iteration 42100, lr = 0.001
+I0224 22:08:48.448842  9577 solver.cpp:570]     Sparsity %: 82.8 0 95.58 4 8.619 64.4 6.48 30 
+I0224 22:08:48.460664  9577 solver.cpp:241]     Total regularization terms: 0.208877 loss+regular. : 0.229428
+I0224 22:08:54.740324  9577 solver.cpp:216] Iteration 42200, loss = 0.0295714
+I0224 22:08:54.740388  9577 solver.cpp:231]     Train net output #0: loss = 0.0295714 (* 1 = 0.0295714 loss)
+I0224 22:08:54.740401  9577 solver.cpp:558] Iteration 42200, lr = 0.001
+I0224 22:08:54.767875  9577 solver.cpp:570]     Sparsity %: 84 0 95.816 6 8.62525 64.4 6.48 30 
+I0224 22:08:54.779793  9577 solver.cpp:241]     Total regularization terms: 0.208781 loss+regular. : 0.238352
+I0224 22:09:01.062098  9577 solver.cpp:216] Iteration 42300, loss = 0.106551
+I0224 22:09:01.062152  9577 solver.cpp:231]     Train net output #0: loss = 0.106551 (* 1 = 0.106551 loss)
+I0224 22:09:01.062165  9577 solver.cpp:558] Iteration 42300, lr = 0.001
+I0224 22:09:01.089210  9577 solver.cpp:570]     Sparsity %: 84 0 95.828 4 8.6315 64.4 6.48 40 
+I0224 22:09:01.102128  9577 solver.cpp:241]     Total regularization terms: 0.208387 loss+regular. : 0.314938
+I0224 22:09:07.437671  9577 solver.cpp:216] Iteration 42400, loss = 0.0154679
+I0224 22:09:07.437723  9577 solver.cpp:231]     Train net output #0: loss = 0.0154679 (* 1 = 0.0154679 loss)
+I0224 22:09:07.437734  9577 solver.cpp:558] Iteration 42400, lr = 0.001
+I0224 22:09:07.445734  9577 solver.cpp:570]     Sparsity %: 83.4 0 95.796 4 8.63875 64.4 6.48 40 
+I0224 22:09:07.446676  9577 solver.cpp:241]     Total regularization terms: 0.208612 loss+regular. : 0.22408
+I0224 22:09:13.779104  9577 solver.cpp:366] Iteration 42500, Testing net (#0)
+I0224 22:09:17.860805  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9844
+I0224 22:09:17.860870  9577 solver.cpp:415]     Test net output #1: loss = 0.0488041 (* 1 = 0.0488041 loss)
+I0224 22:09:17.896529  9577 solver.cpp:216] Iteration 42500, loss = 0.0204689
+I0224 22:09:17.896551  9577 solver.cpp:231]     Train net output #0: loss = 0.0204689 (* 1 = 0.0204689 loss)
+I0224 22:09:17.896564  9577 solver.cpp:558] Iteration 42500, lr = 0.001
+I0224 22:09:17.923609  9577 solver.cpp:570]     Sparsity %: 84.6 0 95.836 4 8.647 64.4 6.48 40 
+I0224 22:09:17.935823  9577 solver.cpp:241]     Total regularization terms: 0.208237 loss+regular. : 0.228706
+I0224 22:09:24.227944  9577 solver.cpp:216] Iteration 42600, loss = 0.0941663
+I0224 22:09:24.228009  9577 solver.cpp:231]     Train net output #0: loss = 0.0941664 (* 1 = 0.0941664 loss)
+I0224 22:09:24.228023  9577 solver.cpp:558] Iteration 42600, lr = 0.001
+I0224 22:09:24.254940  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.752 6 8.65525 64.4 6.48 40 
+I0224 22:09:24.267032  9577 solver.cpp:241]     Total regularization terms: 0.208134 loss+regular. : 0.3023
+I0224 22:09:30.554697  9577 solver.cpp:216] Iteration 42700, loss = 0.0450603
+I0224 22:09:30.554764  9577 solver.cpp:231]     Train net output #0: loss = 0.0450603 (* 1 = 0.0450603 loss)
+I0224 22:09:30.554776  9577 solver.cpp:558] Iteration 42700, lr = 0.001
+I0224 22:09:30.581440  9577 solver.cpp:570]     Sparsity %: 84 0 95.72 4 8.66275 64.4 6.52 40 
+I0224 22:09:30.593374  9577 solver.cpp:241]     Total regularization terms: 0.208298 loss+regular. : 0.253358
+I0224 22:09:36.899674  9577 solver.cpp:216] Iteration 42800, loss = 0.003423
+I0224 22:09:36.899740  9577 solver.cpp:231]     Train net output #0: loss = 0.00342304 (* 1 = 0.00342304 loss)
+I0224 22:09:36.899754  9577 solver.cpp:558] Iteration 42800, lr = 0.001
+I0224 22:09:36.933197  9577 solver.cpp:570]     Sparsity %: 84.8 0 95.896 4 8.66875 64.4 6.52 40 
+I0224 22:09:36.945173  9577 solver.cpp:241]     Total regularization terms: 0.207808 loss+regular. : 0.211231
+I0224 22:09:43.228212  9577 solver.cpp:216] Iteration 42900, loss = 0.0333457
+I0224 22:09:43.228278  9577 solver.cpp:231]     Train net output #0: loss = 0.0333457 (* 1 = 0.0333457 loss)
+I0224 22:09:43.228291  9577 solver.cpp:558] Iteration 42900, lr = 0.001
+I0224 22:09:43.254143  9577 solver.cpp:570]     Sparsity %: 83.4 0 95.996 4 8.67625 64.4 6.52 40 
+I0224 22:09:43.266398  9577 solver.cpp:241]     Total regularization terms: 0.207148 loss+regular. : 0.240494
+I0224 22:09:49.534665  9577 solver.cpp:366] Iteration 43000, Testing net (#0)
+I0224 22:09:53.771767  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9831
+I0224 22:09:53.771821  9577 solver.cpp:415]     Test net output #1: loss = 0.0542761 (* 1 = 0.0542761 loss)
+I0224 22:09:53.804817  9577 solver.cpp:216] Iteration 43000, loss = 0.0209078
+I0224 22:09:53.804841  9577 solver.cpp:231]     Train net output #0: loss = 0.0209078 (* 1 = 0.0209078 loss)
+I0224 22:09:53.804854  9577 solver.cpp:558] Iteration 43000, lr = 0.001
+I0224 22:09:53.821943  9577 solver.cpp:570]     Sparsity %: 83 0 95.488 4 8.68475 64.4 6.52 30 
+I0224 22:09:53.822737  9577 solver.cpp:241]     Total regularization terms: 0.20784 loss+regular. : 0.228748
+I0224 22:10:00.142710  9577 solver.cpp:216] Iteration 43100, loss = 0.0373576
+I0224 22:10:00.142778  9577 solver.cpp:231]     Train net output #0: loss = 0.0373575 (* 1 = 0.0373575 loss)
+I0224 22:10:00.142791  9577 solver.cpp:558] Iteration 43100, lr = 0.001
+I0224 22:10:00.171344  9577 solver.cpp:570]     Sparsity %: 84 0 95.724 4 8.691 64.4 6.52 30 
+I0224 22:10:00.184365  9577 solver.cpp:241]     Total regularization terms: 0.20812 loss+regular. : 0.245478
+I0224 22:10:06.481408  9577 solver.cpp:216] Iteration 43200, loss = 0.0374481
+I0224 22:10:06.481472  9577 solver.cpp:231]     Train net output #0: loss = 0.0374481 (* 1 = 0.0374481 loss)
+I0224 22:10:06.481484  9577 solver.cpp:558] Iteration 43200, lr = 0.001
+I0224 22:10:06.517061  9577 solver.cpp:570]     Sparsity %: 84 0 95.832 4 8.6975 64.4 6.52 40 
+I0224 22:10:06.532424  9577 solver.cpp:241]     Total regularization terms: 0.207732 loss+regular. : 0.24518
+I0224 22:10:12.798964  9577 solver.cpp:216] Iteration 43300, loss = 0.0259792
+I0224 22:10:12.799031  9577 solver.cpp:231]     Train net output #0: loss = 0.0259792 (* 1 = 0.0259792 loss)
+I0224 22:10:12.799043  9577 solver.cpp:558] Iteration 43300, lr = 0.001
+I0224 22:10:12.826567  9577 solver.cpp:570]     Sparsity %: 83.8 0 95.872 4 8.7035 64.4 6.52 40 
+I0224 22:10:12.838979  9577 solver.cpp:241]     Total regularization terms: 0.207566 loss+regular. : 0.233546
+I0224 22:10:19.106308  9577 solver.cpp:216] Iteration 43400, loss = 0.0226408
+I0224 22:10:19.106376  9577 solver.cpp:231]     Train net output #0: loss = 0.0226408 (* 1 = 0.0226408 loss)
+I0224 22:10:19.106389  9577 solver.cpp:558] Iteration 43400, lr = 0.001
+I0224 22:10:19.139381  9577 solver.cpp:570]     Sparsity %: 84.8 0 95.924 6 8.70875 64.4 6.52 40 
+I0224 22:10:19.153020  9577 solver.cpp:241]     Total regularization terms: 0.207365 loss+regular. : 0.230006
+I0224 22:10:25.399456  9577 solver.cpp:366] Iteration 43500, Testing net (#0)
+I0224 22:10:29.508424  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9842
+I0224 22:10:29.508494  9577 solver.cpp:415]     Test net output #1: loss = 0.0526924 (* 1 = 0.0526924 loss)
+I0224 22:10:29.545356  9577 solver.cpp:216] Iteration 43500, loss = 0.0138045
+I0224 22:10:29.545389  9577 solver.cpp:231]     Train net output #0: loss = 0.0138045 (* 1 = 0.0138045 loss)
+I0224 22:10:29.545403  9577 solver.cpp:558] Iteration 43500, lr = 0.001
+I0224 22:10:29.571050  9577 solver.cpp:570]     Sparsity %: 84 0 95.852 4 8.71775 64.4 6.54 40 
+I0224 22:10:29.583055  9577 solver.cpp:241]     Total regularization terms: 0.207279 loss+regular. : 0.221084
+I0224 22:10:35.968689  9577 solver.cpp:216] Iteration 43600, loss = 0.0870049
+I0224 22:10:35.968766  9577 solver.cpp:231]     Train net output #0: loss = 0.0870049 (* 1 = 0.0870049 loss)
+I0224 22:10:35.968782  9577 solver.cpp:558] Iteration 43600, lr = 0.001
+I0224 22:10:35.995888  9577 solver.cpp:570]     Sparsity %: 83.8 0 95.696 4 8.72525 64.4 6.54 40 
+I0224 22:10:36.008491  9577 solver.cpp:241]     Total regularization terms: 0.207293 loss+regular. : 0.294298
+I0224 22:10:42.387042  9577 solver.cpp:216] Iteration 43700, loss = 0.05781
+I0224 22:10:42.387110  9577 solver.cpp:231]     Train net output #0: loss = 0.05781 (* 1 = 0.05781 loss)
+I0224 22:10:42.387123  9577 solver.cpp:558] Iteration 43700, lr = 0.001
+I0224 22:10:42.415963  9577 solver.cpp:570]     Sparsity %: 84.6 0 95.844 4 8.73 64.6 6.54 40 
+I0224 22:10:42.428449  9577 solver.cpp:241]     Total regularization terms: 0.207195 loss+regular. : 0.265005
+I0224 22:10:48.811945  9577 solver.cpp:216] Iteration 43800, loss = 0.0180628
+I0224 22:10:48.812010  9577 solver.cpp:231]     Train net output #0: loss = 0.0180628 (* 1 = 0.0180628 loss)
+I0224 22:10:48.812022  9577 solver.cpp:558] Iteration 43800, lr = 0.001
+I0224 22:10:48.834275  9577 solver.cpp:570]     Sparsity %: 83.4 0 95.932 4 8.73675 64.6 6.54 40 
+I0224 22:10:48.846540  9577 solver.cpp:241]     Total regularization terms: 0.206451 loss+regular. : 0.224514
+I0224 22:10:55.315799  9577 solver.cpp:216] Iteration 43900, loss = 0.0307601
+I0224 22:10:55.315865  9577 solver.cpp:231]     Train net output #0: loss = 0.0307601 (* 1 = 0.0307601 loss)
+I0224 22:10:55.315876  9577 solver.cpp:558] Iteration 43900, lr = 0.001
+I0224 22:10:55.324185  9577 solver.cpp:570]     Sparsity %: 83.2 0 95.808 6 8.742 64.6 6.54 40 
+I0224 22:10:55.325052  9577 solver.cpp:241]     Total regularization terms: 0.206603 loss+regular. : 0.237363
+I0224 22:11:01.684078  9577 solver.cpp:433] Snapshotting to examples/mnist/lenet_grouplasso_iter_44000.caffemodel
+I0224 22:11:01.689594  9577 solver.cpp:441] Snapshotting solver state to examples/mnist/lenet_grouplasso_iter_44000.solverstate
+I0224 22:11:01.692833  9577 solver.cpp:366] Iteration 44000, Testing net (#0)
+I0224 22:11:05.780581  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9863
+I0224 22:11:05.780655  9577 solver.cpp:415]     Test net output #1: loss = 0.0454969 (* 1 = 0.0454969 loss)
+I0224 22:11:05.816781  9577 solver.cpp:216] Iteration 44000, loss = 0.0416169
+I0224 22:11:05.816803  9577 solver.cpp:231]     Train net output #0: loss = 0.0416169 (* 1 = 0.0416169 loss)
+I0224 22:11:05.816817  9577 solver.cpp:558] Iteration 44000, lr = 0.001
+I0224 22:11:05.844063  9577 solver.cpp:570]     Sparsity %: 84.4 0 95.728 4 8.74825 64.6 6.56 30 
+I0224 22:11:05.856113  9577 solver.cpp:241]     Total regularization terms: 0.207058 loss+regular. : 0.248675
+I0224 22:11:12.158226  9577 solver.cpp:216] Iteration 44100, loss = 0.0279963
+I0224 22:11:12.158284  9577 solver.cpp:231]     Train net output #0: loss = 0.0279963 (* 1 = 0.0279963 loss)
+I0224 22:11:12.158298  9577 solver.cpp:558] Iteration 44100, lr = 0.001
+I0224 22:11:12.185216  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.776 4 8.755 64.6 6.56 40 
+I0224 22:11:12.197232  9577 solver.cpp:241]     Total regularization terms: 0.206847 loss+regular. : 0.234843
+I0224 22:11:18.484962  9577 solver.cpp:216] Iteration 44200, loss = 0.0256091
+I0224 22:11:18.485038  9577 solver.cpp:231]     Train net output #0: loss = 0.0256091 (* 1 = 0.0256091 loss)
+I0224 22:11:18.485050  9577 solver.cpp:558] Iteration 44200, lr = 0.001
+I0224 22:11:18.511793  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.824 4 8.76 64.6 6.56 40 
+I0224 22:11:18.523754  9577 solver.cpp:241]     Total regularization terms: 0.206584 loss+regular. : 0.232193
+I0224 22:11:24.821919  9577 solver.cpp:216] Iteration 44300, loss = 0.0598597
+I0224 22:11:24.821996  9577 solver.cpp:231]     Train net output #0: loss = 0.0598597 (* 1 = 0.0598597 loss)
+I0224 22:11:24.822010  9577 solver.cpp:558] Iteration 44300, lr = 0.001
+I0224 22:11:24.859908  9577 solver.cpp:570]     Sparsity %: 84.4 0 95.876 6 8.7655 64.6 6.58 40 
+I0224 22:11:24.871857  9577 solver.cpp:241]     Total regularization terms: 0.206565 loss+regular. : 0.266425
+I0224 22:11:31.175797  9577 solver.cpp:216] Iteration 44400, loss = 0.0402922
+I0224 22:11:31.175869  9577 solver.cpp:231]     Train net output #0: loss = 0.0402922 (* 1 = 0.0402922 loss)
+I0224 22:11:31.175882  9577 solver.cpp:558] Iteration 44400, lr = 0.001
+I0224 22:11:31.203446  9577 solver.cpp:570]     Sparsity %: 84.6 0 95.864 6 8.772 64.6 6.58 40 
+I0224 22:11:31.215693  9577 solver.cpp:241]     Total regularization terms: 0.206375 loss+regular. : 0.246667
+I0224 22:11:37.489503  9577 solver.cpp:366] Iteration 44500, Testing net (#0)
+I0224 22:11:41.706868  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9861
+I0224 22:11:41.706940  9577 solver.cpp:415]     Test net output #1: loss = 0.0472002 (* 1 = 0.0472002 loss)
+I0224 22:11:41.741292  9577 solver.cpp:216] Iteration 44500, loss = 0.0325391
+I0224 22:11:41.741315  9577 solver.cpp:231]     Train net output #0: loss = 0.0325391 (* 1 = 0.0325391 loss)
+I0224 22:11:41.741328  9577 solver.cpp:558] Iteration 44500, lr = 0.001
+I0224 22:11:41.753779  9577 solver.cpp:570]     Sparsity %: 84 0 95.796 6 8.77675 64.6 6.6 40 
+I0224 22:11:41.754693  9577 solver.cpp:241]     Total regularization terms: 0.20634 loss+regular. : 0.238879
+I0224 22:11:47.994176  9577 solver.cpp:216] Iteration 44600, loss = 0.023156
+I0224 22:11:47.994243  9577 solver.cpp:231]     Train net output #0: loss = 0.0231559 (* 1 = 0.0231559 loss)
+I0224 22:11:47.994257  9577 solver.cpp:558] Iteration 44600, lr = 0.001
+I0224 22:11:48.021515  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.776 4 8.784 64.6 6.62 40 
+I0224 22:11:48.033682  9577 solver.cpp:241]     Total regularization terms: 0.206392 loss+regular. : 0.229548
+I0224 22:11:54.402650  9577 solver.cpp:216] Iteration 44700, loss = 0.0402162
+I0224 22:11:54.402712  9577 solver.cpp:231]     Train net output #0: loss = 0.0402162 (* 1 = 0.0402162 loss)
+I0224 22:11:54.402725  9577 solver.cpp:558] Iteration 44700, lr = 0.001
+I0224 22:11:54.429736  9577 solver.cpp:570]     Sparsity %: 85 0 95.884 4 8.79075 64.8 6.64 40 
+I0224 22:11:54.441912  9577 solver.cpp:241]     Total regularization terms: 0.205705 loss+regular. : 0.245921
+I0224 22:12:00.804340  9577 solver.cpp:216] Iteration 44800, loss = 0.0588754
+I0224 22:12:00.804393  9577 solver.cpp:231]     Train net output #0: loss = 0.0588755 (* 1 = 0.0588755 loss)
+I0224 22:12:00.804404  9577 solver.cpp:558] Iteration 44800, lr = 0.001
+I0224 22:12:00.833098  9577 solver.cpp:570]     Sparsity %: 83.2 0 95.816 4 8.7955 64.8 6.64 40 
+I0224 22:12:00.845202  9577 solver.cpp:241]     Total regularization terms: 0.20567 loss+regular. : 0.264545
+I0224 22:12:07.236040  9577 solver.cpp:216] Iteration 44900, loss = 0.0186852
+I0224 22:12:07.236109  9577 solver.cpp:231]     Train net output #0: loss = 0.0186853 (* 1 = 0.0186853 loss)
+I0224 22:12:07.236121  9577 solver.cpp:558] Iteration 44900, lr = 0.001
+I0224 22:12:07.264351  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.524 4 8.80175 64.8 6.68 30 
+I0224 22:12:07.276504  9577 solver.cpp:241]     Total regularization terms: 0.206146 loss+regular. : 0.224831
+I0224 22:12:13.617292  9577 solver.cpp:366] Iteration 45000, Testing net (#0)
+I0224 22:12:17.717149  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9871
+I0224 22:12:17.717228  9577 solver.cpp:415]     Test net output #1: loss = 0.0454262 (* 1 = 0.0454262 loss)
+I0224 22:12:17.753875  9577 solver.cpp:216] Iteration 45000, loss = 0.0651975
+I0224 22:12:17.753916  9577 solver.cpp:231]     Train net output #0: loss = 0.0651976 (* 1 = 0.0651976 loss)
+I0224 22:12:17.753932  9577 solver.cpp:558] Iteration 45000, lr = 0.001
+I0224 22:12:17.781364  9577 solver.cpp:570]     Sparsity %: 84.8 0 95.808 4 8.80725 64.8 6.7 30 
+I0224 22:12:17.791900  9577 solver.cpp:241]     Total regularization terms: 0.206106 loss+regular. : 0.271303
+I0224 22:12:24.097800  9577 solver.cpp:216] Iteration 45100, loss = 0.0695746
+I0224 22:12:24.097885  9577 solver.cpp:231]     Train net output #0: loss = 0.0695746 (* 1 = 0.0695746 loss)
+I0224 22:12:24.097903  9577 solver.cpp:558] Iteration 45100, lr = 0.001
+I0224 22:12:24.125108  9577 solver.cpp:570]     Sparsity %: 85 0 95.884 4 8.8135 64.8 6.7 40 
+I0224 22:12:24.137557  9577 solver.cpp:241]     Total regularization terms: 0.205752 loss+regular. : 0.275326
+I0224 22:12:30.453110  9577 solver.cpp:216] Iteration 45200, loss = 0.0422551
+I0224 22:12:30.453179  9577 solver.cpp:231]     Train net output #0: loss = 0.0422551 (* 1 = 0.0422551 loss)
+I0224 22:12:30.453192  9577 solver.cpp:558] Iteration 45200, lr = 0.001
+I0224 22:12:30.461172  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.772 4 8.81825 64.8 6.7 40 
+I0224 22:12:30.462025  9577 solver.cpp:241]     Total regularization terms: 0.205969 loss+regular. : 0.248224
+I0224 22:12:36.854454  9577 solver.cpp:216] Iteration 45300, loss = 0.0225055
+I0224 22:12:36.854506  9577 solver.cpp:231]     Train net output #0: loss = 0.0225056 (* 1 = 0.0225056 loss)
+I0224 22:12:36.854518  9577 solver.cpp:558] Iteration 45300, lr = 0.001
+I0224 22:12:36.876564  9577 solver.cpp:570]     Sparsity %: 85 0 96.032 6 8.8235 65 6.72 40 
+I0224 22:12:36.877405  9577 solver.cpp:241]     Total regularization terms: 0.205575 loss+regular. : 0.228081
+I0224 22:12:43.172576  9577 solver.cpp:216] Iteration 45400, loss = 0.0794004
+I0224 22:12:43.172646  9577 solver.cpp:231]     Train net output #0: loss = 0.0794004 (* 1 = 0.0794004 loss)
+I0224 22:12:43.172659  9577 solver.cpp:558] Iteration 45400, lr = 0.001
+I0224 22:12:43.201264  9577 solver.cpp:570]     Sparsity %: 84.4 0 95.916 4 8.8295 65 6.72 40 
+I0224 22:12:43.214242  9577 solver.cpp:241]     Total regularization terms: 0.205447 loss+regular. : 0.284848
+I0224 22:12:49.438532  9577 solver.cpp:366] Iteration 45500, Testing net (#0)
+I0224 22:12:53.513058  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9876
+I0224 22:12:53.513126  9577 solver.cpp:415]     Test net output #1: loss = 0.0446914 (* 1 = 0.0446914 loss)
+I0224 22:12:53.548410  9577 solver.cpp:216] Iteration 45500, loss = 0.0279662
+I0224 22:12:53.548434  9577 solver.cpp:231]     Train net output #0: loss = 0.0279663 (* 1 = 0.0279663 loss)
+I0224 22:12:53.548446  9577 solver.cpp:558] Iteration 45500, lr = 0.001
+I0224 22:12:53.575088  9577 solver.cpp:570]     Sparsity %: 84.6 0 95.72 4 8.838 65 6.72 40 
+I0224 22:12:53.586973  9577 solver.cpp:241]     Total regularization terms: 0.205715 loss+regular. : 0.233682
+I0224 22:12:59.873045  9577 solver.cpp:216] Iteration 45600, loss = 0.00484002
+I0224 22:12:59.873114  9577 solver.cpp:231]     Train net output #0: loss = 0.00484009 (* 1 = 0.00484009 loss)
+I0224 22:12:59.873127  9577 solver.cpp:558] Iteration 45600, lr = 0.001
+I0224 22:12:59.900616  9577 solver.cpp:570]     Sparsity %: 85.6 0 95.848 4 8.843 65 6.72 40 
+I0224 22:12:59.913022  9577 solver.cpp:241]     Total regularization terms: 0.205354 loss+regular. : 0.210194
+I0224 22:13:06.355916  9577 solver.cpp:216] Iteration 45700, loss = 0.0271924
+I0224 22:13:06.355993  9577 solver.cpp:231]     Train net output #0: loss = 0.0271925 (* 1 = 0.0271925 loss)
+I0224 22:13:06.356005  9577 solver.cpp:558] Iteration 45700, lr = 0.001
+I0224 22:13:06.384423  9577 solver.cpp:570]     Sparsity %: 85.2 0 96.068 4 8.84875 65 6.74 40 
+I0224 22:13:06.395017  9577 solver.cpp:241]     Total regularization terms: 0.204632 loss+regular. : 0.231824
+I0224 22:13:12.816207  9577 solver.cpp:216] Iteration 45800, loss = 0.059613
+I0224 22:13:12.816279  9577 solver.cpp:231]     Train net output #0: loss = 0.0596131 (* 1 = 0.0596131 loss)
+I0224 22:13:12.816293  9577 solver.cpp:558] Iteration 45800, lr = 0.001
+I0224 22:13:12.845782  9577 solver.cpp:570]     Sparsity %: 82.8 0 95.612 4 8.85425 65 6.74 40 
+I0224 22:13:12.858507  9577 solver.cpp:241]     Total regularization terms: 0.20534 loss+regular. : 0.264953
+I0224 22:13:19.192855  9577 solver.cpp:216] Iteration 45900, loss = 0.0285674
+I0224 22:13:19.192925  9577 solver.cpp:231]     Train net output #0: loss = 0.0285674 (* 1 = 0.0285674 loss)
+I0224 22:13:19.192939  9577 solver.cpp:558] Iteration 45900, lr = 0.001
+I0224 22:13:19.220398  9577 solver.cpp:570]     Sparsity %: 84 0 95.756 4 8.85975 65 6.74 30 
+I0224 22:13:19.232832  9577 solver.cpp:241]     Total regularization terms: 0.205582 loss+regular. : 0.234149
+I0224 22:13:25.495519  9577 solver.cpp:433] Snapshotting to examples/mnist/lenet_grouplasso_iter_46000.caffemodel
+I0224 22:13:25.502097  9577 solver.cpp:441] Snapshotting solver state to examples/mnist/lenet_grouplasso_iter_46000.solverstate
+I0224 22:13:25.505527  9577 solver.cpp:366] Iteration 46000, Testing net (#0)
+I0224 22:13:29.719866  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9872
+I0224 22:13:29.719933  9577 solver.cpp:415]     Test net output #1: loss = 0.0453701 (* 1 = 0.0453701 loss)
+I0224 22:13:29.755914  9577 solver.cpp:216] Iteration 46000, loss = 0.0217443
+I0224 22:13:29.755938  9577 solver.cpp:231]     Train net output #0: loss = 0.0217444 (* 1 = 0.0217444 loss)
+I0224 22:13:29.755950  9577 solver.cpp:558] Iteration 46000, lr = 0.001
+I0224 22:13:29.783470  9577 solver.cpp:570]     Sparsity %: 84.4 0 95.832 4 8.86525 65 6.76 40 
+I0224 22:13:29.795389  9577 solver.cpp:241]     Total regularization terms: 0.205291 loss+regular. : 0.227035
+I0224 22:13:36.089525  9577 solver.cpp:216] Iteration 46100, loss = 0.0169259
+I0224 22:13:36.089596  9577 solver.cpp:231]     Train net output #0: loss = 0.016926 (* 1 = 0.016926 loss)
+I0224 22:13:36.089610  9577 solver.cpp:558] Iteration 46100, lr = 0.001
+I0224 22:13:36.117015  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.86 4 8.8705 65 6.76 40 
+I0224 22:13:36.129446  9577 solver.cpp:241]     Total regularization terms: 0.205084 loss+regular. : 0.22201
+I0224 22:13:42.406518  9577 solver.cpp:216] Iteration 46200, loss = 0.0281868
+I0224 22:13:42.406586  9577 solver.cpp:231]     Train net output #0: loss = 0.0281869 (* 1 = 0.0281869 loss)
+I0224 22:13:42.406599  9577 solver.cpp:558] Iteration 46200, lr = 0.001
+I0224 22:13:42.433702  9577 solver.cpp:570]     Sparsity %: 85.8 0 95.944 6 8.8775 65 6.76 40 
+I0224 22:13:42.446027  9577 solver.cpp:241]     Total regularization terms: 0.20495 loss+regular. : 0.233137
+I0224 22:13:48.750085  9577 solver.cpp:216] Iteration 46300, loss = 0.0489807
+I0224 22:13:48.750156  9577 solver.cpp:231]     Train net output #0: loss = 0.0489807 (* 1 = 0.0489807 loss)
+I0224 22:13:48.750181  9577 solver.cpp:558] Iteration 46300, lr = 0.001
+I0224 22:13:48.777160  9577 solver.cpp:570]     Sparsity %: 83.8 0 95.816 4 8.88625 65 6.78 40 
+I0224 22:13:48.789063  9577 solver.cpp:241]     Total regularization terms: 0.204892 loss+regular. : 0.253873
+I0224 22:13:55.080085  9577 solver.cpp:216] Iteration 46400, loss = 0.046063
+I0224 22:13:55.080158  9577 solver.cpp:231]     Train net output #0: loss = 0.0460631 (* 1 = 0.0460631 loss)
+I0224 22:13:55.080173  9577 solver.cpp:558] Iteration 46400, lr = 0.001
+I0224 22:13:55.107712  9577 solver.cpp:570]     Sparsity %: 84.4 0 95.724 4 8.8925 65 6.78 40 
+I0224 22:13:55.119616  9577 solver.cpp:241]     Total regularization terms: 0.204952 loss+regular. : 0.251015
+I0224 22:14:01.390625  9577 solver.cpp:366] Iteration 46500, Testing net (#0)
+I0224 22:14:05.531280  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9871
+I0224 22:14:05.531344  9577 solver.cpp:415]     Test net output #1: loss = 0.045198 (* 1 = 0.045198 loss)
+I0224 22:14:05.542605  9577 solver.cpp:216] Iteration 46500, loss = 0.0492714
+I0224 22:14:05.542630  9577 solver.cpp:231]     Train net output #0: loss = 0.0492714 (* 1 = 0.0492714 loss)
+I0224 22:14:05.542644  9577 solver.cpp:558] Iteration 46500, lr = 0.001
+I0224 22:14:05.565850  9577 solver.cpp:570]     Sparsity %: 85 0 95.82 4 8.8995 65 6.78 40 
+I0224 22:14:05.578148  9577 solver.cpp:241]     Total regularization terms: 0.204884 loss+regular. : 0.254155
+I0224 22:14:12.041940  9577 solver.cpp:216] Iteration 46600, loss = 0.0491786
+I0224 22:14:12.042011  9577 solver.cpp:231]     Train net output #0: loss = 0.0491787 (* 1 = 0.0491787 loss)
+I0224 22:14:12.042037  9577 solver.cpp:558] Iteration 46600, lr = 0.001
+I0224 22:14:12.050155  9577 solver.cpp:570]     Sparsity %: 83.6 0 95.892 6 8.9055 65 6.78 40 
+I0224 22:14:12.050987  9577 solver.cpp:241]     Total regularization terms: 0.204399 loss+regular. : 0.253578
+I0224 22:14:18.440759  9577 solver.cpp:216] Iteration 46700, loss = 0.0683835
+I0224 22:14:18.440812  9577 solver.cpp:231]     Train net output #0: loss = 0.0683836 (* 1 = 0.0683836 loss)
+I0224 22:14:18.440824  9577 solver.cpp:558] Iteration 46700, lr = 0.001
+I0224 22:14:18.471072  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.864 4 8.91 65 6.78 40 
+I0224 22:14:18.484196  9577 solver.cpp:241]     Total regularization terms: 0.204241 loss+regular. : 0.272624
+I0224 22:14:24.830714  9577 solver.cpp:216] Iteration 46800, loss = 0.0166556
+I0224 22:14:24.830766  9577 solver.cpp:231]     Train net output #0: loss = 0.0166557 (* 1 = 0.0166557 loss)
+I0224 22:14:24.830777  9577 solver.cpp:558] Iteration 46800, lr = 0.001
+I0224 22:14:24.858808  9577 solver.cpp:570]     Sparsity %: 84.6 0 95.684 4 8.91575 65 6.78 30 
+I0224 22:14:24.871063  9577 solver.cpp:241]     Total regularization terms: 0.204831 loss+regular. : 0.221487
+I0224 22:14:31.236964  9577 solver.cpp:216] Iteration 46900, loss = 0.053177
+I0224 22:14:31.237018  9577 solver.cpp:231]     Train net output #0: loss = 0.0531771 (* 1 = 0.0531771 loss)
+I0224 22:14:31.237030  9577 solver.cpp:558] Iteration 46900, lr = 0.001
+I0224 22:14:31.263775  9577 solver.cpp:570]     Sparsity %: 84.6 0 95.892 4 8.9225 65 6.78 30 
+I0224 22:14:31.275663  9577 solver.cpp:241]     Total regularization terms: 0.20468 loss+regular. : 0.257857
+I0224 22:14:37.590023  9577 solver.cpp:366] Iteration 47000, Testing net (#0)
+I0224 22:14:41.696645  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9866
+I0224 22:14:41.696717  9577 solver.cpp:415]     Test net output #1: loss = 0.0459077 (* 1 = 0.0459077 loss)
+I0224 22:14:41.730475  9577 solver.cpp:216] Iteration 47000, loss = 0.0198675
+I0224 22:14:41.730499  9577 solver.cpp:231]     Train net output #0: loss = 0.0198675 (* 1 = 0.0198675 loss)
+I0224 22:14:41.730512  9577 solver.cpp:558] Iteration 47000, lr = 0.001
+I0224 22:14:41.758008  9577 solver.cpp:570]     Sparsity %: 84.4 0 95.908 6 8.92975 65 6.78 40 
+I0224 22:14:41.770220  9577 solver.cpp:241]     Total regularization terms: 0.204437 loss+regular. : 0.224304
+I0224 22:14:48.071339  9577 solver.cpp:216] Iteration 47100, loss = 0.0688522
+I0224 22:14:48.071408  9577 solver.cpp:231]     Train net output #0: loss = 0.0688522 (* 1 = 0.0688522 loss)
+I0224 22:14:48.071421  9577 solver.cpp:558] Iteration 47100, lr = 0.001
+I0224 22:14:48.097926  9577 solver.cpp:570]     Sparsity %: 85 0 95.92 6 8.935 65 6.78 40 
+I0224 22:14:48.109758  9577 solver.cpp:241]     Total regularization terms: 0.204494 loss+regular. : 0.273346
+I0224 22:14:54.415732  9577 solver.cpp:216] Iteration 47200, loss = 0.0190163
+I0224 22:14:54.415798  9577 solver.cpp:231]     Train net output #0: loss = 0.0190164 (* 1 = 0.0190164 loss)
+I0224 22:14:54.415812  9577 solver.cpp:558] Iteration 47200, lr = 0.001
+I0224 22:14:54.443320  9577 solver.cpp:570]     Sparsity %: 85.2 0 95.868 6 8.9415 65 6.78 40 
+I0224 22:14:54.455791  9577 solver.cpp:241]     Total regularization terms: 0.204273 loss+regular. : 0.223289
+I0224 22:15:00.737382  9577 solver.cpp:216] Iteration 47300, loss = 0.0655402
+I0224 22:15:00.737453  9577 solver.cpp:231]     Train net output #0: loss = 0.0655403 (* 1 = 0.0655403 loss)
+I0224 22:15:00.737468  9577 solver.cpp:558] Iteration 47300, lr = 0.001
+I0224 22:15:00.764866  9577 solver.cpp:570]     Sparsity %: 84.4 0 95.824 4 8.95 65 6.78 40 
+I0224 22:15:00.777348  9577 solver.cpp:241]     Total regularization terms: 0.204315 loss+regular. : 0.269855
+I0224 22:15:07.060657  9577 solver.cpp:216] Iteration 47400, loss = 0.0499868
+I0224 22:15:07.060726  9577 solver.cpp:231]     Train net output #0: loss = 0.0499868 (* 1 = 0.0499868 loss)
+I0224 22:15:07.060739  9577 solver.cpp:558] Iteration 47400, lr = 0.001
+I0224 22:15:07.082630  9577 solver.cpp:570]     Sparsity %: 85 0 95.804 4 8.9555 65 6.78 40 
+I0224 22:15:07.094753  9577 solver.cpp:241]     Total regularization terms: 0.20432 loss+regular. : 0.254307
+I0224 22:15:13.446641  9577 solver.cpp:366] Iteration 47500, Testing net (#0)
+I0224 22:15:17.504745  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9872
+I0224 22:15:17.504813  9577 solver.cpp:415]     Test net output #1: loss = 0.0451931 (* 1 = 0.0451931 loss)
+I0224 22:15:17.541103  9577 solver.cpp:216] Iteration 47500, loss = 0.023436
+I0224 22:15:17.541126  9577 solver.cpp:231]     Train net output #0: loss = 0.023436 (* 1 = 0.023436 loss)
+I0224 22:15:17.541143  9577 solver.cpp:558] Iteration 47500, lr = 0.001
+I0224 22:15:17.568135  9577 solver.cpp:570]     Sparsity %: 85.4 0 95.904 4 8.964 65 6.8 40 
+I0224 22:15:17.580070  9577 solver.cpp:241]     Total regularization terms: 0.203795 loss+regular. : 0.227231
+I0224 22:15:23.874603  9577 solver.cpp:216] Iteration 47600, loss = 0.0796055
+I0224 22:15:23.874676  9577 solver.cpp:231]     Train net output #0: loss = 0.0796055 (* 1 = 0.0796055 loss)
+I0224 22:15:23.874689  9577 solver.cpp:558] Iteration 47600, lr = 0.001
+I0224 22:15:23.901584  9577 solver.cpp:570]     Sparsity %: 83.4 0 95.836 4 8.96875 65 6.8 40 
+I0224 22:15:23.913607  9577 solver.cpp:241]     Total regularization terms: 0.20346 loss+regular. : 0.283065
+I0224 22:15:30.204887  9577 solver.cpp:216] Iteration 47700, loss = 0.0864119
+I0224 22:15:30.204955  9577 solver.cpp:231]     Train net output #0: loss = 0.0864119 (* 1 = 0.0864119 loss)
+I0224 22:15:30.204968  9577 solver.cpp:558] Iteration 47700, lr = 0.001
+I0224 22:15:30.233309  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.552 4 8.9755 65 6.8 30 
+I0224 22:15:30.245399  9577 solver.cpp:241]     Total regularization terms: 0.20394 loss+regular. : 0.290352
+I0224 22:15:36.636731  9577 solver.cpp:216] Iteration 47800, loss = 0.0338269
+I0224 22:15:36.636821  9577 solver.cpp:231]     Train net output #0: loss = 0.0338269 (* 1 = 0.0338269 loss)
+I0224 22:15:36.636833  9577 solver.cpp:558] Iteration 47800, lr = 0.001
+I0224 22:15:36.664322  9577 solver.cpp:570]     Sparsity %: 85 0 95.82 4 8.98125 65 6.8 30 
+I0224 22:15:36.676270  9577 solver.cpp:241]     Total regularization terms: 0.204143 loss+regular. : 0.23797
+I0224 22:15:43.040227  9577 solver.cpp:216] Iteration 47900, loss = 0.0224002
+I0224 22:15:43.040287  9577 solver.cpp:231]     Train net output #0: loss = 0.0224002 (* 1 = 0.0224002 loss)
+I0224 22:15:43.040299  9577 solver.cpp:558] Iteration 47900, lr = 0.001
+I0224 22:15:43.068840  9577 solver.cpp:570]     Sparsity %: 85.6 0 95.88 4 8.986 65 6.82 40 
+I0224 22:15:43.081070  9577 solver.cpp:241]     Total regularization terms: 0.203843 loss+regular. : 0.226244
+I0224 22:15:49.408888  9577 solver.cpp:433] Snapshotting to examples/mnist/lenet_grouplasso_iter_48000.caffemodel
+I0224 22:15:49.421777  9577 solver.cpp:441] Snapshotting solver state to examples/mnist/lenet_grouplasso_iter_48000.solverstate
+I0224 22:15:49.425029  9577 solver.cpp:366] Iteration 48000, Testing net (#0)
+I0224 22:15:53.640538  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9861
+I0224 22:15:53.640601  9577 solver.cpp:415]     Test net output #1: loss = 0.046198 (* 1 = 0.046198 loss)
+I0224 22:15:53.678596  9577 solver.cpp:216] Iteration 48000, loss = 0.0295424
+I0224 22:15:53.678618  9577 solver.cpp:231]     Train net output #0: loss = 0.0295424 (* 1 = 0.0295424 loss)
+I0224 22:15:53.678632  9577 solver.cpp:558] Iteration 48000, lr = 0.001
+I0224 22:15:53.708829  9577 solver.cpp:570]     Sparsity %: 83.8 0 95.88 4 8.99125 65 6.82 40 
+I0224 22:15:53.721940  9577 solver.cpp:241]     Total regularization terms: 0.203872 loss+regular. : 0.233414
+I0224 22:16:00.084467  9577 solver.cpp:216] Iteration 48100, loss = 0.0467276
+I0224 22:16:00.084517  9577 solver.cpp:231]     Train net output #0: loss = 0.0467276 (* 1 = 0.0467276 loss)
+I0224 22:16:00.084528  9577 solver.cpp:558] Iteration 48100, lr = 0.001
+I0224 22:16:00.116475  9577 solver.cpp:570]     Sparsity %: 85 0 96.004 6 8.997 65 6.82 40 
+I0224 22:16:00.128720  9577 solver.cpp:241]     Total regularization terms: 0.203578 loss+regular. : 0.250306
+I0224 22:16:06.484647  9577 solver.cpp:216] Iteration 48200, loss = 0.0445234
+I0224 22:16:06.484701  9577 solver.cpp:231]     Train net output #0: loss = 0.0445234 (* 1 = 0.0445234 loss)
+I0224 22:16:06.484712  9577 solver.cpp:558] Iteration 48200, lr = 0.001
+I0224 22:16:06.511607  9577 solver.cpp:570]     Sparsity %: 84.6 0 95.84 4 9.004 65 6.82 40 
+I0224 22:16:06.523524  9577 solver.cpp:241]     Total regularization terms: 0.203436 loss+regular. : 0.24796
+I0224 22:16:12.884655  9577 solver.cpp:216] Iteration 48300, loss = 0.084348
+I0224 22:16:12.884706  9577 solver.cpp:231]     Train net output #0: loss = 0.084348 (* 1 = 0.084348 loss)
+I0224 22:16:12.884716  9577 solver.cpp:558] Iteration 48300, lr = 0.001
+I0224 22:16:12.912046  9577 solver.cpp:570]     Sparsity %: 84.6 0 95.656 4 9.012 65 6.82 40 
+I0224 22:16:12.923919  9577 solver.cpp:241]     Total regularization terms: 0.203697 loss+regular. : 0.288045
+I0224 22:16:19.287322  9577 solver.cpp:216] Iteration 48400, loss = 0.109322
+I0224 22:16:19.287372  9577 solver.cpp:231]     Train net output #0: loss = 0.109322 (* 1 = 0.109322 loss)
+I0224 22:16:19.287384  9577 solver.cpp:558] Iteration 48400, lr = 0.001
+I0224 22:16:19.314791  9577 solver.cpp:570]     Sparsity %: 85 0 95.876 4 9.0165 65 6.82 40 
+I0224 22:16:19.326941  9577 solver.cpp:241]     Total regularization terms: 0.203468 loss+regular. : 0.31279
+I0224 22:16:25.596828  9577 solver.cpp:366] Iteration 48500, Testing net (#0)
+I0224 22:16:29.690767  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9866
+I0224 22:16:29.690829  9577 solver.cpp:415]     Test net output #1: loss = 0.0457245 (* 1 = 0.0457245 loss)
+I0224 22:16:29.727473  9577 solver.cpp:216] Iteration 48500, loss = 0.0271861
+I0224 22:16:29.727519  9577 solver.cpp:231]     Train net output #0: loss = 0.0271861 (* 1 = 0.0271861 loss)
+I0224 22:16:29.727533  9577 solver.cpp:558] Iteration 48500, lr = 0.001
+I0224 22:16:29.754905  9577 solver.cpp:570]     Sparsity %: 85.4 0 96.02 4 9.02225 65 6.82 40 
+I0224 22:16:29.767305  9577 solver.cpp:241]     Total regularization terms: 0.20267 loss+regular. : 0.229857
+I0224 22:16:36.053220  9577 solver.cpp:216] Iteration 48600, loss = 0.00892671
+I0224 22:16:36.053293  9577 solver.cpp:231]     Train net output #0: loss = 0.00892668 (* 1 = 0.00892668 loss)
+I0224 22:16:36.053318  9577 solver.cpp:558] Iteration 48600, lr = 0.001
+I0224 22:16:36.080644  9577 solver.cpp:570]     Sparsity %: 82.8 0 95.632 4 9.0285 65 6.82 40 
+I0224 22:16:36.093035  9577 solver.cpp:241]     Total regularization terms: 0.203024 loss+regular. : 0.211951
+I0224 22:16:42.397894  9577 solver.cpp:216] Iteration 48700, loss = 0.0127568
+I0224 22:16:42.397958  9577 solver.cpp:231]     Train net output #0: loss = 0.0127568 (* 1 = 0.0127568 loss)
+I0224 22:16:42.397976  9577 solver.cpp:558] Iteration 48700, lr = 0.001
+I0224 22:16:42.424926  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.804 4 9.034 65.2 6.82 30 
+I0224 22:16:42.437759  9577 solver.cpp:241]     Total regularization terms: 0.203448 loss+regular. : 0.216205
+I0224 22:16:48.777904  9577 solver.cpp:216] Iteration 48800, loss = 0.0119744
+I0224 22:16:48.777961  9577 solver.cpp:231]     Train net output #0: loss = 0.0119743 (* 1 = 0.0119743 loss)
+I0224 22:16:48.777972  9577 solver.cpp:558] Iteration 48800, lr = 0.001
+I0224 22:16:48.785778  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.824 4 9.04 65.2 6.82 40 
+I0224 22:16:48.786550  9577 solver.cpp:241]     Total regularization terms: 0.203308 loss+regular. : 0.215282
+I0224 22:16:55.150676  9577 solver.cpp:216] Iteration 48900, loss = 0.00798798
+I0224 22:16:55.150724  9577 solver.cpp:231]     Train net output #0: loss = 0.00798796 (* 1 = 0.00798796 loss)
+I0224 22:16:55.150735  9577 solver.cpp:558] Iteration 48900, lr = 0.001
+I0224 22:16:55.179404  9577 solver.cpp:570]     Sparsity %: 84.8 0 95.852 4 9.04625 65.2 6.84 40 
+I0224 22:16:55.191233  9577 solver.cpp:241]     Total regularization terms: 0.202969 loss+regular. : 0.210957
+I0224 22:17:01.459018  9577 solver.cpp:366] Iteration 49000, Testing net (#0)
+I0224 22:17:05.570320  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9877
+I0224 22:17:05.570391  9577 solver.cpp:415]     Test net output #1: loss = 0.0451316 (* 1 = 0.0451316 loss)
+I0224 22:17:05.605507  9577 solver.cpp:216] Iteration 49000, loss = 0.0577971
+I0224 22:17:05.605530  9577 solver.cpp:231]     Train net output #0: loss = 0.0577971 (* 1 = 0.0577971 loss)
+I0224 22:17:05.605543  9577 solver.cpp:558] Iteration 49000, lr = 0.001
+I0224 22:17:05.633349  9577 solver.cpp:570]     Sparsity %: 84.6 0 95.952 6 9.05325 65.2 6.84 40 
+I0224 22:17:05.645169  9577 solver.cpp:241]     Total regularization terms: 0.202945 loss+regular. : 0.260742
+I0224 22:17:11.938313  9577 solver.cpp:216] Iteration 49100, loss = 0.0674246
+I0224 22:17:11.938383  9577 solver.cpp:231]     Train net output #0: loss = 0.0674247 (* 1 = 0.0674247 loss)
+I0224 22:17:11.938401  9577 solver.cpp:558] Iteration 49100, lr = 0.001
+I0224 22:17:11.966755  9577 solver.cpp:570]     Sparsity %: 84 0 96.008 6 9.05875 65.2 6.84 40 
+I0224 22:17:11.978909  9577 solver.cpp:241]     Total regularization terms: 0.202862 loss+regular. : 0.270287
+I0224 22:17:18.371716  9577 solver.cpp:216] Iteration 49200, loss = 0.0266992
+I0224 22:17:18.371785  9577 solver.cpp:231]     Train net output #0: loss = 0.0266992 (* 1 = 0.0266992 loss)
+I0224 22:17:18.371801  9577 solver.cpp:558] Iteration 49200, lr = 0.001
+I0224 22:17:18.400832  9577 solver.cpp:570]     Sparsity %: 84.4 0 95.836 6 9.064 65.2 6.86 40 
+I0224 22:17:18.413444  9577 solver.cpp:241]     Total regularization terms: 0.202906 loss+regular. : 0.229605
+I0224 22:17:24.732492  9577 solver.cpp:216] Iteration 49300, loss = 0.0195962
+I0224 22:17:24.732548  9577 solver.cpp:231]     Train net output #0: loss = 0.0195962 (* 1 = 0.0195962 loss)
+I0224 22:17:24.732560  9577 solver.cpp:558] Iteration 49300, lr = 0.001
+I0224 22:17:24.759968  9577 solver.cpp:570]     Sparsity %: 85.2 0 95.86 4 9.0705 65.2 6.86 40 
+I0224 22:17:24.772436  9577 solver.cpp:241]     Total regularization terms: 0.202843 loss+regular. : 0.222439
+I0224 22:17:31.053635  9577 solver.cpp:216] Iteration 49400, loss = 0.103981
+I0224 22:17:31.053704  9577 solver.cpp:231]     Train net output #0: loss = 0.103981 (* 1 = 0.103981 loss)
+I0224 22:17:31.053717  9577 solver.cpp:558] Iteration 49400, lr = 0.001
+I0224 22:17:31.080708  9577 solver.cpp:570]     Sparsity %: 83.8 0 95.84 4 9.07525 65.2 6.88 40 
+I0224 22:17:31.092847  9577 solver.cpp:241]     Total regularization terms: 0.202358 loss+regular. : 0.30634
+I0224 22:17:37.441634  9577 solver.cpp:366] Iteration 49500, Testing net (#0)
+I0224 22:17:41.516784  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9863
+I0224 22:17:41.516856  9577 solver.cpp:415]     Test net output #1: loss = 0.0470777 (* 1 = 0.0470777 loss)
+I0224 22:17:41.553055  9577 solver.cpp:216] Iteration 49500, loss = 0.013973
+I0224 22:17:41.553077  9577 solver.cpp:231]     Train net output #0: loss = 0.013973 (* 1 = 0.013973 loss)
+I0224 22:17:41.553089  9577 solver.cpp:558] Iteration 49500, lr = 0.001
+I0224 22:17:41.580369  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.836 4 9.08 65.2 6.88 40 
+I0224 22:17:41.594408  9577 solver.cpp:241]     Total regularization terms: 0.202132 loss+regular. : 0.216105
+I0224 22:17:47.926247  9577 solver.cpp:216] Iteration 49600, loss = 0.0192091
+I0224 22:17:47.926307  9577 solver.cpp:231]     Train net output #0: loss = 0.0192091 (* 1 = 0.0192091 loss)
+I0224 22:17:47.926321  9577 solver.cpp:558] Iteration 49600, lr = 0.001
+I0224 22:17:47.953352  9577 solver.cpp:570]     Sparsity %: 84.2 0 95.628 4 9.086 65.2 6.88 30 
+I0224 22:17:47.965353  9577 solver.cpp:241]     Total regularization terms: 0.202726 loss+regular. : 0.221935
+I0224 22:17:54.327764  9577 solver.cpp:216] Iteration 49700, loss = 0.0280764
+I0224 22:17:54.327811  9577 solver.cpp:231]     Train net output #0: loss = 0.0280765 (* 1 = 0.0280765 loss)
+I0224 22:17:54.327823  9577 solver.cpp:558] Iteration 49700, lr = 0.001
+I0224 22:17:54.354519  9577 solver.cpp:570]     Sparsity %: 85 0 95.896 6 9.09275 65.2 6.88 30 
+I0224 22:17:54.366564  9577 solver.cpp:241]     Total regularization terms: 0.202638 loss+regular. : 0.230714
+I0224 22:18:00.733897  9577 solver.cpp:216] Iteration 49800, loss = 0.104896
+I0224 22:18:00.733952  9577 solver.cpp:231]     Train net output #0: loss = 0.104896 (* 1 = 0.104896 loss)
+I0224 22:18:00.733963  9577 solver.cpp:558] Iteration 49800, lr = 0.001
+I0224 22:18:00.760649  9577 solver.cpp:570]     Sparsity %: 85 0 95.86 4 9.09975 65.2 6.88 40 
+I0224 22:18:00.772552  9577 solver.cpp:241]     Total regularization terms: 0.202316 loss+regular. : 0.307212
+I0224 22:18:07.138437  9577 solver.cpp:216] Iteration 49900, loss = 0.0151487
+I0224 22:18:07.138491  9577 solver.cpp:231]     Train net output #0: loss = 0.0151488 (* 1 = 0.0151488 loss)
+I0224 22:18:07.138502  9577 solver.cpp:558] Iteration 49900, lr = 0.001
+I0224 22:18:07.165863  9577 solver.cpp:570]     Sparsity %: 85 0 95.836 4 9.105 65.2 6.9 40 
+I0224 22:18:07.178601  9577 solver.cpp:241]     Total regularization terms: 0.20255 loss+regular. : 0.217699
+I0224 22:18:13.381700  9577 solver.cpp:433] Snapshotting to examples/mnist/lenet_grouplasso_iter_50000.caffemodel
+I0224 22:18:13.387236  9577 solver.cpp:441] Snapshotting solver state to examples/mnist/lenet_grouplasso_iter_50000.solverstate
+I0224 22:18:13.421612  9577 solver.cpp:348] Iteration 50000, loss = 0.0196828
+I0224 22:18:13.421640  9577 solver.cpp:366] Iteration 50000, Testing net (#0)
+I0224 22:18:17.640120  9577 solver.cpp:415]     Test net output #0: accuracy = 0.9846
+I0224 22:18:17.640182  9577 solver.cpp:415]     Test net output #1: loss = 0.0480577 (* 1 = 0.0480577 loss)
+I0224 22:18:17.640194  9577 solver.cpp:353] Optimization Done.
+I0224 22:18:17.640204  9577 caffe.cpp:135] Optimization Done.
