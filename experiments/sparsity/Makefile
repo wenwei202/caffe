@@ -16,5 +16,8 @@ endif
 csrmm_test: csrmm_test.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
+csrmm_test.s: csrmm_test.cpp
+	$(CXX) $(CXXFLAGS) -o $@ -S $^ $(LDFLAGS)
+
 clean:
 	rm csrmm_test

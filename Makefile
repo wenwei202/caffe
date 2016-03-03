@@ -310,6 +310,8 @@ ifneq (,$(findstring clang++,$(CXX)))
 	STATIC_LINK_COMMAND := -Wl,-force_load $(STATIC_NAME)
 else ifneq (,$(findstring g++,$(CXX)))
 	STATIC_LINK_COMMAND := -Wl,--whole-archive $(STATIC_NAME) -Wl,--no-whole-archive
+else ifneq (,$(findstring icpc,$(CXX)))
+	STATIC_LINK_COMMAND := -static
 else
   # The following line must not be indented with a tab, since we are not inside a target
   $(error Cannot static link with the $(CXX) compiler)

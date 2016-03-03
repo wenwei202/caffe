@@ -161,6 +161,11 @@ void reorderVectorOutOfPlaceWithInversePerm(double *dst, const double *src, cons
   return reorderVectorOutOfPlaceWithInversePerm_(dst, src, inversePerm, len);
 }
 
+void reorderVectorOutOfPlaceWithInversePerm(float *dst, const float *src, const int *inversePerm, int len)
+{
+  return reorderVectorOutOfPlaceWithInversePerm_(dst, src, inversePerm, len);
+}
+
 void reorderVectorOutOfPlaceWithInversePerm(int *dst, const int *src, const int *inversePerm, int len)
 {
   return reorderVectorOutOfPlaceWithInversePerm_(dst, src, inversePerm, len);
