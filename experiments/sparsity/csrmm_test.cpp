@@ -5,6 +5,7 @@
 
 #include <omp.h>
 #include <mkl.h>
+#include <immintrin.h>
 
 #include "SpMP/CSR.hpp"
 #include "SpMP/reordering/BFSBipartite.hpp"
@@ -25,15 +26,15 @@ using namespace std;
 using namespace SpMP;
 
 static void printEfficiency(
-  double *times, int REPEAT, double flop, double denseFlop, double byte)
+  double *times, int REPEAT, double flop, double denseFlop, double byte, double loweringTime)
 {
   sort(times, times + REPEAT);
 
   double t = times[REPEAT/2];
 
   printf(
-    "%7.2f sparse_gflops %7.2f dense_gflops %7.2f sparse_gbps\n",
-    flop/t/1e9, denseFlop/t/1e9, byte/t/1e9);
+    "%g sec %7.2f sparse_gflops %7.2f dense_gflops %7.2f sparse_gbps %7.2f dense_gflops(including_lowering_overhead)\n",
+    t, flop/t/1e9, denseFlop/t/1e9, byte/t/1e9, byte/(t + loweringTime)/1e9);
 }
 
 /**
@@ -121,8 +122,12 @@ void my_scsrmm(
 //#pragma simd
       for (int k = 0; k < N; ++k) {
         sum[k] += v*B[c*N + k];
+        /*if (i*N + k == 5) {
+          printf("%g*%g +", v, B[c*N + k]);
+        }*/
       }
     }
+    //if (i*N <= 5 && (i + 1)*N > 5) printf(" = %g, %d:%d\n", sum[5], A_rowptr[i], A_rowptr[i + 1]);
 //#pragma vector nontemporal(C)
     for (int k = 0; k < N; ++k) {
       C[i*N + k] = sum[k];
@@ -131,28 +136,590 @@ void my_scsrmm(
 #endif
 }
 
-int my_sgemm(
-  int M, int N, int K,
-  const float *A, const float *B, float *C)
-{
-  for (int i = 0; i < M; ++i) {
-    for (int j = 0; j < N; ++j) {
-      double sum = 0;
-      for (int k = 0; k < K; ++k) {
-        sum += A[i*K + k]*B[k*N + j];
+template <typename Dtype>
+void im2col_cpu(const Dtype* data_im, const int channels,
+    const int height, const int width, const int kernel_h, const int kernel_w,
+    const int pad_h, const int pad_w,
+    const int stride_h, const int stride_w,
+    Dtype* data_col,int* all_zero_mask, int * feature_map_mask) {
+  //get zero and nonzero maps
+	int kernel_slice_dim = kernel_w*kernel_h;
+
+  int height_col = (height + 2 * pad_h - kernel_h) / stride_h + 1;
+  int width_col = (width + 2 * pad_w - kernel_w) / stride_w + 1;
+  int channels_col = channels * kernel_h * kernel_w;
+  int forward_count = 0;
+#pragma omp parallel for
+  for (int c = 0; c < channels_col; ++c) {
+    int w_offset = c % kernel_w;
+    int h_offset = (c / kernel_w) % kernel_h;
+    int c_im = c / kernel_h / kernel_w;
+    //int sum=0;
+    //for(int ii=0;ii<forwarding_mask.size();ii++){
+    //	sum+=forwarding_mask[ii];
+    //}
+    //if(all_zero_mask && all_zero_mask[c]/*feature_map_mask && !feature_map_mask[c_im]*/) {
+    	//continue;
+    //}
+    for (int h = 0; h < height_col; ++h) {
+      for (int w = 0; w < width_col; ++w) {
+        int h_pad = h * stride_h + h_offset;
+        int w_pad = w * stride_w + w_offset;
+        //if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width){
+          //data_col[(c * height_col + h) * width_col + w] =
+        	data_col[(c * height_col + h) * width_col + w] =
+            data_im[(c_im * (height + pad_h) + h_pad) * (width + pad_w) + w_pad];
+        //}
+        //else{
+          //data_col[(c * height_col + h) * width_col + w] = 0;
+        	//data_col[(forward_count * height_col + h) * width_col + w] = 0;
+        //}
       }
-      C[i*N + j] = sum;
     }
+    //forward_count++;
   }
 }
 
+class KernelTensor
+{
+public :
+  KernelTensor(const CSR *Ain, int nInChannels, int width, int pad) : width(width), pad(pad) {
+
+    A = new CSR(Ain->m, nInChannels*(width + pad)*(width + pad), Ain->getNnz());
+
+    k = sqrt(Ain->n/nInChannels);
+    assert(nInChannels*k*k == Ain->n);
+
+    // check sparsity of each (output_channel, input_channel)
+    int **nnz_per_channel_pair = new int *[A->m];
+    for (int i = 0; i < A->m; ++i) {
+      nnz_per_channel_pair[i] = new int[nInChannels];
+      memset(nnz_per_channel_pair[i], 0, sizeof(int)*nInChannels);
+    }
+    nNonZeroKernels = 0;
+    for (int i = 0; i < Ain->m; ++i) {
+      A->rowptr[i] = Ain->rowptr[i];
+      for (int j = Ain->rowptr[i]; j < Ain->rowptr[i + 1]; ++j) {
+        int c = Ain->colidx[j];
+        int ic = c/(k*k);
+
+        A->colidx[j] = (ic*(width + pad) + (c/k)%k)*(width + pad) + c%k;
+        A->values[j] = Ain->values[j];
+
+        nnz_per_channel_pair[i][ic]++;
+      }
+
+      for (int j = 0; j < nInChannels; ++j) {
+        if (nnz_per_channel_pair[i][j] != 0) {
+          ++nNonZeroKernels;
+        }
+      }
+    }
+    A->rowptr[A->m] = Ain->rowptr[A->m];
+
+    for (int i = 0; i < A->m; ++i) {
+      delete[] nnz_per_channel_pair[i];
+    }
+    delete[] nnz_per_channel_pair;
+
+    int *rowPerm = new int[A->m], *rowInversePerm = new int[A->m];
+    int *colPerm = new int[A->n], *colInversePerm = new int[A->n];
+
+    CSR *AT = A->transpose();
+    bfsBipartite(*A, *AT, rowPerm, rowInversePerm, colPerm, colInversePerm);
+    FREE(A->diagptr);
+    CSR *AReordered = A->permute(colPerm, rowInversePerm);
+    CSR *ATReordered = AReordered->transpose();
+
+    printf("BW is reduced by BFS reordering: %d -> %d\n", A->getBandwidth(), AReordered->getBandwidth());
+    printf("Average width is reduced by BFS reordering: (%g, %g) -> (%g, %g)\n", A->getAverageWidth(), AT->getAverageWidth(), AReordered->getAverageWidth(), ATReordered->getAverageWidth());
+
+    delete[] rowPerm;
+    delete[] rowInversePerm;
+    delete[] colPerm;
+    delete[] colInversePerm;
+
+    delete AT;
+    delete AReordered;
+    delete ATReordered;
+    //A = AReordered;
+  }
+
+  ~KernelTensor() {
+    delete A;
+  }
+
+  template<int WIDTH, int WOUT, int PAD>
+  void conv_(float *in, float *out, int stride, bool serial = false) {
+    int begin, end;
+
+    if (serial) {
+      begin = 0;
+      end = A->m;
+    }
+    else {
+      int nthreads = omp_get_num_threads();
+      int tid = omp_get_thread_num();
+
+      int total_work = A->rowptr[A->m];
+      int work_per_thread = (total_work + nthreads - 1)/nthreads;
+
+      begin = tid == 0 ? 0 : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*tid) - A->rowptr;
+      end = tid == nthreads - 1 ? A->m : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*(tid + 1)) - A->rowptr;
+    }
+
+    if (1 == stride) {
+#if 0
+      float sum[WOUT];
+
+      for (int h = 0; h < WOUT; ++h) {
+        float *in_temp = in + h*(width + PAD);
+
+        for (int i = begin; i < end; ++i) {
+          for (int w = 0; w < WOUT; ++w) {
+            sum[w] = 0;
+          }
+
+          for (int i = A->rowptr[i]; i < A->rowptr[i + 1]; ++i) {
+            float c = A->values[i];
+            int off = A->colidx[i];
+
+            for (int w = 0; w < WOUT; ++w) {
+              sum[w] += c*in_temp[off + w];
+            }
+          }
+
+          for (int w = 0; w < WOUT; ++w) {
+            out[(i*WOUT + h)*WOUT + w] = sum[w];
+          }
+        }
+      }
+#else
+      float sum[WOUT*WOUT];
+
+      for (int i = begin; i < end; ++i) {
+        for (int w = 0; w < WOUT*WOUT; ++w) {
+          sum[w] = 0;
+        }
+
+        for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
+          float c = A->values[j];
+          int off = A->colidx[j];
+
+          for (int h = 0; h < WOUT; ++h) {
+            for (int w = 0; w < WOUT; ++w) {
+              sum[h*WOUT + w] += c*in[off + h*(WIDTH + PAD) + w];
+            }
+          }
+        }
+
+        for (int w = 0; w < WOUT*WOUT; ++w) {
+          out[i*WOUT*WOUT + w] = sum[w];
+        }
+      }
+#endif
+    }
+    else {
+      for (int h = 0; h < WOUT; ++h) {
+        for (int w = 0; w < WOUT; ++w) {
+          float *in_temp = in + stride*(h*(WIDTH + PAD) + w);
+
+          for (int i = begin; i < end; ++i) {
+            float sum = 0;
+
+            for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
+              float c = A->values[j];
+              sum += c*in_temp[A->colidx[j]];
+            }
+
+            out[(i*WOUT + h)*WOUT + w] = sum;
+          }
+        }
+      }
+    } // stride != 1
+  }
+
+  void conv(float *in, float *out, int stride, bool serial = false) {
+    if (width == 13 && pad == 1 && stride == 1 && k == 3) {
+      //return conv_<13, 13, 1>(in, out, stride, serial);
+      int WIDTH = 13;
+      int WOUT = 13;
+      int PAD = 1;
+      
+      int begin, end;
+
+      if (serial) {
+        begin = 0;
+        end = A->m;
+      }
+      else {
+        int nthreads = omp_get_num_threads();
+        int tid = omp_get_thread_num();
+
+        int total_work = A->rowptr[A->m];
+        int work_per_thread = (total_work + nthreads - 1)/nthreads;
+
+        begin = tid == 0 ? 0 : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*tid) - A->rowptr;
+        end = tid == nthreads - 1 ? A->m : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*(tid + 1)) - A->rowptr;
+      }
+
+#define INTRINSIC
+#ifdef INTRINSIC
+      __m256 sum[(WOUT + 1)/2][2];
+      __declspec(aligned(64)) float sum_temp[8];
+#else
+      float sum[16];
+#endif
+
+      for (int i = begin; i < end; ++i) {
+        if (A->rowptr[i + 1] == A->rowptr[i]) continue;
+
+#ifdef INTRINSIC
+        // Upper half of images
+        int j = A->rowptr[i];
+        __m256 c = _mm256_set1_ps(A->values[j]);
+        int off = A->colidx[j];
+
+        for (int h = 0; h < WOUT/2; ++h) {
+          sum[h][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+        }
+
+        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
+          c = _mm256_set1_ps(A->values[j]);
+          off = A->colidx[j];
+
+          for (int h = 0; h < WOUT/2; ++h) {
+            sum[h][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h][0]);
+            sum[h][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h][1]);
+          }
+        }
+
+        for (int h = 0; h < WOUT/2; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h][0]);
+          _mm256_store_ps(sum_temp, sum[h][1]);
+          for (int w = 8; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
+          }
+        }
+
+#if 0
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(A->values[j]);
+        off = A->colidx[j];
+
+        for (int h = 0; h < WOUT/2; ++h) {
+          //sum[h][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+        }
+
+        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
+          c = _mm256_set1_ps(A->values[j]);
+          off = A->colidx[j];
+
+          for (int h = 0; h < WOUT/2; ++h) {
+            //sum[h][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h][0]);
+            sum[h][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h][1]);
+          }
+        }
+
+        for (int h = 0; h < WOUT/2; ++h) {
+          //_mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h][0]);
+          _mm256_store_ps(sum_temp, sum[h][1]);
+          for (int w = 8; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
+          }
+        }
+#endif
+
+        // Lower half of images
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(A->values[j]);
+        off = A->colidx[j];
+
+        for (int h = WOUT/2; h < WOUT; ++h) {
+          sum[h - WOUT/2][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h - WOUT/2][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+        }
+
+        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
+          c = _mm256_set1_ps(A->values[j]);
+          off = A->colidx[j];
+
+          for (int h = WOUT/2; h < WOUT; ++h) {
+            sum[h - WOUT/2][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - WOUT/2][0]);
+            sum[h - WOUT/2][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - WOUT/2][1]);
+          }
+        }
+
+        for (int h = WOUT/2; h < WOUT; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - WOUT/2][0]);
+          _mm256_store_ps(sum_temp, sum[h - WOUT/2][1]);
+          for (int w = 8; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
+          }
+        }
+
+#if 0
+        j = A->rowptr[i];
+        c = _mm256_set1_ps(A->values[j]);
+        off = A->colidx[j];
+
+        for (int h = WOUT/2; h < WOUT; ++h) {
+          //sum[h - WOUT/2][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h - WOUT/2][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+        }
+
+        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
+          c = _mm256_set1_ps(A->values[j]);
+          off = A->colidx[j];
+
+          for (int h = WOUT/2; h < WOUT; ++h) {
+            //sum[h - WOUT/2][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - WOUT/2][0]);
+            sum[h - WOUT/2][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - WOUT/2][1]);
+          }
+        }
+
+        for (int h = WOUT/2; h < WOUT; ++h) {
+          //_mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - WOUT/2][0]);
+          _mm256_store_ps(sum_temp, sum[h - WOUT/2][1]);
+          for (int w = 8; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
+          }
+        }
+#endif
+
+#else
+        for (int h = 0; h < WOUT; ++h) {
+          for (int w = 0; w < WOUT; ++w) {
+            sum[h*16 + w] = 0;
+          }
+        }
+
+        for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
+          float c = A->values[j];
+          int off = A->colidx[j];
+
+          for (int h = 0; h < WOUT; ++h) {
+            for (int w = 0; w < WOUT; ++w) {
+              sum[h*16 + w] += c*in[off + h*(WIDTH + PAD) + w];
+            }
+          }
+        }
+
+        for (int h = 0; h < WOUT; ++h) {
+          for (int w = 0; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum[h*16 + w];
+          }
+        }
+#endif
+      }
+
+      return;
+    }
+    else if (width == 27 && pad == 2 && stride == 1 && k == 5) {
+      //return conv_<27, 27, 2>(in, out, stride, serial);
+      int WIDTH = 27;
+      int WOUT = 27;
+      int PAD = 2;
+      
+      int begin, end;
+
+      if (serial) {
+        begin = 0;
+        end = A->m;
+      }
+      else {
+        int nthreads = omp_get_num_threads();
+        int tid = omp_get_thread_num();
+
+        int total_work = A->rowptr[A->m];
+        int work_per_thread = (total_work + nthreads - 1)/nthreads;
+
+        begin = tid == 0 ? 0 : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*tid) - A->rowptr;
+        end = tid == nthreads - 1 ? A->m : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*(tid + 1)) - A->rowptr;
+      }
+
+#ifdef INTRINSIC
+      __m256 sum[WOUT][4];
+      __declspec(aligned(64)) float sum_temp[8];
+#else
+      float sum[32];
+#endif
+
+      for (int i = begin; i < end; ++i) {
+        if (A->rowptr[i + 1] == A->rowptr[i]) continue;
+
+#ifdef INTRINSIC
+        int j = A->rowptr[i];
+        __m256 c = _mm256_set1_ps(A->values[j]);
+        int off = A->colidx[j];
+        for (int h = 0; h < WOUT; ++h) {
+          sum[h][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
+          sum[h][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
+          sum[h][2] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+          sum[h][3] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24));
+        }
+
+        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
+          c = _mm256_set1_ps(A->values[j]);
+          off = A->colidx[j];
+
+          for (int h = 0; h < WOUT; ++h) {
+            sum[h][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h][0]);
+            sum[h][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h][1]);
+            sum[h][2] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h][2]);
+            sum[h][3] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 24), sum[h][3]);
+          }
+        }
+
+        for (int h = 0; h < WOUT; ++h) {
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h][0]);
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 8, sum[h][1]);
+          _mm256_store_ps(out + (i*WOUT + h)*WOUT + 16, sum[h][2]);
+          _mm256_store_ps(sum_temp, sum[h][3]);
+          for (int w = 24; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
+          }
+        }
+#else
+        for (int h = 0; h < WOUT; ++h) {
+          for (int w = 0; w < WOUT; ++w) {
+            sum[h*16 + w] = 0;
+          }
+        }
+
+        for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
+          float c = A->values[j];
+          int off = A->colidx[j];
+
+          for (int h = 0; h < WOUT; ++h) {
+            for (int w = 0; w < WOUT; ++w) {
+              sum[h*16 + w] += c*in[off + h*(WIDTH + PAD) + w];
+            }
+          }
+        }
+
+        for (int h = 0; h < WOUT; ++h) {
+          for (int w = 0; w < WOUT; ++w) {
+            out[i*WOUT*WOUT + h*WOUT + w] = sum[h*16 + w];
+          }
+        }
+#endif
+      }
+
+      return;
+    }
+
+    int begin, end;
+
+    if (serial) {
+      begin = 0;
+      end = A->m;
+    }
+    else {
+      int nthreads = omp_get_num_threads();
+      int tid = omp_get_thread_num();
+
+      int total_work = A->rowptr[A->m];
+      int work_per_thread = (total_work + nthreads - 1)/nthreads;
+
+      begin = tid == 0 ? 0 : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*tid) - A->rowptr;
+      end = tid == nthreads - 1 ? A->m : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*(tid + 1)) - A->rowptr;
+    }
+
+    int wOut = (width + 2*pad - k)/stride + 1;
+
+    if (1 == stride) {
+#if 0
+      float sum[wOut];
+
+      for (int h = 0; h < wOut; ++h) {
+        float *in_temp = in + h*(width + pad);
+
+        for (int i = begin; i < end; ++i) {
+          for (int w = 0; w < wOut; ++w) {
+            sum[w] = 0;
+          }
+
+          for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
+            float c = A->values[j];
+            int off = A->colidx[j];
+
+            for (int w = 0; w < wOut; ++w) {
+              sum[w] += c*in_temp[off + w];
+            }
+          }
+
+          for (int w = 0; w < wOut; ++w) {
+            out[(i*wOut + h)*wOut + w] = sum[w];
+          }
+        }
+      }
+#else
+      float sum[wOut*wOut];
+
+      for (int i = begin; i < end; ++i) {
+        for (int w = 0; w < wOut*wOut; ++w) {
+          sum[w] = 0;
+        }
+
+        for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
+          float c = A->values[j];
+          int off = A->colidx[j];
+
+          for (int h = 0; h < wOut; ++h) {
+            for (int w = 0; w < wOut; ++w) {
+              sum[h*wOut + w] += c*in[off + h*(width + pad) + w];
+            }
+          }
+        }
+
+        for (int w = 0; w < wOut*wOut; ++w) {
+          out[i*wOut*wOut + w] = sum[w];
+        }
+      }
+#endif
+    }
+    else {
+      for (int h = 0; h < wOut; ++h) {
+        for (int w = 0; w < wOut; ++w) {
+          float *in_temp = in + stride*(h*(width + pad) + w);
+
+          for (int i = begin; i < end; ++i) {
+            float sum = 0;
+
+            for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
+              float c = A->values[j];
+              sum += c*in_temp[A->colidx[j]];
+            }
+
+            out[(i*wOut + h)*wOut + w] = sum;
+          }
+        }
+      }
+    } // stride != 1
+  }
+
+
+  CSR *A;
+  int nNonZeroKernels;
+
+  int k; // kernel size is k*k
+  int width, pad;
+};
+
 int main(int argc, char *argv[])
 {
-  if (argc < 2) {
-    fprintf(stderr, "Usage: %s matrix_in_matrix_market_format N(# of cols in feature matrix)\n", argv[0]);
+  if (argc < 6) {
+    fprintf(stderr, "Usage: %s matrix_in_matrix_market_format N(# of cols in feature matrix) (# of input channels) (image size) (stride) (pad)\n", argv[0]);
     return -1;
   }
   int N = atoi(argv[2]);
+  int nic = atoi(argv[3]);
+  int w = atoi(argv[4]);
+  int stride = atoi(argv[5]);
+  int pad = atoi(argv[6]);
 
   synk::Barrier::initializeInstance(omp_get_max_threads(), 1);
 
@@ -183,7 +750,29 @@ int main(int argc, char *argv[])
     }
   }
   int nNonZeroCols = nonZeroColumns.size();
-  printf("%s: %dx%d %d nnz (%g nnz-sparsity %g col-sparsity)\n", argv[1], A->m, A->n, A->getNnz(), (double)A->getNnz()/(A->m*A->n), (double)nNonZeroCols/A->n);
+
+  vector<int> nonZeroRows; // compress -> orig row index
+  vector<int> compressPermRow(A->m); // orig -> compress row index
+  for (int i = 0; i < A->m; ++i) {
+    if (A->rowptr[i + 1] == A->rowptr[i]) {
+      compressPermRow[i] = -1;
+    }
+    else {
+      compressPermRow[i] = nonZeroRows.size();
+      nonZeroRows.push_back(i);
+    }
+  }
+  int nNonZeroRows = nonZeroRows.size();
+  
+  KernelTensor *ATensor = new KernelTensor(A, nic, w, pad);
+
+  printf("%s: %dx%d %d nnz (%g nnz-sparsity %g col-sparsity %g row-sparsity %g kernel-sparsity)\n", argv[1], A->m, A->n, A->getNnz(), (double)A->getNnz()/(A->m*A->n), (double)nNonZeroCols/A->n, (double)nNonZeroRows/A->m, (double)ATensor->nNonZeroKernels/(A->m*nic));
+  /*for (int i = 0; i < A->m; ++i) {
+    for (int j = 0; j < nic; ++j) {
+      printf("%g ", (double)nnz_per_channel_pair[i][j]/kernelSize);
+    }
+    printf("\n");
+  }*/
 
   // Create dense version of A
   float *A_dense;
@@ -221,7 +810,7 @@ int main(int argc, char *argv[])
   const int REPEAT = 16;
 
 #ifdef NDEBUG
-  double tol = 1e-8;
+  double tol = 1e-1;
 #else
   double tol = 1e-1; // when compiled with -O0 option, FMA is not used so less accurate
 #endif
@@ -229,17 +818,37 @@ int main(int argc, char *argv[])
 
   // Initialize B and C
   float *B[NBATCH], *C[NBATCH], *C_ref[NBATCH];
+  float *B_im[NBATCH];
 
   srand(0); // determinimistic randomization
+  double im2col_time = 0;
   for (int b = 0; b < NBATCH; ++b) {
     posix_memalign((void **)&B[b], 4096, sizeof(float)*A->n*N);
     posix_memalign((void **)&C[b], 4096, sizeof(float)*A->m*N);
     posix_memalign((void **)&C_ref[b], 4096, sizeof(float)*A->m*N);
 
-    for (int j = 0; j < A->n*N; ++j) {
-      B[b][j] = j;//rand();
+    posix_memalign((void **)&B_im[b], 4096, sizeof(float)*nic*(w + 2*pad)*(w + 2*pad));
+    memset(B_im[b], 0, sizeof(float)*nic*(w + 2*pad)*(w + 2*pad));
+
+    for (int i = 0; i < nic; ++i) {
+      for (int j = 0; j < w; ++j) {
+        for (int k = 0; k < w; ++k) {
+          B_im[b][(i*(w + 1*pad) + j + pad)*(w + 1*pad) + k + pad] = (i + j + k)%17;
+        }
+      }
+      //B_im[b][i] = (i + b)%17;
+    }
+
+    for (int i = 0; i < REPEAT; ++i) {
+      flushLlc();
+
+      im2col_time -= omp_get_wtime();
+      im2col_cpu(B_im[b], nic, w, w, ATensor->k, ATensor->k, pad, pad, stride, stride, B[b], NULL, NULL);
+      im2col_time += omp_get_wtime();
     }
   }
+  im2col_time /= REPEAT*NBATCH;
+  printf("im2col_cpu takes %g\n", im2col_time);
 
   float *B_concatenated, *C_concatenated, *C_concatenated_ref;
   int N_concatenated = N*NBATCH;
@@ -280,7 +889,7 @@ int main(int argc, char *argv[])
 
         if (iter == REPEAT - 1 && b == NBATCH - 1) {
           printf("MKL_CSRMM: ");
-          printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte);
+          printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, im2col_time);
 
           // Copy reference output
           for (int b = 0; b < NBATCH; ++b) {
@@ -304,11 +913,11 @@ int main(int argc, char *argv[])
         B_concatenated, &N_concatenated,
         &beta, C_concatenated, &N_concatenated);
 
-      times[iter] = omp_get_wtime() - t;
+      times[iter] = (omp_get_wtime() - t)/NBATCH;
 
       if (iter == REPEAT - 1) {
         printf("MKL_CSRMM_concatenated: ");
-        printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+        printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
         // Copy reference output
         for (int i = 0; i < A->m*N_concatenated; ++i) {
@@ -342,11 +951,11 @@ int main(int argc, char *argv[])
       synk::Barrier::getInstance()->wait(tid);
 
       if (0 == tid) {
-        times[iter] = omp_get_wtime() - t;
+        times[iter] = (omp_get_wtime() - t)/NBATCH;
 
         if (iter == REPEAT - 1) {
           printf("MKL_CSRMM_parbatch: ");
-          printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+          printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
           for (int b = 0; b < NBATCH; ++b) {
             correctnessCheck(C_ref[b], C[b], A->m*N, tol);
@@ -383,7 +992,7 @@ int main(int argc, char *argv[])
 
           if (iter == REPEAT - 1 && b == NBATCH - 1) {
             printf("myCSRMM: ");
-            printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte);
+            printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, im2col_time);
 
             for (int b = 0; b < NBATCH; ++b) {
               correctnessCheck(C_ref[b], C[b], A->m*N, tol);
@@ -410,11 +1019,11 @@ int main(int argc, char *argv[])
       synk::Barrier::getInstance()->wait(tid);
 
       if (0 == tid) {
-        times[iter] = omp_get_wtime() - t;
+        times[iter] = (omp_get_wtime() - t)/NBATCH;
 
         if (iter == REPEAT - 1) {
           printf("myCSRMM_concatenated: ");
-          printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+          printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
           correctnessCheck(C_concatenated_ref, C_concatenated, A->m*N*NBATCH, tol);
           memset(C_concatenated, 0, sizeof(float)*A->m*N*NBATCH);
@@ -441,11 +1050,11 @@ int main(int argc, char *argv[])
       synk::Barrier::getInstance()->wait(tid);
 
       if (0 == tid) {
-        times[iter] = omp_get_wtime() - t;
+        times[iter] = (omp_get_wtime() - t)/NBATCH;
 
         if (iter == REPEAT - 1) {
           printf("myCSRMM_parbatch: ");
-          printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+          printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
           for (int b = 0; b < NBATCH; ++b) {
             correctnessCheck(C_ref[b], C[b], A->m*N, tol);
@@ -455,6 +1064,69 @@ int main(int argc, char *argv[])
       }
     }
   } // omp parallel
+
+  // Convolution without lowering
+#pragma omp parallel
+  {
+    int tid = omp_get_thread_num();
+
+    for (int iter = 0; iter < REPEAT; ++iter) {
+      flushLlc();
+
+      for (int b = 0; b < NBATCH; ++b) {
+
+        synk::Barrier::getInstance()->wait(tid);
+
+        double t = omp_get_wtime();
+
+        ATensor->conv(B_im[b], C[b], stride);
+
+        synk::Barrier::getInstance()->wait(tid);
+
+        if (0 == tid) {
+          times[iter*NBATCH + b] = omp_get_wtime() - t;
+          if (iter == REPEAT - 1 && b == NBATCH - 1) {
+            printf("conv: ");
+            printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, im2col_time);
+
+            for (int b = 0; b < NBATCH; ++b) {
+              correctnessCheck(C_ref[b], C[b], A->m*N, tol);
+              memset(C[b], 0, sizeof(float)*A->m*N);
+            }
+          }
+        }
+      }
+    }
+
+    for (int iter = 0; iter < REPEAT; ++iter) {
+      flushLlc();
+
+      synk::Barrier::getInstance()->wait(tid);
+
+      double t = omp_get_wtime();
+
+#pragma omp for nowait
+      for (int b = 0; b < NBATCH; ++b) {
+        ATensor->conv(B_im[b], C[b], stride, true);
+      }
+
+      synk::Barrier::getInstance()->wait(tid);
+
+      if (0 == tid) {
+        times[iter] = (omp_get_wtime() - t)/NBATCH;
+
+        if (iter == REPEAT - 1) {
+          printf("conv_parbatch: ");
+          printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
+
+          for (int b = 0; b < NBATCH; ++b) {
+            correctnessCheck(C_ref[b], C[b], A->m*N, tol);
+            memset(C[b], 0, sizeof(float)*A->m*N);
+          }
+        }
+      }
+    }
+  }
 
   // 3-4. Test CSRMM with reordering
   {
@@ -468,6 +1140,7 @@ int main(int argc, char *argv[])
 
     FREE(A->diagptr); // A is not a matrix for linear systems, so not necessarily all diagonals are non-zeros.
     CSR *AReordered = A->permute(colPerm, rowInversePerm);
+    CSR *ATReordered = AReordered->transpose();
     for (int i = 0; i < A->getNnz(); ++i) {
       A_values[i] = AReordered->values[i];
     }
@@ -496,6 +1169,7 @@ int main(int argc, char *argv[])
     }
 
     printf("BW is reduced by BFS reordering: %d -> %d\n", A->getBandwidth(), AReordered->getBandwidth());
+    printf("Average width is reduced by BFS reordering: (%g, %g) -> (%g, %g)\n", A->getAverageWidth(), AT->getAverageWidth(), AReordered->getBandwidth(), ATReordered->getAverageWidth());
 
     // 3. Test MKL CSRMM with reordering
     for (int iter = 0; iter < REPEAT; ++iter) {
@@ -515,7 +1189,7 @@ int main(int argc, char *argv[])
 
         if (iter == REPEAT - 1 && b == NBATCH - 1) {
           printf("MKL_CSRMM_reordered: ");
-          printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte);
+          printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, im2col_time);
 
           for (int b = 0; b < NBATCH; ++b) {
             for (int i = 0; i < A->m; ++i) {
@@ -542,11 +1216,11 @@ int main(int argc, char *argv[])
         B_concatenated_reordered, &N_concatenated,
         &beta, C_concatenated_reordered, &N_concatenated);
 
-      times[iter] = omp_get_wtime() - t;
+      times[iter] = (omp_get_wtime() - t)/NBATCH;
 
       if (iter == REPEAT - 1) {
         printf("MKL_CSRMM_reordered_concatenated: ");
-        printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+        printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
         for (int i = 0; i < A->m; ++i) {
           for (int j = 0; j < N*NBATCH; ++j) {
@@ -582,11 +1256,11 @@ int main(int argc, char *argv[])
         synk::Barrier::getInstance()->wait(tid);
 
         if (0 == tid) {
-          times[iter] = omp_get_wtime() - t;
+          times[iter] = (omp_get_wtime() - t)/NBATCH;
 
           if (iter == REPEAT - 1) {
             printf("MKL_CSRMM_reordered_parbatch: ");
-            printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+            printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
             for (int b = 0; b < NBATCH; ++b) {
               for (int i = 0; i < A->m; ++i) {
                 for (int j = 0; j < N; ++j) {
@@ -626,7 +1300,7 @@ int main(int argc, char *argv[])
 
             if (iter == REPEAT - 1 && b == NBATCH - 1) {
               printf("myCSRMM_reordered: ");
-              printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte);
+              printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, im2col_time);
 
               for (int b = 0; b < NBATCH; ++b) {
                 for (int i = 0; i < A->m; ++i) {
@@ -658,11 +1332,11 @@ int main(int argc, char *argv[])
         synk::Barrier::getInstance()->wait(tid);
 
         if (0 == tid) {
-          times[iter] = omp_get_wtime() - t;
+          times[iter] = (omp_get_wtime() - t)/NBATCH;
 
           if (iter == REPEAT - 1) {
             printf("myCSRMM_reordered_concatenated: ");
-            printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+            printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
             for (int i = 0; i < A->m; ++i) {
               for (int j = 0; j < N*NBATCH; ++j) {
@@ -696,11 +1370,11 @@ int main(int argc, char *argv[])
         synk::Barrier::getInstance()->wait(tid);
 
         if (0 == tid) {
-          times[iter] = omp_get_wtime() - t;
+          times[iter] = (omp_get_wtime() - t)/NBATCH;
 
           if (iter == REPEAT - 1) {
             printf("myCSRMM_reordered_parbatch: ");
-            printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+            printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
             for (int b = 0; b < NBATCH; ++b) {
               for (int i = 0; i < A->m; ++i) {
@@ -718,6 +1392,7 @@ int main(int argc, char *argv[])
 
     delete AT;
     delete AReordered;
+    delete ATReordered;
   }
 
   // 5. Test dense SGEMM
@@ -740,7 +1415,7 @@ int main(int argc, char *argv[])
 
         if (iter == REPEAT - 1 && b == NBATCH - 1) {
           printf("dense: ");
-          printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte);
+          printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, im2col_time);
 
           for (int b = 0; b < NBATCH; ++b) {
             correctnessCheck(C_ref[b], C[b], A->m*N, denseTol);
@@ -762,11 +1437,11 @@ int main(int argc, char *argv[])
         B_concatenated, N_concatenated,
         beta, C_concatenated, N_concatenated);
 
-      times[iter] = omp_get_wtime() - t;
+      times[iter] = (omp_get_wtime() - t)/NBATCH;
 
       if (iter == REPEAT - 1) {
         printf("dense_concatenated: ");
-        printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+        printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
         correctnessCheck(C_concatenated_ref, C_concatenated, A->m*N*NBATCH, denseTol);
         memset(C_concatenated, 0, sizeof(float)*A->m*N*NBATCH);
@@ -798,11 +1473,11 @@ int main(int argc, char *argv[])
       synk::Barrier::getInstance()->wait(tid);
 
       if (0 == tid) {
-        times[iter] = omp_get_wtime() - t;
+        times[iter] = (omp_get_wtime() - t)/NBATCH;
 
         if (iter == REPEAT - 1) {
           printf("dense_parbatch: ");
-          printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+          printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
           for (int b = 0; b < NBATCH; ++b) {
             correctnessCheck(C_ref[b], C[b], A->m*N, denseTol);
@@ -853,7 +1528,7 @@ int main(int argc, char *argv[])
 
         if (iter == REPEAT - 1 && b == NBATCH - 1) {
           printf("compressed: ");
-          printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte);
+          printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, im2col_time);
 
           for (int b = 0; b < NBATCH; ++b) {
             correctnessCheck(C_ref[b], C[b], A->m*N, denseTol);
@@ -875,11 +1550,11 @@ int main(int argc, char *argv[])
         B_concatenated_compressed, N_concatenated,
         beta, C_concatenated, N_concatenated);
 
-      times[iter] = omp_get_wtime() - t;
+      times[iter] = (omp_get_wtime() - t)/NBATCH;
 
       if (iter == REPEAT - 1) {
         printf("compressed_concatenated: ");
-        printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+        printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
         correctnessCheck(C_concatenated_ref, C_concatenated, A->m*N*NBATCH, denseTol);
         memset(C_concatenated, 0, sizeof(float)*A->m*N*NBATCH);
@@ -920,11 +1595,11 @@ int main(int argc, char *argv[])
       synk::Barrier::getInstance()->wait(tid);
 
       if (0 == tid) {
-        times[iter] = omp_get_wtime() - t;
+        times[iter] = (omp_get_wtime() - t)/NBATCH;
 
         if (iter == REPEAT - 1) {
           printf("compressed_parbatch: ");
-          printEfficiency(times, REPEAT, flop*NBATCH, denseFlop*NBATCH, byte*NBATCH);
+          printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
           for (int b = 0; b < NBATCH; ++b) {
             correctnessCheck(C_ref[b], C[b], A->m*N, denseTol);
