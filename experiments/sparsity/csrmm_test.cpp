@@ -32,9 +32,12 @@ static void printEfficiency(
 
   double t = times[REPEAT/2];
 
+  //printf(
+    //"%g sec %7.2f sparse_gflops %7.2f dense_gflops %7.2f sparse_gbps %7.2f dense_gflops(including_lowering_overhead)\n",
+    //t, flop/t/1e9, denseFlop/t/1e9, byte/t/1e9, denseFlop/(t + loweringTime)/1e9);
   printf(
-    "%g sec %7.2f sparse_gflops %7.2f dense_gflops %7.2f sparse_gbps %7.2f dense_gflops(including_lowering_overhead)\n",
-    t, flop/t/1e9, denseFlop/t/1e9, byte/t/1e9, denseFlop/(t + loweringTime)/1e9);
+    "%7.2f dense_gflops %7.2f dense_gflops(including_lowering_overhead)\n",
+    denseFlop/t/1e9, denseFlop/(t + loweringTime)/1e9);
 }
 
 /**
@@ -223,26 +226,28 @@ public :
     delete[] nnz_per_channel_pair;
 
     int *rowPerm = new int[A->m], *rowInversePerm = new int[A->m];
-    int *colPerm = new int[A->n], *colInversePerm = new int[A->n];
+    colPerm = new int[A->n], colInversePerm = new int[A->n];
 
-    CSR *AT = A->transpose();
-    bfsBipartite(*A, *AT, rowPerm, rowInversePerm, colPerm, colInversePerm);
-    FREE(A->diagptr);
-    CSR *AReordered = A->permute(colPerm, rowInversePerm);
-    CSR *ATReordered = AReordered->transpose();
+    //CSR *AT = A->transpose();
+    //bfsBipartite(*A, *AT, rowPerm, rowInversePerm, colPerm, colInversePerm);
+    //FREE(A->diagptr);
+    //int bw = A->getBandwidth();
+    //double avgW = A->getAverageWidth();
+    //A->permuteColsInPlace(colPerm);
 
-    printf("BW is reduced by BFS reordering: %d -> %d\n", A->getBandwidth(), AReordered->getBandwidth());
-    printf("Average width is reduced by BFS reordering: (%g, %g) -> (%g, %g)\n", A->getAverageWidth(), AT->getAverageWidth(), AReordered->getAverageWidth(), ATReordered->getAverageWidth());
+    //printf("BW is reduced by BFS reordering: %d -> %d\n", bw, A->getBandwidth());
+    //printf("Average width is reduced by BFS reordering: %g -> %g\n", avgW, A->getAverageWidth());
 
-    delete[] rowPerm;
-    delete[] rowInversePerm;
-    delete[] colPerm;
-    delete[] colInversePerm;
+    //delete[] rowPerm;
+    //delete[] rowInversePerm;
 
-    delete AT;
-    delete AReordered;
-    delete ATReordered;
-    //A = AReordered;
+    //delete AT;
+
+    posix_memalign((void **)&values, 4096, sizeof(float)*A->getNnz());
+    for (int i = 0; i < A->getNnz(); ++i) {
+      values[i] = A->values[i];
+    }
+    FREE(A->values);
   }
 
   ~KernelTensor() {
@@ -281,7 +286,7 @@ public :
           }
 
           for (int i = A->rowptr[i]; i < A->rowptr[i + 1]; ++i) {
-            float c = A->values[i];
+            float c = values[i];
             int off = A->colidx[i];
 
             for (int w = 0; w < WOUT; ++w) {
@@ -303,7 +308,7 @@ public :
         }
 
         for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-          float c = A->values[j];
+          float c = values[j];
           int off = A->colidx[j];
 
           for (int h = 0; h < WOUT; ++h) {
@@ -328,7 +333,7 @@ public :
             float sum = 0;
 
             for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-              float c = A->values[j];
+              float c =values[j];
               sum += c*in_temp[A->colidx[j]];
             }
 
@@ -372,12 +377,12 @@ public :
 #endif
 
       for (int i = begin; i < end; ++i) {
+#ifdef INTRINSIC
         if (A->rowptr[i + 1] == A->rowptr[i]) continue;
 
-#ifdef INTRINSIC
         // Upper half of images
         int j = A->rowptr[i];
-        __m256 c = _mm256_set1_ps(A->values[j]);
+        __m256 c = _mm256_set1_ps(values[j]);
         int off = A->colidx[j];
 
         for (int h = 0; h < WOUT/2; ++h) {
@@ -385,8 +390,11 @@ public :
           sum[h][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
         }
 
-        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
-          c = _mm256_set1_ps(A->values[j]);
+        int jbegin = A->rowptr[i] + 1;
+        int jend = A->rowptr[i] + 1 + (A->rowptr[i + 1] - A->rowptr[i] - 1);
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm256_set1_ps(values[j]);
           off = A->colidx[j];
 
           for (int h = 0; h < WOUT/2; ++h) {
@@ -403,38 +411,9 @@ public :
           }
         }
 
-#if 0
-        j = A->rowptr[i];
-        c = _mm256_set1_ps(A->values[j]);
-        off = A->colidx[j];
-
-        for (int h = 0; h < WOUT/2; ++h) {
-          //sum[h][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
-          sum[h][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
-        }
-
-        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
-          c = _mm256_set1_ps(A->values[j]);
-          off = A->colidx[j];
-
-          for (int h = 0; h < WOUT/2; ++h) {
-            //sum[h][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h][0]);
-            sum[h][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h][1]);
-          }
-        }
-
-        for (int h = 0; h < WOUT/2; ++h) {
-          //_mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h][0]);
-          _mm256_store_ps(sum_temp, sum[h][1]);
-          for (int w = 8; w < WOUT; ++w) {
-            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
-          }
-        }
-#endif
-
         // Lower half of images
         j = A->rowptr[i];
-        c = _mm256_set1_ps(A->values[j]);
+        c = _mm256_set1_ps(values[j]);
         off = A->colidx[j];
 
         for (int h = WOUT/2; h < WOUT; ++h) {
@@ -442,8 +421,8 @@ public :
           sum[h - WOUT/2][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
         }
 
-        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
-          c = _mm256_set1_ps(A->values[j]);
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm256_set1_ps(values[j]);
           off = A->colidx[j];
 
           for (int h = WOUT/2; h < WOUT; ++h) {
@@ -459,36 +438,6 @@ public :
             out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
           }
         }
-
-#if 0
-        j = A->rowptr[i];
-        c = _mm256_set1_ps(A->values[j]);
-        off = A->colidx[j];
-
-        for (int h = WOUT/2; h < WOUT; ++h) {
-          //sum[h - WOUT/2][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
-          sum[h - WOUT/2][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8));
-        }
-
-        for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
-          c = _mm256_set1_ps(A->values[j]);
-          off = A->colidx[j];
-
-          for (int h = WOUT/2; h < WOUT; ++h) {
-            //sum[h - WOUT/2][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - WOUT/2][0]);
-            sum[h - WOUT/2][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD) + 8), sum[h - WOUT/2][1]);
-          }
-        }
-
-        for (int h = WOUT/2; h < WOUT; ++h) {
-          //_mm256_store_ps(out + (i*WOUT + h)*WOUT, sum[h - WOUT/2][0]);
-          _mm256_store_ps(sum_temp, sum[h - WOUT/2][1]);
-          for (int w = 8; w < WOUT; ++w) {
-            out[i*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
-          }
-        }
-#endif
-
 #else
         for (int h = 0; h < WOUT; ++h) {
           for (int w = 0; w < WOUT; ++w) {
@@ -497,7 +446,7 @@ public :
         }
 
         for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-          float c = A->values[j];
+          float c = values[j];
           int off = A->colidx[j];
 
           for (int h = 0; h < WOUT; ++h) {
@@ -552,7 +501,7 @@ public :
 
 #ifdef INTRINSIC
         int j = A->rowptr[i];
-        __m256 c = _mm256_set1_ps(A->values[j]);
+        __m256 c = _mm256_set1_ps(values[j]);
         int off = A->colidx[j];
         for (int h = 0; h < WOUT; ++h) {
           sum[h][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in + off + h*(WIDTH + PAD)));
@@ -562,7 +511,7 @@ public :
         }
 
         for (j = A->rowptr[i] + 1; j < A->rowptr[i + 1]; ++j) {
-          c = _mm256_set1_ps(A->values[j]);
+          c = _mm256_set1_ps(values[j]);
           off = A->colidx[j];
 
           for (int h = 0; h < WOUT; ++h) {
@@ -590,7 +539,7 @@ public :
         }
 
         for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-          float c = A->values[j];
+          float c = values[j];
           int off = A->colidx[j];
 
           for (int h = 0; h < WOUT; ++h) {
@@ -643,7 +592,7 @@ public :
           }
 
           for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-            float c = A->values[j];
+            float c = values[j];
             int off = A->colidx[j];
 
             for (int w = 0; w < wOut; ++w) {
@@ -665,7 +614,7 @@ public :
         }
 
         for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-          float c = A->values[j];
+          float c = values[j];
           int off = A->colidx[j];
 
           for (int h = 0; h < wOut; ++h) {
@@ -690,7 +639,7 @@ public :
             float sum = 0;
 
             for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
-              float c = A->values[j];
+              float c = values[j];
               sum += c*in_temp[A->colidx[j]];
             }
 
@@ -703,10 +652,12 @@ public :
 
 
   CSR *A;
+  float *values;
   int nNonZeroKernels;
 
   int k; // kernel size is k*k
   int width, pad;
+  int *colPerm, *colInversePerm;
 };
 
 int main(int argc, char *argv[])
@@ -834,10 +785,9 @@ int main(int argc, char *argv[])
     for (int i = 0; i < nic; ++i) {
       for (int j = 0; j < w; ++j) {
         for (int k = 0; k < w; ++k) {
-          B_im[b][(i*(w + 1*pad) + j + pad)*(w + 1*pad) + k + pad] = (i + j + k)%17;
+          B_im[b][(i*(w + pad) + j + pad)*(w + pad) + k + pad] = (i + j + k + b)%17;
         }
       }
-      //B_im[b][i] = (i + b)%17;
     }
 
     for (int i = 0; i < REPEAT; ++i) {
@@ -849,7 +799,7 @@ int main(int argc, char *argv[])
     }
   }
   im2col_time /= REPEAT*NBATCH;
-  printf("im2col_cpu takes %g\n", im2col_time);
+  //printf("im2col_cpu takes %g\n", im2col_time);
 
   float *B_concatenated, *C_concatenated, *C_concatenated_ref;
   int N_concatenated = N*NBATCH;
