@@ -34,7 +34,7 @@ static void printEfficiency(
 
   printf(
     "%g sec %7.2f sparse_gflops %7.2f dense_gflops %7.2f sparse_gbps %7.2f dense_gflops(including_lowering_overhead)\n",
-    t, flop/t/1e9, denseFlop/t/1e9, byte/t/1e9, byte/(t + loweringTime)/1e9);
+    t, flop/t/1e9, denseFlop/t/1e9, byte/t/1e9, denseFlop/(t + loweringTime)/1e9);
 }
 
 /**
@@ -789,16 +789,17 @@ int main(int argc, char *argv[])
   posix_memalign((void **)&A_compressed, 4096, sizeof(float)*A->m*nNonZeroCols);
   memset(A_compressed, 0, sizeof(float)*A->m*nNonZeroCols);
   for (int i = 0; i < A->m; ++i) {
+    int r = compressPermRow[i];
     for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
       int c = compressPerm[A->colidx[j]];
       if (c != -1) {
-        A_compressed[i*nNonZeroCols + c] = A_values[j];
+        A_compressed[r*nNonZeroCols + c] = A_values[j];
       }
     }
   }
   for (int i = 0; i < A->m; ++i) {
     for (int j = 0; j < nNonZeroCols; ++j) {
-      assert(A_dense[i*A->n + nonZeroColumns[j]] == A_compressed[i*nNonZeroCols + j]);
+      assert(A_dense[nonZeroRows[j]*A->n + nonZeroColumns[j]] == A_compressed[i*nNonZeroCols + j]);
     }
   }
 
@@ -1087,7 +1088,7 @@ int main(int argc, char *argv[])
           times[iter*NBATCH + b] = omp_get_wtime() - t;
           if (iter == REPEAT - 1 && b == NBATCH - 1) {
             printf("conv: ");
-            printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, im2col_time);
+            printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, 0);
 
             for (int b = 0; b < NBATCH; ++b) {
               correctnessCheck(C_ref[b], C[b], A->m*N, tol);
@@ -1117,7 +1118,7 @@ int main(int argc, char *argv[])
 
         if (iter == REPEAT - 1) {
           printf("conv_parbatch: ");
-          printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
+          printEfficiency(times, REPEAT, flop, denseFlop, byte, 0);
 
           for (int b = 0; b < NBATCH; ++b) {
             correctnessCheck(C_ref[b], C[b], A->m*N, tol);
@@ -1510,6 +1511,13 @@ int main(int argc, char *argv[])
     }
   }
 
+  float *C_compressed[NBATCH];
+  for (int b = 0; b < NBATCH; ++b) {
+    posix_memalign((void **)&C_compressed[b], 4096, sizeof(float)*nNonZeroRows*N);
+  }
+  float *C_concatenated_compressed;
+  posix_memalign((void **)&C_concatenated_compressed, 4096, sizeof(float)*nNonZeroRows*N*NBATCH);
+
   {
     for (int iter = 0; iter < REPEAT; ++iter) {
       flushLlc();
@@ -1519,10 +1527,10 @@ int main(int argc, char *argv[])
 
         cblas_sgemm(
           CblasRowMajor, CblasNoTrans, CblasNoTrans, 
-          A->m, N, nNonZeroCols,
+          nNonZeroRows, N, nNonZeroCols,
           alpha, A_compressed, nNonZeroCols,
           B_compressed[b], N,
-          beta, C[b], N);
+          beta, C_compressed[b], N);
 
         times[iter*NBATCH + b] = omp_get_wtime() - t;
 
@@ -1531,6 +1539,9 @@ int main(int argc, char *argv[])
           printEfficiency(times, REPEAT*NBATCH, flop, denseFlop, byte, im2col_time);
 
           for (int b = 0; b < NBATCH; ++b) {
+            for (int i = 0; i < nNonZeroRows; ++i) {
+              memcpy(C[b] + nonZeroRows[i]*N, C_compressed[b] + i*N, sizeof(float)*N);
+            }
             correctnessCheck(C_ref[b], C[b], A->m*N, denseTol);
             memset(C[b], 0, sizeof(float)*A->m*N);
           }
@@ -1545,10 +1556,10 @@ int main(int argc, char *argv[])
 
       cblas_sgemm(
         CblasRowMajor, CblasNoTrans, CblasNoTrans, 
-        A->m, N_concatenated, nNonZeroCols,
+        nNonZeroRows, N_concatenated, nNonZeroCols,
         alpha, A_compressed, nNonZeroCols,
         B_concatenated_compressed, N_concatenated,
-        beta, C_concatenated, N_concatenated);
+        beta, C_concatenated_compressed, N_concatenated);
 
       times[iter] = (omp_get_wtime() - t)/NBATCH;
 
@@ -1556,6 +1567,9 @@ int main(int argc, char *argv[])
         printf("compressed_concatenated: ");
         printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
+        for (int i = 0; i < nNonZeroRows; ++i) {
+          memcpy(C_concatenated + nonZeroRows[i]*N_concatenated, C_concatenated_compressed + i*N_concatenated, sizeof(float)*N_concatenated);
+        }
         correctnessCheck(C_concatenated_ref, C_concatenated, A->m*N*NBATCH, denseTol);
         memset(C_concatenated, 0, sizeof(float)*A->m*N*NBATCH);
       }
@@ -1578,17 +1592,17 @@ int main(int argc, char *argv[])
 #ifdef USE_LIBXSMM
         libxsmm_sgemm(
           NULL, NULL,
-          &A->m, &N, &nNonZeroCols, 
+          &nNonZeroRows, &N, &nNonZeroCols, 
           &alpha, A_compressed, NULL,
           B_compressed[b], NULL,
-          &beta, C[b], NULL);
+          &beta, C_compressed[b], NULL);
 #else
         cblas_sgemm(
           CblasRowMajor, CblasNoTrans, CblasNoTrans, 
-          A->m, N, nNonZeroCols,
+          nNonZeroRows, N, nNonZeroCols,
           alpha, A_compressed, nNonZeroCols,
           B_compressed[b], N,
-          beta, C[b], N);
+          beta, C_compressed[b], N);
 #endif
       }
 
@@ -1602,6 +1616,9 @@ int main(int argc, char *argv[])
           printEfficiency(times, REPEAT, flop, denseFlop, byte, im2col_time);
 
           for (int b = 0; b < NBATCH; ++b) {
+            for (int i = 0; i < nNonZeroRows; ++i) {
+              memcpy(C[b] + nonZeroRows[i]*N, C_compressed[b] + i*N, sizeof(float)*N);
+            }
             correctnessCheck(C_ref[b], C[b], A->m*N, denseTol);
             memset(C[b], 0, sizeof(float)*A->m*N);
           }
