@@ -270,11 +270,12 @@ void caffe_gpu_scale<double>(const int n, const double alpha, const double *x,
 template  <typename Dtype>
 __global__ void col_group_lasso_kernel(const int n, const int c, const Dtype *x, Dtype* y){
 	int n_offset = 0;
-//BUG: THE n must be multiple times of blockDim.y in current implementation !!!
 		//initialize y
 		while(n_offset<n){
 			int idx1 = (n_offset+threadIdx.y)*gridDim.x+blockIdx.x;
-			y[idx1] = x[idx1]*x[idx1];
+			if(n_offset+threadIdx.y < n){//BUG: THE N MUST BE MULTIPLE TIMES OF BLOCKDIM.Y IN CURRENT IMPLEMENTATION !!!
+				y[idx1] = x[idx1]*x[idx1];
+			}
 			n_offset += blockDim.y;
 		}
 		__syncthreads();
@@ -303,11 +304,13 @@ __global__ void col_group_lasso_kernel(const int n, const int c, const Dtype *x,
 		n_offset=0;
 		while(n_offset<n){
 			int idx1 = (n_offset+threadIdx.y)*gridDim.x+blockIdx.x;
-		  	if(res){
-		  		y[idx1] = Dtype(sqrt(res));
-		  	}else{
-		  		y[idx1] = Dtype(0);
-		  	}
+			if(n_offset+threadIdx.y < n){
+				if(res){
+					y[idx1] = Dtype(sqrt(res));
+				}else{
+					y[idx1] = Dtype(0);
+				}
+			}
 		  	n_offset += blockDim.y;
 		}
 }
@@ -316,11 +319,13 @@ __global__ void col_group_lasso_kernel(const int n, const int c, const Dtype *x,
 template  <typename Dtype>
 __global__ void row_group_lasso_kernel(const int n, const int c, const Dtype *x, Dtype* y){
 	int c_offset = 0;
-//BUG: THE c must be multiple times of blockDim.x in current implementation !!!
+
 		//initialize y
 		while(c_offset<c){
 			int idx1 = blockIdx.y * blockDim.x + c_offset + threadIdx.x;
-			y[idx1] = x[idx1]*x[idx1];
+			if(c_offset + threadIdx.x < c){//WITHOUT THIS: THE C MUST BE MULTIPLE TIMES OF BLOCKDIM.X IN CURRENT IMPLEMENTATION !!!
+				y[idx1] = x[idx1]*x[idx1];
+			}
 			c_offset += blockDim.x;
 		}
 		__syncthreads();
@@ -349,11 +354,13 @@ __global__ void row_group_lasso_kernel(const int n, const int c, const Dtype *x,
 		c_offset=0;
 		while(c_offset<c){
 			int idx1 = blockIdx.y * blockDim.x + c_offset + threadIdx.x;
-		  	if(res){
-		  		y[idx1] = Dtype(sqrt(res));
-		  	}else{
-		  		y[idx1] = Dtype(0);
-		  	}
+			if(c_offset + threadIdx.x < c){
+				if(res){
+					y[idx1] = Dtype(sqrt(res));
+				}else{
+					y[idx1] = Dtype(0);
+				}
+			}
 		  	c_offset += blockDim.x;
 		}
 }
