@@ -312,6 +312,8 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
   }
   case Caffe::GPU: {
 #ifndef CPU_ONLY
+
+	//group lasso along columns (channels)
     if (if_group_lasso) {
     	int equivalent_ch = net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
     	int group_size = net_params[param_id]->shape(0)/net_param_groups[param_id];//number of kernels in each group
@@ -320,7 +322,7 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
 			caffe_gpu_group_lasso(group_size,
 					equivalent_ch,
 					net_params[param_id]->gpu_data()+offset,
-					temp_[param_id]->mutable_gpu_data()+offset);
+					temp_[param_id]->mutable_gpu_data()+offset, true);//get the denominator of each w
 			Dtype term;
 			caffe_gpu_asum(equivalent_ch,temp_[param_id]->gpu_data()+offset,&term);
 			regularization_term += term*local_group_decay;
@@ -331,6 +333,27 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
 					temp_[param_id]->gpu_data(),
 					net_params[param_id]->mutable_gpu_diff());
     }
+
+    //group lasso along rows (kernels)
+    if (if_group_lasso) {
+		int equivalent_ch = net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
+		int group_size = net_params[param_id]->shape(0)/net_param_groups[param_id];//number of kernels in each group
+		for (int g=0;g<net_param_groups[param_id];g++){
+			int offset = g*group_size*equivalent_ch;
+			caffe_gpu_group_lasso(group_size,
+					equivalent_ch,
+					net_params[param_id]->gpu_data()+offset,
+					temp_[param_id]->mutable_gpu_data()+offset, false);//get the denominator of each w
+			Dtype term;
+			caffe_gpu_asum(group_size,temp_[param_id]->gpu_data()+offset,&term,equivalent_ch);
+			regularization_term += term*local_group_decay;
+		}
+		caffe_gpu_div_checkzero(net_params[param_id]->count(), net_params[param_id]->gpu_data(), temp_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
+		caffe_gpu_axpy(net_params[param_id]->count(),
+					local_group_decay,
+					temp_[param_id]->gpu_data(),
+					net_params[param_id]->mutable_gpu_diff());
+	}
 #else
     NO_GPU;
 #endif

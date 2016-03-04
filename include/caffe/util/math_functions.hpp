@@ -297,7 +297,7 @@ template <typename Dtype>
 void caffe_gpu_dot(const int n, const Dtype* x, const Dtype* y, Dtype* out);
 
 template <typename Dtype>
-void caffe_gpu_asum(const int n, const Dtype* x, Dtype* y);
+void caffe_gpu_asum(const int n, const Dtype* x, Dtype* y, int stride = 1);
 
 template<typename Dtype>
 void caffe_gpu_sign(const int n, const Dtype* x, Dtype* y);
@@ -316,7 +316,7 @@ void caffe_gpu_scale(const int n, const Dtype alpha, const Dtype *x, Dtype* y);
 
 //get sqrt sum of weights within groups and copy them at each position
 template <typename Dtype>
-void caffe_gpu_group_lasso(const int n, const int c, const Dtype *x, Dtype* y);
+void caffe_gpu_group_lasso(const int n, const int c, const Dtype *x, Dtype* y, bool along_column_or_row = true);
 
 #define DEFINE_AND_INSTANTIATE_GPU_UNARY_FUNC(name, operation) \
 template<typename Dtype> \

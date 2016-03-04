@@ -243,13 +243,13 @@ void caffe_gpu_dot<double>(const int n, const double* x, const double* y,
 }
 
 template <>
-void caffe_gpu_asum<float>(const int n, const float* x, float* y) {
-  CUBLAS_CHECK(cublasSasum(Caffe::cublas_handle(), n, x, 1, y));
+void caffe_gpu_asum<float>(const int n, const float* x, float* y, int stride) {
+  CUBLAS_CHECK(cublasSasum(Caffe::cublas_handle(), n, x, stride, y));
 }
 
 template <>
-void caffe_gpu_asum<double>(const int n, const double* x, double* y) {
-  CUBLAS_CHECK(cublasDasum(Caffe::cublas_handle(), n, x, 1, y));
+void caffe_gpu_asum<double>(const int n, const double* x, double* y, int stride) {
+  CUBLAS_CHECK(cublasDasum(Caffe::cublas_handle(), n, x, stride, y));
 }
 
 template <>
@@ -266,10 +266,11 @@ void caffe_gpu_scale<double>(const int n, const double alpha, const double *x,
   CUBLAS_CHECK(cublasDscal(Caffe::cublas_handle(), n, &alpha, y, 1));
 }
 
+//Usage: dim3 block(c,1); dim3 thread(1,n); col_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
 template  <typename Dtype>
-__global__ void group_lasso_kernel(const int n, const int c, const Dtype *x, Dtype* y){
+__global__ void col_group_lasso_kernel(const int n, const int c, const Dtype *x, Dtype* y){
 	int n_offset = 0;
-
+//BUG: THE n must be multiple times of blockDim.y in current implementation !!!
 		//initialize y
 		while(n_offset<n){
 			int idx1 = (n_offset+threadIdx.y)*gridDim.x+blockIdx.x;
@@ -278,7 +279,7 @@ __global__ void group_lasso_kernel(const int n, const int c, const Dtype *x, Dty
 		}
 		__syncthreads();
 
-		//sum
+		//sum along columns
 		n_offset=0;
 		Dtype res = 0;
 		while(n_offset<n){
@@ -297,6 +298,8 @@ __global__ void group_lasso_kernel(const int n, const int c, const Dtype *x, Dty
 			n_offset += blockDim.y;
 		}
 		__syncthreads();
+
+		//copy
 		n_offset=0;
 		while(n_offset<n){
 			int idx1 = (n_offset+threadIdx.y)*gridDim.x+blockIdx.x;
@@ -309,28 +312,86 @@ __global__ void group_lasso_kernel(const int n, const int c, const Dtype *x, Dty
 		}
 }
 
+//Usage: dim3 block(1,n); dim3 thread(c,1); row_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
+template  <typename Dtype>
+__global__ void row_group_lasso_kernel(const int n, const int c, const Dtype *x, Dtype* y){
+	int c_offset = 0;
+//BUG: THE c must be multiple times of blockDim.x in current implementation !!!
+		//initialize y
+		while(c_offset<c){
+			int idx1 = blockIdx.y * blockDim.x + c_offset + threadIdx.x;
+			y[idx1] = x[idx1]*x[idx1];
+			c_offset += blockDim.x;
+		}
+		__syncthreads();
+
+		//sum along rows
+		c_offset=0;
+		Dtype res = 0;
+		while(c_offset<c){
+			int len = (c_offset + blockDim.x)<c ? blockDim.x : (c-c_offset);//valid threads to process
+			while(len/2>0){
+				if(threadIdx.x<len/2){
+					int idx1 = blockIdx.y * blockDim.x + c_offset + threadIdx.x;
+					int idx2 = blockIdx.y * blockDim.x + c_offset + threadIdx.x + (len+1)/2;
+					y[idx1] += y[idx2];
+				}
+				__syncthreads();
+				len=(len+1)/2;
+			}
+
+			res += y[blockIdx.y * blockDim.x + c_offset];
+			c_offset += blockDim.x;
+		}
+		__syncthreads();
+
+		//copy
+		c_offset=0;
+		while(c_offset<c){
+			int idx1 = blockIdx.y * blockDim.x + c_offset + threadIdx.x;
+		  	if(res){
+		  		y[idx1] = Dtype(sqrt(res));
+		  	}else{
+		  		y[idx1] = Dtype(0);
+		  	}
+		  	c_offset += blockDim.x;
+		}
+}
+
 template <>
-void caffe_gpu_group_lasso<int>(const int n, const int c, const int* x, int* y){
+void caffe_gpu_group_lasso<int>(const int n, const int c, const int* x, int* y, bool along_column_or_row){
 	NOT_IMPLEMENTED;
 }
 
 template <>
-void caffe_gpu_group_lasso<unsigned int>(const int n, const int c, const unsigned int* x, unsigned int* y){
+void caffe_gpu_group_lasso<unsigned int>(const int n, const int c, const unsigned int* x, unsigned int* y, bool along_column_or_row){
 	NOT_IMPLEMENTED;
 }
 
 template <>
-void caffe_gpu_group_lasso<float>(const int n, const int c, const float* x, float* y){
-	dim3 block(c,1);
-	dim3 thread(1,n);
-	group_lasso_kernel<<<block,thread>>>(n,c,x,y);
+void caffe_gpu_group_lasso<float>(const int n, const int c, const float* x, float* y, bool along_column_or_row){
+	if(along_column_or_row){
+		dim3 block(c,1);
+		dim3 thread(1,n);
+		col_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
+	}else{
+		dim3 block(1,n);
+		dim3 thread(c,1);
+		row_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
+	}
 }
 
 template <>
-void caffe_gpu_group_lasso<double>(const int n, const int c, const double* x, double* y){
-	dim3 block(c,1);//CAFFE_CUDA_NUM_THREADS
-	dim3 thread(1,n);
-	group_lasso_kernel<<<block,thread>>>(n,c,x,y);
+void caffe_gpu_group_lasso<double>(const int n, const int c, const double* x, double* y, bool along_column_or_row){
+	if(along_column_or_row){
+		dim3 block(c,1);
+		dim3 thread(1,n);
+		col_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
+	}else{
+		dim3 block(1,n);
+		dim3 thread(c,1);
+		row_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
+	}
 }
 
 template <typename Dtype>
