@@ -271,15 +271,22 @@ template <typename Dtype>
 Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
   const vector<Blob<Dtype>*>& net_params = this->net_->learnable_params();
   const vector<int >& net_param_groups = this->net_->param_groups();
-  const vector<float>& net_params_group_weight_decay =
-  	             this->net_->params_group_weight_decay();
-  Dtype group_weight_decay = this->param_.group_weight_decay();
-  Dtype local_group_decay = group_weight_decay * net_params_group_weight_decay[param_id];
+  const vector<float>& net_params_breadth_decay_multi =
+  	             this->net_->params_breadth_decay();
+  const vector<float>& net_params_kernel_shape_decay_multi =
+  	             this->net_->params_kernel_shape_decay();
+  Dtype local_breadth_decay = this->param_.breadth_decay() * net_params_breadth_decay_multi[param_id];
+  Dtype local_kernel_shape_decay = this->param_.kernel_shape_decay() * net_params_kernel_shape_decay_multi[param_id];
   Dtype regularization_term = Dtype(0);
-  bool if_group_lasso = local_group_decay && (net_params[param_id]->num_axes()==4 && (net_params[param_id]->shape(2)>=1) && (net_params[param_id]->shape(3)>=1) );
+  bool if_learn_kernel_shape = local_kernel_shape_decay && (net_params[param_id]->num_axes()==4);
+  bool if_learn_breadth = local_breadth_decay && (net_params[param_id]->num_axes()==4 );
   switch (Caffe::mode()) {
   case Caffe::CPU: {
-    if (if_group_lasso) {
+	if(if_learn_breadth){
+		LOG(FATAL)<< "Unsupported in CPU mode: learn breadth of kernels with group lasso";
+	}
+
+    if (if_learn_kernel_shape) {
       if((net_params[param_id]->shape(2)>1) || (net_params[param_id]->shape(3)>1) || net_param_groups[param_id]>1){
     	  LOG(FATAL)<< "Unsupported in CPU mode: group lasso for convolutional layers with kernel > 1x1 or with more than 1 kernel bank";
       }
@@ -292,7 +299,7 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
 		  regularization_term += tmp;
 		  temp_[param_id]->mutable_cpu_data()[c] = tmp;
       }
-      regularization_term *= local_group_decay;
+      regularization_term *= local_breadth_decay;
       //copy memory
       for(int num=1;num<net_params[param_id]->shape(0);num++){
     	  memcpy(temp_[param_id]->mutable_cpu_data()+num*net_params[param_id]->shape(1),
@@ -304,7 +311,7 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
     		  temp_[param_id]->cpu_data(),
     		  temp_[param_id]->mutable_cpu_data());
       caffe_axpy(net_params[param_id]->count(),
-    		  	  local_group_decay,
+    		  	  local_breadth_decay,
     		  	  temp_[param_id]->cpu_data(),
                   net_params[param_id]->mutable_cpu_diff());
     }
@@ -314,7 +321,7 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
 #ifndef CPU_ONLY
 
 	//group lasso along columns (channels)
-    if (if_group_lasso) {
+    if (if_learn_kernel_shape) {
     	int equivalent_ch = net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
     	int group_size = net_params[param_id]->shape(0)/net_param_groups[param_id];//number of kernels in each group
     	for (int g=0;g<net_param_groups[param_id];g++){
@@ -325,17 +332,17 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
 					temp_[param_id]->mutable_gpu_data()+offset, true);//get the denominator of each w
 			Dtype term;
 			caffe_gpu_asum(equivalent_ch,temp_[param_id]->gpu_data()+offset,&term);
-			regularization_term += term*local_group_decay;
+			regularization_term += term*local_kernel_shape_decay;
     	}
     	caffe_gpu_div_checkzero(net_params[param_id]->count(), net_params[param_id]->gpu_data(), temp_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
 		caffe_gpu_axpy(net_params[param_id]->count(),
-					local_group_decay,
+					local_kernel_shape_decay,
 					temp_[param_id]->gpu_data(),
 					net_params[param_id]->mutable_gpu_diff());
     }
 
     //group lasso along rows (kernels)
-    if (if_group_lasso) {
+    if (if_learn_breadth) {
 		int equivalent_ch = net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
 		int group_size = net_params[param_id]->shape(0)/net_param_groups[param_id];//number of kernels in each group
 		for (int g=0;g<net_param_groups[param_id];g++){
@@ -346,11 +353,11 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
 					temp_[param_id]->mutable_gpu_data()+offset, false);//get the denominator of each w
 			Dtype term;
 			caffe_gpu_asum(group_size,temp_[param_id]->gpu_data()+offset,&term,equivalent_ch);
-			regularization_term += term*local_group_decay;
+			regularization_term += term*local_breadth_decay;
 		}
 		caffe_gpu_div_checkzero(net_params[param_id]->count(), net_params[param_id]->gpu_data(), temp_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
 		caffe_gpu_axpy(net_params[param_id]->count(),
-					local_group_decay,
+					local_breadth_decay,
 					temp_[param_id]->gpu_data(),
 					net_params[param_id]->mutable_gpu_diff());
 	}

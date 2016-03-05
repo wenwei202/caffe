@@ -228,7 +228,8 @@ message SolverParameter {
   // If false, don't save a snapshot after training finishes.
   optional bool snapshot_after_train = 28 [default = true];
   
-  optional float group_weight_decay = 41 [default = 0.0]; // The weight decay of group lasso contraint.
+  optional float breadth_decay = 41 [default = 0.0]; // The group weight decay on each kernel.
+  optional float kernel_shape_decay = 42 [default = 0.0]; // The group weight decay on all elemements having the same coordinate in each kernel
   
 
   // DEPRECATED: old solver enum types, use string instead
@@ -306,7 +307,8 @@ message ParamSpec {
   optional float decay_mult = 4 [default = 1.0];
   
   // The multiplier on the global group lasso weight decay for this parameter.
-  optional float group_decay_mult = 5 [default = 0.0];
+  optional float breadth_decay_mult = 5 [default = 1.0];
+  optional float kernel_shape_decay_mult = 6 [default = 1.0];
 }
 
 // NOTE
