@@ -379,26 +379,28 @@ template <>
 void caffe_gpu_group_lasso<float>(const int n, const int c, const float* x, float* y, bool along_column_or_row){
 	if(along_column_or_row){
 		dim3 block(c,1);
-		dim3 thread(1,n);
+		dim3 thread(1,n>CAFFE_CUDA_NUM_THREADS ? CAFFE_CUDA_NUM_THREADS:n );//CAFFE_CUDA_NUM_THREADS
 		col_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
 	}else{
 		dim3 block(1,n);
-		dim3 thread(c,1);
+		dim3 thread(c>CAFFE_CUDA_NUM_THREADS ? CAFFE_CUDA_NUM_THREADS:c, 1);//CAFFE_CUDA_NUM_THREADS
 		row_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
 	}
+	CUDA_POST_KERNEL_CHECK;
 }
 
 template <>
 void caffe_gpu_group_lasso<double>(const int n, const int c, const double* x, double* y, bool along_column_or_row){
 	if(along_column_or_row){
 		dim3 block(c,1);
-		dim3 thread(1,n);
+		dim3 thread(1,n>CAFFE_CUDA_NUM_THREADS ? CAFFE_CUDA_NUM_THREADS:n );//CAFFE_CUDA_NUM_THREADS
 		col_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
 	}else{
 		dim3 block(1,n);
-		dim3 thread(c,1);
+		dim3 thread(c>CAFFE_CUDA_NUM_THREADS ? CAFFE_CUDA_NUM_THREADS:c, 1);//CAFFE_CUDA_NUM_THREADS
 		row_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
 	}
+	CUDA_POST_KERNEL_CHECK;
 }
 
 template <typename Dtype>
