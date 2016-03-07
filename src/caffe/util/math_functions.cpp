@@ -601,6 +601,37 @@ void caffe_cpu_if_all_zero(const int M, const int N, const float *x, int* y, boo
 template
 void caffe_cpu_if_all_zero(const int M, const int N, const double *x, int* y, bool dimen);
 
+template <typename Dtype>
+Dtype caffe_cpu_group_sparsity(const int M, const int N, const Dtype *x, bool dimen){
+	Dtype sparsity = (Dtype)0;
+	int counter = 0;
+	if(dimen){//along columns
+		for(int col=0; col<N; ++col){
+			counter++;
+			for(int row=0; row<M; row++){
+				if(x[col+row*N]!=0){
+					counter--;
+					break;
+				}
+			}
+		}
+		sparsity = (Dtype)counter/(Dtype)N;
+	}else{//along rows
+		for(int row=0; row<M; ++row){
+			counter++;
+			for(int col=0; col<N; col++){
+				if(x[col+row*N]!=0){
+					counter--;
+					break;
+				}
+			}
+		}
+		sparsity = (Dtype)counter/(Dtype)M;
+	}
+	return sparsity;
+}
+template float caffe_cpu_group_sparsity(const int M, const int N, const float *x, bool dimen);
+template double caffe_cpu_group_sparsity(const int M, const int N, const double *x, bool dimen);
 
 template <typename Dtype>
 void caffe_cpu_del_zero_cols(const int M, const int N, const Dtype *x, Dtype *y, int * left_cols, const int* mask){

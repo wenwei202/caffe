@@ -110,12 +110,32 @@ void SGDSolver<Dtype>::ApplyUpdate() {
 		  this->net_->params_weight_decay();
 	Dtype weight_decay = this->param_.weight_decay();
 	ostringstream sparsity_msg_stream;
-	sparsity_msg_stream << "    Sparsity %: ";
+	sparsity_msg_stream << "    Element Sparsity %: ";
 	for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
 		Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
 		if(local_decay) sparsity_msg_stream << GetSparsity(param_id) <<" ";
+		else sparsity_msg_stream << -1 <<" ";
 	}
 	LOG(INFO) << sparsity_msg_stream.str();
+
+	sparsity_msg_stream.str("");
+	sparsity_msg_stream << "     Column Sparsity %: ";
+	for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
+		Dtype local_decay = this->param_.kernel_shape_decay() * this->net_->params_kernel_shape_decay()[param_id];
+		if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, true) <<" ";
+		else sparsity_msg_stream << -1 <<" ";
+	}
+	LOG(INFO) << sparsity_msg_stream.str();
+
+	sparsity_msg_stream.str("");
+	sparsity_msg_stream << "        Row Sparsity %: ";
+	for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
+		Dtype local_decay = this->param_.breadth_decay() * this->net_->params_breadth_decay()[param_id];
+		if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, false) <<" ";
+		else sparsity_msg_stream << -1 <<" ";
+	}
+	LOG(INFO) << sparsity_msg_stream.str();
+
   }
 
   ClipGradients();
@@ -265,6 +285,16 @@ Dtype SGDSolver<Dtype>::GetSparsity(int param_id) {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
   return sparsity;
+}
+
+template <typename Dtype>
+Dtype SGDSolver<Dtype>::GetGroupSparsity(int param_id, bool dimen) {
+  const vector<Blob<Dtype>*>& net_params = this->net_->learnable_params();
+  return 100*caffe_cpu_group_sparsity(net_params[param_id]->shape(0),
+		  net_params[param_id]->count()/net_params[param_id]->shape(0),
+		  net_params[param_id]->cpu_data(),
+		  dimen
+		  );
 }
 
 template <typename Dtype>

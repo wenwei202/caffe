@@ -30,6 +30,7 @@ class SGDSolver : public Solver<Dtype> {
   virtual void Normalize(int param_id);
   virtual Dtype Regularize(int param_id);
   virtual Dtype GetSparsity(int param_id);
+  virtual Dtype GetGroupSparsity(int param_id, bool dimen=true);
   virtual Dtype GroupLassoRegularize(int param_id);
   virtual void ComputeUpdateValue(int param_id, Dtype rate);
   virtual void ClipGradients();
