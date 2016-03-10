@@ -42,6 +42,8 @@ DEFINE_bool(encoded, false,
     "When this option is on, the encoded image will be save in datum");
 DEFINE_string(encode_type, "",
     "Optional: What type should we encode the image as ('png','jpg',...).");
+DEFINE_bool(crop, false,
+    "When this option is on, scale and crop central portion of images");
 
 int main(int argc, char** argv) {
 #ifdef USE_OPENCV
@@ -70,6 +72,7 @@ int main(int argc, char** argv) {
   const bool check_size = FLAGS_check_size;
   const bool encoded = FLAGS_encoded;
   const string encode_type = FLAGS_encode_type;
+  const bool is_crop = FLAGS_crop;
 
   std::ifstream infile(argv[2]);
   std::vector<std::pair<std::string, int> > lines;
@@ -117,7 +120,7 @@ int main(int argc, char** argv) {
     }
     status = ReadImageToDatum(root_folder + lines[line_id].first,
         lines[line_id].second, resize_height, resize_width, is_color,
-        enc, &datum);
+        enc, &datum, is_crop);
     if (status == false) continue;
     if (check_size) {
       if (!data_size_initialized) {

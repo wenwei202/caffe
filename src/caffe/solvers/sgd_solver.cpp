@@ -113,8 +113,8 @@ void SGDSolver<Dtype>::ApplyUpdate() {
 	sparsity_msg_stream << "    Element Sparsity %: ";
 	for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
 		Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-		if(local_decay) sparsity_msg_stream << GetSparsity(param_id) <<" ";
-		else sparsity_msg_stream << -1 <<" ";
+		if(local_decay) sparsity_msg_stream << GetSparsity(param_id) <<"\t";
+		else sparsity_msg_stream << -1 <<"\t";
 	}
 	LOG(INFO) << sparsity_msg_stream.str();
 
@@ -122,8 +122,8 @@ void SGDSolver<Dtype>::ApplyUpdate() {
 	sparsity_msg_stream << "     Column Sparsity %: ";
 	for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
 		Dtype local_decay = this->param_.kernel_shape_decay() * this->net_->params_kernel_shape_decay()[param_id];
-		if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, true) <<" ";
-		else sparsity_msg_stream << -1 <<" ";
+		if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, true) <<"\t";
+		else sparsity_msg_stream << -1 <<"\t";
 	}
 	LOG(INFO) << sparsity_msg_stream.str();
 
@@ -131,8 +131,8 @@ void SGDSolver<Dtype>::ApplyUpdate() {
 	sparsity_msg_stream << "        Row Sparsity %: ";
 	for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
 		Dtype local_decay = this->param_.breadth_decay() * this->net_->params_breadth_decay()[param_id];
-		if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, false) <<" ";
-		else sparsity_msg_stream << -1 <<" ";
+		if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, false) <<"\t";
+		else sparsity_msg_stream << -1 <<"\t";
 	}
 	LOG(INFO) << sparsity_msg_stream.str();
 

@@ -71,7 +71,7 @@ void WriteProtoToBinaryFile(const Message& proto, const char* filename) {
 
 #ifdef USE_OPENCV
 cv::Mat ReadImageToCVMat(const string& filename,
-    const int height, const int width, const bool is_color) {
+    const int height, const int width, const bool is_color, const bool crop) {
   cv::Mat cv_img;
   int cv_read_flag = (is_color ? CV_LOAD_IMAGE_COLOR :
     CV_LOAD_IMAGE_GRAYSCALE);
@@ -81,7 +81,33 @@ cv::Mat ReadImageToCVMat(const string& filename,
     return cv_img_origin;
   }
   if (height > 0 && width > 0) {
-    cv::resize(cv_img_origin, cv_img, cv::Size(width, height));
+    if(crop){
+    	//First isotropically-rescale
+    	//Then crop the central region
+    	cv::Size img_s = cv_img_origin.size();
+    	double src_hw_rate = (double)img_s.height/(double)img_s.width;
+    	double dst_hw_rate = (double)height/(double)width;
+    	int scaled_height;
+    	int scaled_width;
+    	if(dst_hw_rate>src_hw_rate){
+    		scaled_height = height;
+    		scaled_width = scaled_height/src_hw_rate;
+    		//scale
+    		cv::resize(cv_img_origin, cv_img, cv::Size(scaled_width, scaled_height));
+    		//crop
+    		cv_img = cv_img(cv::Rect((scaled_width-width)/2,0,width,height));
+    	}else{
+    		scaled_width = width;
+    		scaled_height = scaled_width*src_hw_rate;
+    		//scale
+    		cv::resize(cv_img_origin, cv_img, cv::Size(scaled_width, scaled_height));
+    		//crop
+    		cv_img = cv_img(cv::Rect(0,(scaled_height-height)/2,width,height));
+    	}
+
+    }else{
+    	cv::resize(cv_img_origin, cv_img, cv::Size(width, height));
+    }
   } else {
     cv_img = cv_img_origin;
   }
@@ -118,8 +144,8 @@ static bool matchExt(const std::string & fn,
 
 bool ReadImageToDatum(const string& filename, const int label,
     const int height, const int width, const bool is_color,
-    const std::string & encoding, Datum* datum) {
-  cv::Mat cv_img = ReadImageToCVMat(filename, height, width, is_color);
+    const std::string & encoding, Datum* datum, const bool crop) {
+  cv::Mat cv_img = ReadImageToCVMat(filename, height, width, is_color, crop);
   if (cv_img.data) {
     if (encoding.size()) {
       if ( (cv_img.channels() == 3) == is_color && !height && !width &&
