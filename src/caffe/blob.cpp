@@ -40,7 +40,9 @@ void Blob<Dtype>::Reshape(const vector<int>& shape) {
   if (count_ > capacity_) {
     capacity_ = count_;
     data_.reset(new SyncedMemory(capacity_ * sizeof(Dtype)));
+    connectivity_.reset(new SyncedMemory(capacity_ * sizeof(Dtype)));
     diff_.reset(new SyncedMemory(capacity_ * sizeof(Dtype)));
+    InitializeConnectivity();
   }
 }
 
@@ -99,6 +101,18 @@ const Dtype* Blob<Dtype>::gpu_data() const {
 }
 
 template <typename Dtype>
+const Dtype* Blob<Dtype>::cpu_connectivity() const {
+  CHECK(connectivity_);
+  return (const Dtype*)connectivity_->cpu_data();
+}
+
+template <typename Dtype>
+const Dtype* Blob<Dtype>::gpu_connectivity() const {
+  CHECK(connectivity_);
+  return (const Dtype*)connectivity_->gpu_data();
+}
+
+template <typename Dtype>
 const Dtype* Blob<Dtype>::cpu_diff() const {
   CHECK(diff_);
   return (const Dtype*)diff_->cpu_data();
@@ -135,9 +149,22 @@ Dtype* Blob<Dtype>::mutable_gpu_diff() {
 }
 
 template <typename Dtype>
+Dtype* Blob<Dtype>::mutable_cpu_connectivity() {
+  CHECK(connectivity_);
+  return static_cast<Dtype*>(connectivity_->mutable_cpu_data());
+}
+
+template <typename Dtype>
+Dtype* Blob<Dtype>::mutable_gpu_connectivity() {
+  CHECK(connectivity_);
+  return static_cast<Dtype*>(connectivity_->mutable_gpu_data());
+}
+
+template <typename Dtype>
 void Blob<Dtype>::ShareData(const Blob& other) {
   CHECK_EQ(count_, other.count());
   data_ = other.data();
+  connectivity_ = other.connectivity();
 }
 
 template <typename Dtype>
@@ -158,6 +185,9 @@ void Blob<Dtype>::Update() {
   switch (data_->head()) {
   case SyncedMemory::HEAD_AT_CPU:
     // perform computation on CPU
+	caffe_cpu_eltwise_multi(count_,
+			static_cast<const Dtype*>(connectivity_->cpu_data()),
+			static_cast<Dtype*>(diff_->mutable_cpu_data()) );
     caffe_axpy<Dtype>(count_, Dtype(-1),
         static_cast<const Dtype*>(diff_->cpu_data()),
         static_cast<Dtype*>(data_->mutable_cpu_data()));
@@ -166,6 +196,9 @@ void Blob<Dtype>::Update() {
   case SyncedMemory::SYNCED:
 #ifndef CPU_ONLY
     // perform computation on GPU
+	caffe_gpu_eltwise_multi(count_,
+			static_cast<const Dtype*>(connectivity_->gpu_data()),
+			static_cast<Dtype*>(diff_->mutable_gpu_data()) );
     caffe_gpu_axpy<Dtype>(count_, Dtype(-1),
         static_cast<const Dtype*>(diff_->gpu_data()),
         static_cast<Dtype*>(data_->mutable_gpu_data()));
@@ -182,7 +215,7 @@ void Blob<Dtype>::Update() {
 template <typename Dtype>
 void Blob<Dtype>::Zerout() {
   // Zero out elements whose values are smaller than thre.
-  Dtype thre = Dtype(0.0001);
+  Dtype thre = Dtype(ZEROUT_THRESHOLD);
   Dtype* data_ptr_tmp = 0;
   switch (data_->head()) {
   case SyncedMemory::HEAD_AT_CPU:
@@ -215,6 +248,32 @@ void Blob<Dtype>::Zerout() {
   default:
     LOG(FATAL) << "Syncedmem not initialized.";
   }
+}
+
+template <typename Dtype>
+void Blob<Dtype>::Disconnect() {
+	this->Zerout();
+	switch (Caffe::mode()) {
+		case Caffe::CPU: {
+			  caffe_cpu_if_nonzerout(count_,
+					  static_cast<const Dtype*>(data_->cpu_data()),
+					  static_cast<Dtype*>(connectivity_->mutable_cpu_data()));
+			  break;
+		}
+		case Caffe::GPU: {
+#ifndef CPU_ONLY
+			  caffe_gpu_if_nonzerout(count_,
+					  static_cast<const Dtype*>(data_->gpu_data()),
+					  static_cast<Dtype*>(connectivity_->mutable_gpu_data()));
+#else
+		  NO_GPU;
+#endif
+			break;
+		}
+		default:
+		  LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+	}
+
 }
 
 template <typename Dtype>
@@ -462,6 +521,12 @@ bool Blob<Dtype>::ShapeEquals(const BlobProto& other) {
 }
 
 template <typename Dtype>
+void Blob<Dtype>::InitializeConnectivity(Dtype val){
+    CHECK(connectivity_);
+    caffe_set(count_, val, static_cast<Dtype*>(connectivity_->mutable_cpu_data()));
+}
+
+template <typename Dtype>
 void Blob<Dtype>::CopyFrom(const Blob& source, bool copy_diff, bool reshape) {
   if (source.count() != count_ || source.shape() != shape_) {
     if (reshape) {
@@ -478,6 +543,8 @@ void Blob<Dtype>::CopyFrom(const Blob& source, bool copy_diff, bool reshape) {
     } else {
       caffe_copy(count_, source.gpu_data(),
           static_cast<Dtype*>(data_->mutable_gpu_data()));
+      caffe_copy(count_, source.gpu_connectivity(),
+                static_cast<Dtype*>(connectivity_->mutable_gpu_data()));
     }
     break;
   case Caffe::CPU:
@@ -487,6 +554,8 @@ void Blob<Dtype>::CopyFrom(const Blob& source, bool copy_diff, bool reshape) {
     } else {
       caffe_copy(count_, source.cpu_data(),
           static_cast<Dtype*>(data_->mutable_cpu_data()));
+      caffe_copy(count_, source.cpu_connectivity(),
+                static_cast<Dtype*>(connectivity_->mutable_cpu_data()));
     }
     break;
   default:

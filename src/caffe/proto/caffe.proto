@@ -340,6 +340,10 @@ message LayerParameter {
   // The size must be either 0 or equal to the number of bottoms.
   repeated bool propagate_down = 11;
 
+  // Specifies if disconnecting connections whose weights are recovered/initialized and frozen as zeros. 
+  // Used for fine-tuning
+  optional bool disconnect = 12 [default = false];
+  
   // Rules controlling whether and when a layer is included in the network,
   // based on the current NetState.  You may specify a non-zero number of rules
   // to include OR exclude, but not both.  If no include or exclude rules are

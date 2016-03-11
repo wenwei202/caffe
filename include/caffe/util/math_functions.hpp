@@ -143,11 +143,16 @@ inline int8_t caffe_sign(Dtype val) {
 }
 template<typename Dtype>
 inline int8_t caffe_if_zerout(Dtype val) {
-	Dtype thre = Dtype(0.0001);
+	Dtype thre = Dtype(ZEROUT_THRESHOLD);
 	if(val<thre && val>(-thre)) return 1;
 	else return 0;
 }
-
+template<typename Dtype>
+inline int8_t caffe_if_nonzerout(Dtype val) {
+	Dtype thre = Dtype(ZEROUT_THRESHOLD);
+	if(val>=thre || val<=(-thre)) return 1;
+	else return 0;
+}
 // The following two macros are modifications of DEFINE_VSL_UNARY_FUNC
 //   in include/caffe/util/mkl_alternate.hpp authored by @Rowland Depp.
 // Please refer to commit 7e8ef25c7 of the boost-eigen branch.
@@ -166,6 +171,8 @@ inline int8_t caffe_if_zerout(Dtype val) {
 // output is 1 for the positives, 0 for zero, and -1 for the negatives
 DEFINE_CAFFE_CPU_UNARY_FUNC(sign, y[i] = caffe_sign<Dtype>(x[i]));
 DEFINE_CAFFE_CPU_UNARY_FUNC(if_zerout, y[i] = caffe_if_zerout<Dtype>(x[i]));
+DEFINE_CAFFE_CPU_UNARY_FUNC(if_nonzerout, y[i] = caffe_if_nonzerout<Dtype>(x[i]));
+DEFINE_CAFFE_CPU_UNARY_FUNC(eltwise_multi, y[i] = y[i]*x[i]);
 
 // This returns a nonzero value if the input has its sign bit set.
 // The name sngbit is meant to avoid conflicts with std::signbit in the macro.
@@ -310,6 +317,12 @@ template<typename Dtype>
 void caffe_gpu_if_zerout(const int n, const Dtype* x, Dtype* y);
 
 template<typename Dtype>
+void caffe_gpu_if_nonzerout(const int n, const Dtype* x, Dtype* y);
+
+template<typename Dtype>
+void caffe_gpu_eltwise_multi(const int n, const Dtype* x, Dtype* y);
+
+template<typename Dtype>
 void caffe_gpu_sgnbit(const int n, const Dtype* x, Dtype* y);
 
 template <typename Dtype>
@@ -328,6 +341,14 @@ __global__ void name##_kernel(const int n, const Dtype* x, Dtype* y) { \
   CUDA_KERNEL_LOOP(index, n) { \
     operation; \
   } \
+} \
+template <> \
+void caffe_gpu_##name<int>(const int n, const int* x, int* y) { \
+	NOT_IMPLEMENTED; \
+} \
+template <> \
+void caffe_gpu_##name<unsigned int>(const int n, const unsigned int* x, unsigned int* y) { \
+	NOT_IMPLEMENTED; \
 } \
 template <> \
 void caffe_gpu_##name<float>(const int n, const float* x, float* y) { \

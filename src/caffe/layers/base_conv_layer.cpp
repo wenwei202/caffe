@@ -44,43 +44,50 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
     	LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
     }
 #else
-    	LOG(WARNING)<<"Sparse Math BLAS is unsupported without MKL (when it's on CPU mode)!";
+    LOG(WARNING)<<"Sparse Math BLAS is unsupported without MKL (when it's on CPU mode)!";
 #endif
 
-    	// is_concatenating_weights_features_ has higher priority than is_sparse_format_weights_
-    	//get the all-zero column mask for weight matrix
-    	//caffe_cpu_if_all_zero(const int M, const int N, const Dtype *x, int* y);
-    	//const int M = this->blobs_[0]->shape(0)/group_;
-		//const int N = this->blobs_[0]->count(1,4);
-		//const int weight_offset = this->blobs_[0]->count()/group_;
-		//const int col_buf_offset = N/group_;
-		for (int g = 0; g < group_; ++g) {
-			caffe_cpu_if_all_zero(this->blobs_[0]->shape(0)/group_,
-					this->blobs_[0]->count(1,4),
-					this->blobs_[0]->cpu_data() + this->blobs_[0]->count()/group_ * g,
-					col_buf_mask_.mutable_cpu_data() + this->blobs_[0]->count(1,4) * g);
+	// is_concatenating_weights_features_ has higher priority than is_sparse_format_weights_
+	//get the all-zero column mask for weight matrix
+	//caffe_cpu_if_all_zero(const int M, const int N, const Dtype *x, int* y);
+	//const int M = this->blobs_[0]->shape(0)/group_;
+	//const int N = this->blobs_[0]->count(1,4);
+	//const int weight_offset = this->blobs_[0]->count()/group_;
+	//const int col_buf_offset = N/group_;
+	for (int g = 0; g < group_; ++g) {
+		caffe_cpu_if_all_zero(this->blobs_[0]->shape(0)/group_,
+				this->blobs_[0]->count(1,4),
+				this->blobs_[0]->cpu_data() + this->blobs_[0]->count()/group_ * g,
+				col_buf_mask_.mutable_cpu_data() + this->blobs_[0]->count(1,4) * g);
+	}
+	int masked_col_num = 0;
+	for(int idx=0; idx<col_buf_mask_.count();++idx){
+		if(col_buf_mask_.cpu_data()[idx]){
+			masked_col_num++;
 		}
-		int masked_col_num = 0;
-	    for(int idx=0; idx<col_buf_mask_.count();++idx){
-		    if(col_buf_mask_.cpu_data()[idx]){
-			    masked_col_num++;
-		    }
-	    }
-	    Dtype group_sparsity = (Dtype)masked_col_num/(Dtype)col_buf_mask_.count();
-	    LOG(INFO) << Layer<Dtype>::layer_param().name() << " column sparsity: " << group_sparsity;
-	    is_concatenating_weights_features_ = group_sparsity > 0.05;
+	}
+	Dtype group_sparsity = (Dtype)masked_col_num/(Dtype)col_buf_mask_.count();
+	LOG(INFO) << Layer<Dtype>::layer_param().name() << " column sparsity: " << group_sparsity;
+	is_concatenating_weights_features_ = group_sparsity > 0.05;
 
-	    // compress weight matrix
-	    int left_cols = 0;
-	    for (int g = 0; g < group_; ++g) {
-			caffe_cpu_del_zero_cols(conv_out_channels_ /group_,
-				  kernel_dim_ ,
-				  this->blobs_[0]->cpu_data() + weight_offset_ * g,
-				  squeezed_weight_buffer_.mutable_cpu_data() + weight_offset_ * g,
-				  &left_cols,
-				  col_buf_mask_.cpu_data() + kernel_dim_ * g );
-			left_columns_.push_back(left_cols);
-	    }
+	// compress weight matrix
+	int left_cols = 0;
+	for (int g = 0; g < group_; ++g) {
+		caffe_cpu_del_zero_cols(conv_out_channels_ /group_,
+			  kernel_dim_ ,
+			  this->blobs_[0]->cpu_data() + weight_offset_ * g,
+			  squeezed_weight_buffer_.mutable_cpu_data() + weight_offset_ * g,
+			  &left_cols,
+			  col_buf_mask_.cpu_data() + kernel_dim_ * g );
+		left_columns_.push_back(left_cols);
+	}
+
+	//get the mask for connections
+	if( layerparam.disconnect() ){
+		LOG(INFO)<<"zero weights of "<<layerparam.name()<<" are frozen";
+		this->blobs_[0]->Disconnect();
+	}
+
 }
 
 template <typename Dtype>
@@ -259,7 +266,6 @@ void BaseConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
   is_concatenating_weights_features_ = false;
   dense_feature_map_mask_.Reshape(1,1,1,channels_);
   squeezed_weight_buffer_.Reshape(this->blobs_[0]->shape(0),this->blobs_[0]->shape(1),this->blobs_[0]->shape(2),this->blobs_[0]->shape(3));
-  //weight_offset_ = conv_out_channels_ * kernel_dim_ / group_ ;
 }
 
 template <typename Dtype>

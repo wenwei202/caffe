@@ -194,6 +194,7 @@ class BaseConvolutionLayer : public Layer<Dtype> {
     Blob<int> col_buf_mask_;
     vector<int> left_columns_;//the number of left columns of weight matrix for each group
     Blob<Dtype> squeezed_weight_buffer_;
+    //Blob<Dtype> connectivity_mask_;//0.0 means the connection is off, 1.0 means ON
 };
 
 }  // namespace caffe
