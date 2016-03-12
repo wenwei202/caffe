@@ -251,27 +251,37 @@ void Blob<Dtype>::Zerout() {
 }
 
 template <typename Dtype>
-void Blob<Dtype>::Disconnect() {
+void Blob<Dtype>::Disconnect(DisconnectMode mode,int group) {
 	this->Zerout();
-	switch (Caffe::mode()) {
-		case Caffe::CPU: {
-			  caffe_cpu_if_nonzerout(count_,
-					  static_cast<const Dtype*>(data_->cpu_data()),
-					  static_cast<Dtype*>(connectivity_->mutable_cpu_data()));
-			  break;
-		}
-		case Caffe::GPU: {
+	if(mode == ELTWISE){
+		switch (Caffe::mode()) {
+			case Caffe::CPU: {
+				  caffe_cpu_if_nonzerout(count_,
+						  static_cast<const Dtype*>(data_->cpu_data()),
+						  static_cast<Dtype*>(connectivity_->mutable_cpu_data()));
+				  break;
+			}
+			case Caffe::GPU: {
 #ifndef CPU_ONLY
-			  caffe_gpu_if_nonzerout(count_,
-					  static_cast<const Dtype*>(data_->gpu_data()),
-					  static_cast<Dtype*>(connectivity_->mutable_gpu_data()));
+				  caffe_gpu_if_nonzerout(count_,
+						  static_cast<const Dtype*>(data_->gpu_data()),
+						  static_cast<Dtype*>(connectivity_->mutable_gpu_data()));
 #else
-		  NO_GPU;
+			  NO_GPU;
 #endif
-			break;
+				break;
+			}
+			default:
+			  LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
 		}
-		default:
-		  LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+	}else if(mode == GRPWISE){
+		CHECK_GE(group,1);
+		for (int g = 0; g < group; ++g) {
+			caffe_cpu_all_zero_mask(shape_[0]/group,
+					count_/shape_[0],
+					static_cast<const Dtype*>(data_->cpu_data()) + count_/group * g,
+					static_cast<Dtype*>(connectivity_->mutable_cpu_data()) + count_/group * g);
+		}
 	}
 
 }

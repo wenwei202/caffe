@@ -30,7 +30,7 @@ class Blob {
   explicit Blob(const int num, const int channels, const int height,
       const int width);
   explicit Blob(const vector<int>& shape);
-
+  enum DisconnectMode { ELTWISE, GRPWISE };//how to disconnect
   /// @brief Deprecated; use <code>Reshape(const vector<int>& shape)</code>.
   void Reshape(const int num, const int channels, const int height,
       const int width);
@@ -237,7 +237,7 @@ class Blob {
   Dtype* mutable_gpu_connectivity();
   void Update();
   void Zerout();
-  void Disconnect();
+  void Disconnect(DisconnectMode mode, int group=1);
   inline void Connect(){ InitializeConnectivity(); }
   Dtype GetSparsity();
   void FromProto(const BlobProto& proto, bool reshape = true);

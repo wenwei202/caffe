@@ -340,9 +340,14 @@ message LayerParameter {
   // The size must be either 0 or equal to the number of bottoms.
   repeated bool propagate_down = 11;
 
-  // Specifies if disconnecting connections whose weights are recovered/initialized and frozen as zeros. 
+  // Specifies how to deal with connections whose weights are recovered/initialized as zeros. 
   // Used for fine-tuning
-  optional bool disconnect = 12 [default = false];
+  enum ConnectivityMode {
+    CONNECTED = 0;  //keep connected
+    DISCONNECTED_ELTWISE = 1; //disconnect all zero-weight connections
+    DISCONNECTED_GRPWISE = 2; //disconnect those lying in all-zero groups 
+  }
+  optional ConnectivityMode connectivity_mode = 12 [default = CONNECTED];
   
   // Rules controlling whether and when a layer is included in the network,
   // based on the current NetState.  You may specify a non-zero number of rules

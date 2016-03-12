@@ -82,10 +82,13 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 		left_columns_.push_back(left_cols);
 	}
 
-	//get the mask for connections
-	if( layerparam.disconnect() ){
-		LOG(INFO)<<"zero weights of "<<layerparam.name()<<" are frozen";
-		this->blobs_[0]->Disconnect();
+	//disconnect connections
+	if( layerparam.connectivity_mode() == caffe::LayerParameter_ConnectivityMode_DISCONNECTED_ELTWISE ){
+		LOG(INFO)<<"all zero weights of "<<layerparam.name()<<" are frozen";
+		this->blobs_[0]->Disconnect(Blob<Dtype>::ELTWISE);
+	}else if(layerparam.connectivity_mode() == caffe::LayerParameter_ConnectivityMode_DISCONNECTED_GRPWISE){
+		LOG(INFO)<<"weights lying in all-zero groups of "<<layerparam.name()<<" are frozen";
+		this->blobs_[0]->Disconnect(Blob<Dtype>::GRPWISE, group_);
 	}
 
 }

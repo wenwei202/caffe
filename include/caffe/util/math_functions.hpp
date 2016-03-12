@@ -190,6 +190,10 @@ void caffe_cpu_scale(const int n, const Dtype alpha, const Dtype *x, Dtype* y);
 template <typename Dtype>
 void caffe_cpu_if_all_zero(const int M, const int N, const Dtype *X, int* y, bool dimen=true);
 
+//get the mask(0) of all-zero columns and rows
+template <typename Dtype>
+void caffe_cpu_all_zero_mask(const int M, const int N, const Dtype *X, Dtype* y);
+
 //get column(true)/row(false) sparsity in matrix
 template <typename Dtype>
 Dtype caffe_cpu_group_sparsity(const int M, const int N, const Dtype *X, bool dimen=true);

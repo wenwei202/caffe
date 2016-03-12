@@ -603,6 +603,45 @@ template
 void caffe_cpu_if_all_zero(const int M, const int N, const double *x, int* y, bool dimen);
 
 template <typename Dtype>
+void caffe_cpu_all_zero_mask(const int M, const int N, const Dtype *X, Dtype* Y){
+	//along rows
+	Dtype val = (Dtype)1;
+	for(int row=0; row<M; ++row){
+		val = (Dtype)0;
+		for(int col=0; col<N; col++){
+			if(X[col+row*N]!=0){
+				val = (Dtype)1;
+				break;
+			}
+		}
+		caffe_set(N,val,Y+row*N);
+	}
+	//along columns
+	for(int col=0; col<N; ++col){
+		val = (Dtype)0;
+		for(int row=0; row<M; row++){
+			if(X[col+row*N]!=0){
+				val = (Dtype)1;
+				break;
+			}
+		}
+		if(!val){//only set 0
+			for(int row=0; row<M; row++){
+				Y[col+row*N] = val;
+			}
+		}
+	}
+}
+template
+void caffe_cpu_all_zero_mask(const int M, const int N, const float *X, float* y);
+template
+void caffe_cpu_all_zero_mask(const int M, const int N, const double *X, double* y);
+template
+void caffe_cpu_all_zero_mask(const int M, const int N, const int *X, int* y);
+template
+void caffe_cpu_all_zero_mask(const int M, const int N, const unsigned int *X, unsigned int* y);
+
+template <typename Dtype>
 Dtype caffe_cpu_group_sparsity(const int M, const int N, const Dtype *x, bool dimen){
 	Dtype sparsity = (Dtype)0;
 	int counter = 0;
