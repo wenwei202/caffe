@@ -307,8 +307,8 @@ message ParamSpec {
   optional float decay_mult = 4 [default = 1.0];
   
   // The multiplier on the global group lasso weight decay for this parameter.
-  optional float breadth_decay_mult = 5 [default = 1.0];
-  optional float kernel_shape_decay_mult = 6 [default = 1.0];
+  optional float breadth_decay_mult = 5 [default = 0.0];
+  optional float kernel_shape_decay_mult = 6 [default = 0.0];
 }
 
 // NOTE

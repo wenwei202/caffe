@@ -113,8 +113,9 @@ void SGDSolver<Dtype>::ApplyUpdate() {
 	sparsity_msg_stream << "    Element Sparsity %: ";
 	for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
 		Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-		if(local_decay) sparsity_msg_stream << GetSparsity(param_id) <<"\t";
-		else sparsity_msg_stream << -1 <<"\t";
+		sparsity_msg_stream << GetSparsity(param_id) <<"\t";
+		//if(local_decay) sparsity_msg_stream << GetSparsity(param_id) <<"\t";
+		//else sparsity_msg_stream << -1 <<"\t";
 	}
 	LOG(INFO) << sparsity_msg_stream.str();
 
@@ -122,8 +123,9 @@ void SGDSolver<Dtype>::ApplyUpdate() {
 	sparsity_msg_stream << "     Column Sparsity %: ";
 	for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
 		Dtype local_decay = this->param_.kernel_shape_decay() * this->net_->params_kernel_shape_decay()[param_id];
-		if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, true) <<"\t";
-		else sparsity_msg_stream << -1 <<"\t";
+		sparsity_msg_stream << GetGroupSparsity(param_id, true) <<"\t";
+		//if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, true) <<"\t";
+		//else sparsity_msg_stream << -1 <<"\t";
 	}
 	LOG(INFO) << sparsity_msg_stream.str();
 
@@ -131,8 +133,9 @@ void SGDSolver<Dtype>::ApplyUpdate() {
 	sparsity_msg_stream << "        Row Sparsity %: ";
 	for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
 		Dtype local_decay = this->param_.breadth_decay() * this->net_->params_breadth_decay()[param_id];
-		if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, false) <<"\t";
-		else sparsity_msg_stream << -1 <<"\t";
+		sparsity_msg_stream << GetGroupSparsity(param_id, false) <<"\t";
+		//if(local_decay) sparsity_msg_stream << GetGroupSparsity(param_id, false) <<"\t";
+		//else sparsity_msg_stream << -1 <<"\t";
 	}
 	LOG(INFO) << sparsity_msg_stream.str();
 
@@ -308,10 +311,12 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
   Dtype local_breadth_decay = this->param_.breadth_decay() * net_params_breadth_decay_multi[param_id];
   Dtype local_kernel_shape_decay = this->param_.kernel_shape_decay() * net_params_kernel_shape_decay_multi[param_id];
   Dtype regularization_term = Dtype(0);
-  bool if_learn_kernel_shape = local_kernel_shape_decay && (net_params[param_id]->num_axes()==4);
-  bool if_learn_breadth = local_breadth_decay && (net_params[param_id]->num_axes()==4 );
+  bool if_learn_kernel_shape = local_kernel_shape_decay!=0;// && (net_params[param_id]->num_axes()==4);
+  bool if_learn_breadth = local_breadth_decay!=0;// && (net_params[param_id]->num_axes()==4 );
   switch (Caffe::mode()) {
   case Caffe::CPU: {
+	LOG(FATAL)<< "Unsupported in CPU mode: group lasso";
+	/*
 	if(if_learn_breadth){
 		LOG(FATAL)<< "Unsupported in CPU mode: learn breadth of kernels with group lasso";
 	}
@@ -345,6 +350,7 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
     		  	  temp_[param_id]->cpu_data(),
                   net_params[param_id]->mutable_cpu_diff());
     }
+    */
     break;
   }
   case Caffe::GPU: {
@@ -352,7 +358,7 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
 
 	//group lasso along columns (channels)
     if (if_learn_kernel_shape) {
-    	int equivalent_ch = net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
+    	int equivalent_ch = net_params[param_id]->count()/net_params[param_id]->shape(0);//net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
     	int group_size = net_params[param_id]->shape(0)/net_param_groups[param_id];//number of kernels in each group
     	for (int g=0;g<net_param_groups[param_id];g++){
     		int offset = g*group_size*equivalent_ch;
@@ -373,7 +379,7 @@ Dtype SGDSolver<Dtype>::GroupLassoRegularize(int param_id) {
 
     //group lasso along rows (kernels)
     if (if_learn_breadth) {
-		int equivalent_ch = net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
+		int equivalent_ch = net_params[param_id]->count()/net_params[param_id]->shape(0);//net_params[param_id]->shape(1)*net_params[param_id]->shape(2)*net_params[param_id]->shape(3);
 		int group_size = net_params[param_id]->shape(0)/net_param_groups[param_id];//number of kernels in each group
 		for (int g=0;g<net_param_groups[param_id];g++){
 			int offset = g*group_size*equivalent_ch;

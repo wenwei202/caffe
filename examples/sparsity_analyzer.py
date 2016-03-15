@@ -6,27 +6,30 @@ import os
 import matplotlib.pyplot as plt
 import argparse
 import caffeparser
-# --prototxt models/bvlc_reference_caffenet/train_val.prototxt --origimodel models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel --tunedmodel /home/wew57/github/caffe_gpu0/models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_120000.caffemodel
-# --prototxt examples/mnist/lenet_train_test.prototxt --origimodel examples/mnist/lenet_iter_10000.caffemodel --tunedmodel examples/mnist/lenet_grouplasso_iter_10000.caffemodel
+# --prototxt models/bvlc_reference_caffenet/deploy.prototxt --origimodel models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel --tunedmodel /home/wew57/github/caffe/models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_120000.caffemodel
+# --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_iter_10000.caffemodel --tunedmodel examples/mnist/lenet_grouplasso_iter_10000.caffemodel
+# --prototxt examples/cifar10/cifar10_full.prototxt --origimodel examples/cifar10/cifar10_full_iter_300000_0.8212.caffemodel --tunedmodel examples/cifar10/cifar10_full_grouplasso_iter_60000.caffemodel
 def show_filters(net,layername):
     weights = net.params[layername][0].data
     if len(weights.shape) < 3:
         return
-    weights = abs(weights)
-    chan_num = weights.shape[1]
+    weight_scope = abs(weights).max()
+    filt_min = -weight_scope
+    filt_max = weight_scope
 
-    filt_min, filt_max = weights.min(), weights.max()
+    chan_num = weights.shape[1]
     display_region_size = ceil(sqrt(chan_num))
-    for n in range(min(10,weights.shape[0])):
-        if sum(weights[n])>0:
+    for n in range(min(1000,weights.shape[0])):
+        if sum(abs(weights[n]))>0:
             print "{}-th channel is usefull".format(n)
             plt.figure()
             for c in range(chan_num):
                 plt.subplot((int)(display_region_size),(int)(display_region_size),c+1)
-                #plt.title("filter #{} output".format(c))
-                plt.imshow(weights[n,c], vmin=filt_min, vmax=filt_max,cmap=plt.get_cmap('Greys'),interpolation='none')
-                #plt.tight_layout()
-                plt.axis('off')
+                if sum(abs(weights[n,c]))>0:
+                    #plt.title("filter #{} output".format(c))
+                    plt.imshow(weights[n,c],vmin=filt_min,vmax=filt_max,cmap=plt.get_cmap('Greys'),interpolation='none')
+                    #plt.tight_layout()
+                plt.tick_params(which='both',labelbottom='off',labelleft='off',bottom='off',top='off',left='off',right='off')
 
 
 if __name__ == "__main__":
@@ -58,6 +61,7 @@ if __name__ == "__main__":
     print("blobs {}\nparams {}".format(orig_net.blobs.keys(), orig_net.params.keys()))
     print("blobs {}\nparams {}".format(tuned_net.blobs.keys(), tuned_net.params.keys()))
     #show_filters(tuned_net,'conv1')
+    #show_filters(tuned_net,'conv2')
     kernel_max_sizexsize = -1
     speedupinfo = ""
     plot_count = 0
@@ -65,6 +69,8 @@ if __name__ == "__main__":
     for layer_name in orig_net.params.keys():
         if re.match("^conv[0-9]$",layer_name):
             subplot_num += net_parser.getLayerByName(net_msg,layer_name).convolution_param.group
+        elif re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
+            subplot_num += 1
 
     r_width = 0.0001
     #einet_plt = plt.figure().add_subplot(111)
@@ -134,11 +140,14 @@ if __name__ == "__main__":
 ############################################################################################################
 
                 #analyze the average ratio of after group lasso
-                if re.match("^conv[0-9]",layer_name):
+                if re.match("^conv[0-9]",layer_name) or re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
                     group = net_parser.getLayerByName(net_msg,layer_name).convolution_param.group
                     group_size = weights_tuned.shape[0]/group
                     for g in range(0,group):
-                        weights_tuned_reshaped = reshape(weights_tuned[g*group_size:(g+1)*group_size,:,:,:],(weights_tuned.shape[0]/group,weights_tuned.size/weights_tuned.shape[0]))
+                        if re.match("^conv[0-9]",layer_name):
+                            weights_tuned_reshaped = reshape(weights_tuned[g*group_size:(g+1)*group_size,:,:,:],(weights_tuned.shape[0]/group,weights_tuned.size/weights_tuned.shape[0]))
+                        elif re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
+                            weights_tuned_reshaped = weights_tuned
                         nonzero_ratio = zeros((1,weights_tuned_reshaped.shape[1]))
                         xIdx = range(0,weights_tuned_reshaped.shape[1],1)
                         for i in xIdx:
@@ -163,6 +172,7 @@ if __name__ == "__main__":
                                     elem_sparsity))
                         plt.xlabel("{:.2f}X speedup".format(1.0/(1-col_sparsity)/(1-row_sparsity)))
                         speedupinfo = speedupinfo + "{:.2f}X".format(1.0/(1-col_sparsity)/(1-row_sparsity))
+
 
             #else:
             #    weights_q = orig_net.params[layer_name+'q'][0].data

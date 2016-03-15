@@ -698,12 +698,20 @@ void Blob<Dtype>:: WriteToNistMMIO(string filename) const{
 	/* NOTE: matrix market files use 1-based indices, i.e. first element
 	 of a vector has index 1, not 0.  */
 	const Dtype * data_ptr = this->cpu_data();
-	for (int c=0; c<this->shape(1); c++) {
-		for (int h=0; h<this->shape(2); h++) {
-			for (int w=0; w<this->shape(3); w++) {
-				for (int n=0; n<this->shape(0); n++) {
-					fprintf(fp, "%20g\n", (double)(*(data_ptr+((n * this->shape(1) + c) * this->shape(2) + h) * this->shape(3) + w)));
+	if(num_axes()==4){
+		for (int c=0; c<this->shape(1); c++) {
+			for (int h=0; h<this->shape(2); h++) {
+				for (int w=0; w<this->shape(3); w++) {
+					for (int n=0; n<this->shape(0); n++) {
+						fprintf(fp, "%20g\n", (double)(*(data_ptr+((n * this->shape(1) + c) * this->shape(2) + h) * this->shape(3) + w)));
+					}
 				}
+			}
+		}
+	}else if(num_axes()==2){
+		for (int c=0; c<this->shape(1); c++) {
+			for (int n=0; n<this->shape(0); n++) {
+				fprintf(fp, "%20g\n", (double)(*(data_ptr + n * this->shape(1) + c)) );
 			}
 		}
 	}
