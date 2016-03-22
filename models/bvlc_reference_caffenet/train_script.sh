@@ -2,9 +2,9 @@
 set -e
 set -x
 
-folder="examples/cifar10/"
-file_prefix="cifar10_full"
-model_path="examples/cifar10/"
+folder="models/bvlc_reference_caffenet"
+file_prefix="caffenet_train"
+model_path="models/bvlc_reference_caffenet"
 
 if [ "$#" -lt 4 ]; then
 	echo "Illegal number of parameters"

@@ -2,11 +2,11 @@
 set -e
 set -x
 
-folder="examples/cifar10/"
-file_prefix="cifar10_full"
-model_path="examples/cifar10/"
+folder="examples/mnist/"
+file_prefix="lenet"
+model_path="examples/mnist/"
 
-if [ "$#" -lt 4 ]; then
+if [ "$#" -lt 5 ]; then
 	echo "Illegal number of parameters"
 	exit
 fi
@@ -14,20 +14,21 @@ base_lr=$1
 weight_decay=$2
 kernel_shape_decay=$3
 breadth_decay=$4
+block_group_decay=$5
 #regularization_type="L2"
 #if [ "$#" -ge 7 ]; then
 #	regularization_type=$7
 #fi
 gpu_id=0
-if [ "$#" -ge 5 ]; then
-	gpu_id=$5
+if [ "$#" -ge 6 ]; then
+	gpu_id=$6
 fi
 
 current_time=$(date)
 current_time=${current_time// /_}
 current_time=${current_time//:/-}
 
-snapshot_path=$folder/${base_lr}_${weight_decay}_${kernel_shape_decay}_${breadth_decay}_${current_time}
+snapshot_path=$folder/${base_lr}_${weight_decay}_${kernel_shape_decay}_${breadth_decay}_${block_group_decay}_${current_time}
 mkdir $snapshot_path
 
 #solverfile="cifar10_full_finetune_solver.prototxt"
@@ -36,10 +37,11 @@ mkdir $snapshot_path
 #solverfile="cifar10_full_template_solver.prototxt"
 solverfile=$snapshot_path/solver.prototxt
 template_file='template_solver.prototxt'
-if [ "$#" -ge 7 ]; then
-	template_file=$7
+if [ "$#" -ge 8 ]; then
+	template_file=$8
 fi
 cat $folder/${template_file} > $solverfile
+echo "block_group_decay: $block_group_decay" >> $solverfile
 echo "kernel_shape_decay: $kernel_shape_decay" >> $solverfile
 echo "breadth_decay: $breadth_decay" >> $solverfile
 echo "weight_decay: $weight_decay" >> $solverfile
@@ -48,7 +50,7 @@ echo "snapshot_prefix: \"$snapshot_path/$file_prefix\"" >> $solverfile
 #echo "regularization_type: \"$regularization_type\"" >> $solverfile
 #cat $solverfile
 
-if [ "$#" -ge 6 ]; then
+if [ "$#" -ge 7 ]; then
 	#tunedmodel="cifar10_full_iter_300000_0.8177.caffemodel"
 	#tunedmodel="cifar10_full_iter_300000_0.8212.caffemodel"
 	#tunedmodel="cifar10_full_grouplasso_iter_160000_0.7869_4e-4l1_0_6e-3.caffemodel"
@@ -57,7 +59,7 @@ if [ "$#" -ge 6 ]; then
 	#tunedmodel='Tue_Mar_15_00-03-18_EDT_2016-cifar10_full_grouplasso_iter_120000.caffemodel'
 	#tunedmodel='Tue_Mar_15_00-10-44_EDT_2016-cifar10_full_grouplasso_iter_120000.caffemodel'
 	#tunedmodel='Tue_Mar_15_00-05-15_EDT_2016-cifar10_full_grouplasso_iter_120000.caffemodel'
-	tunedmodel=$6
+	tunedmodel=$7
 	file_ext=$(echo ${tunedmodel} | rev | cut -d'.' -f 1 | rev)
 	if [ "$file_ext" = "caffemodel" ]; then
 	  ./build/tools/caffe.bin train --solver=$solverfile --weights=$model_path/$tunedmodel --gpu=$gpu_id  > "${snapshot_path}/train.info" 2>&1
