@@ -1,9 +1,10 @@
 #!/bin/bash
 folder="examples/mnist"
 solverfile="lenet_grouplasso_solver.prototxt"
-tunedmodel="lenet_iter_10000.caffemodel"
+tunedmodel="lenet_iter_10000_0.9915.caffemodel"
 current_time=$(date)
-
+current_time=${current_time// /_}
+current_time=${current_time//:/-}
 #./build/tools/caffe.bin train --solver=$folder/$solverfile  > "${folder}/${current_time}-train.info" 2>&1
 
 ./build/tools/caffe.bin train --solver=$folder/$solverfile --weights=$folder/$tunedmodel --gpu=2  > "${folder}/${current_time}-train.info" 2>&1

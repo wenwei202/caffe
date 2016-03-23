@@ -97,3 +97,4 @@ MANIFEST-*
 # log file
 *.info
 *.orig
+*_EDT_2016/

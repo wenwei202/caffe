@@ -58,18 +58,14 @@ layer {
   type: "Convolution"
   bottom: "data"
   top: "conv1"
-  connectivity_mode: DISCONNECTED_GRPWISE
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1.0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 1.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 96
@@ -118,18 +114,14 @@ layer {
   type: "Convolution"
   bottom: "norm1"
   top: "conv2"
-  connectivity_mode: DISCONNECTED_GRPWISE
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1.0
-    kernel_shape_decay_mult: 0.5
-    breadth_decay_mult: 1.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 256
@@ -179,18 +171,14 @@ layer {
   type: "Convolution"
   bottom: "norm2"
   top: "conv3"
-  connectivity_mode: DISCONNECTED_GRPWISE
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 1.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 384
@@ -217,18 +205,14 @@ layer {
   type: "Convolution"
   bottom: "conv3"
   top: "conv4"
-  connectivity_mode: DISCONNECTED_GRPWISE
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 0.5
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 384
@@ -256,18 +240,14 @@ layer {
   type: "Convolution"
   bottom: "conv4"
   top: "conv5"
-  connectivity_mode: DISCONNECTED_GRPWISE
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 0.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 256
@@ -306,18 +286,14 @@ layer {
   type: "InnerProduct"
   bottom: "pool5"
   top: "fc6"
-  connectivity_mode: DISCONNECTED_GRPWISE
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 4096
@@ -351,18 +327,14 @@ layer {
   type: "InnerProduct"
   bottom: "fc6"
   top: "fc7"
-  connectivity_mode: DISCONNECTED_GRPWISE
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 4096
@@ -396,18 +368,14 @@ layer {
   type: "InnerProduct"
   bottom: "fc7"
   top: "fc8"
-  connectivity_mode: DISCONNECTED_GRPWISE
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 1000

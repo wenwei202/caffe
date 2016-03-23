@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
 # Create the imagenet lmdb inputs
-# N.B. set the path to the imagenet train + val data dirs
+# N.B. set the path to the imagenet var data dir
 
-EXAMPLE=examples/imagenet
-DATA=data/ilsvrc12
-TOOLS=build/tools
+DBPATH=/home/public/imagenet/
+DATA=data/ilsvrc12/
+TOOLS=build/tools/
 
-TRAIN_DATA_ROOT=/home/wew57/imagenet-ILSVRC2012/training12/
+TRAIN_DATA_ROOT=/home/public/imagenet/ILSVRC2012_img_train/
 
 # Set RESIZE=true to resize the images to 256x256. Leave as false if images have
 # already been resized using another tool.
@@ -26,8 +26,6 @@ if [ ! -d "$TRAIN_DATA_ROOT" ]; then
   exit 1
 fi
 
-
-
 echo "Creating train lmdb..."
 
 GLOG_logtostderr=1 $TOOLS/convert_imageset \
@@ -36,6 +34,6 @@ GLOG_logtostderr=1 $TOOLS/convert_imageset \
     --shuffle \
     $TRAIN_DATA_ROOT \
     $DATA/train.txt \
-    $EXAMPLE/ilsvrc12_train_lmdb
+    $DBPATH/ilsvrc12_train_lmdb
 
 echo "Done."

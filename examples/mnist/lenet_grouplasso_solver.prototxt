@@ -39,12 +39,18 @@ momentum: 0.9
 #group_weight_decay: 0.01
 
 #98.46% finetune from lenet 5x 22x
-weight_decay: 0.0005
-group_weight_decay: 0.01
+#breadth_decay: 0.01
+#kernel_shape_decay: 0.01
+#weight_decay: 0.0005
 
-#weight_decay: 0.0015
-#group_weight_decay: 0.015
-
+#93%
+#breadth_decay: 0.008
+#kernel_shape_decay: 0.008
+#weight_decay: 0.0005
+#regularization_type: "L2"
+breadth_decay: 0.005
+kernel_shape_decay: 0.005
+weight_decay: 0.0
 regularization_type: "L2"
 
 # The learning rate policy
@@ -52,7 +58,7 @@ regularization_type: "L2"
 gamma: 0.1
 #power: 0.75
 lr_policy: "multistep"
-#stepvalue: 6000
+stepvalue: 6000
 stepvalue: 8000
 
 # Display every 100 iterations
