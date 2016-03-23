@@ -62,7 +62,7 @@ layer {
     lr_mult: 1
     decay_mult: 1.0
     kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 1.0
+    breadth_decay_mult: 0.0
     block_group_lasso {
       xdimen: 121
       ydimen: 1
@@ -125,8 +125,8 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1.0
-    kernel_shape_decay_mult: 0.5
-    breadth_decay_mult: 1.0
+    kernel_shape_decay_mult: 0.0
+    breadth_decay_mult: 0.0
     block_group_lasso {
       xdimen: 25
       ydimen: 1
@@ -190,8 +190,8 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 1.0
+    kernel_shape_decay_mult: 0.0
+    breadth_decay_mult: 0.0
     block_group_lasso {
       xdimen: 9
       ydimen: 1
@@ -232,8 +232,8 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 0.5
+    kernel_shape_decay_mult: 0.0
+    breadth_decay_mult: 0.0
     block_group_lasso {
       xdimen: 9
       ydimen: 1
@@ -275,7 +275,7 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1.0
+    kernel_shape_decay_mult: 0.0
     breadth_decay_mult: 0.0
     block_group_lasso {
       xdimen: 9
