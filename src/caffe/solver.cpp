@@ -2,8 +2,9 @@
 
 #include <string>
 #include <vector>
+#ifndef CPU_ONLY
 #include <cuda_profiler_api.h>
-
+#endif
 #include "caffe/solver.hpp"
 #include "caffe/util/format.hpp"
 #include "caffe/util/hdf5.hpp"

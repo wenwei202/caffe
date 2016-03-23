@@ -477,10 +477,16 @@ void Net<Dtype>::AppendParam(const NetParameter& param, const int layer_id,
     has_params_decay_.push_back(param_spec->has_decay_mult());
     has_params_breadth_decay_.push_back(param_spec->has_breadth_decay_mult());
     has_params_kernel_shape_decay_.push_back(param_spec->has_kernel_shape_decay_mult());
+    has_params_block_group_lasso_.push_back(param_spec->block_group_lasso_size());
     params_lr_.push_back(param_spec->lr_mult());
     params_weight_decay_.push_back(param_spec->decay_mult());
     params_breadth_decay_.push_back(param_spec->breadth_decay_mult());
     params_kernel_shape_decay_.push_back(param_spec->kernel_shape_decay_mult());
+    vector<BlockGroupLassoSpec> block_spec;
+    for(int i=0;i<param_spec->block_group_lasso_size();i++){
+    	block_spec.push_back(param_spec->block_group_lasso(i));
+    }
+    params_block_group_lasso_.push_back(block_spec);
     if(layer_param.has_convolution_param()){
 		  param_groups_.push_back(layer_param.convolution_param().group());
 	}
@@ -560,6 +566,18 @@ void Net<Dtype>::AppendParam(const NetParameter& param, const int layer_id,
 	  } else {
 		  has_params_kernel_shape_decay_[learnable_param_id] = true;
 		  params_kernel_shape_decay_[learnable_param_id] = param_spec->kernel_shape_decay_mult();
+	  }
+	}
+    if (param_spec->block_group_lasso_size()) {
+	  if (has_params_block_group_lasso_[learnable_param_id]) {
+		LOG(FATAL) << "duplicate block_group_lasso among shared params.";
+	  } else {
+		  has_params_block_group_lasso_[learnable_param_id] = true;
+	      vector<BlockGroupLassoSpec> block_spec;
+		  for(int i=0;i<param_spec->block_group_lasso_size();i++){
+			  block_spec.push_back(param_spec->block_group_lasso(i));
+		  }
+		  params_block_group_lasso_[learnable_param_id] = block_spec;
 	  }
 	}
   }
