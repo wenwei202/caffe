@@ -6,10 +6,8 @@ test_interval: 1000
 #lr_policy: "step"
 lr_policy: "multistep"
 gamma: 0.1
-#stepsize: 60000
-#stepsize: 80000
-stepsize: 100000
 #stepvalue: 60000
+stepvalue: 100000
 #stepvalue: 100000
 #stepvalue: 120000
 #stepvalue: 130000
