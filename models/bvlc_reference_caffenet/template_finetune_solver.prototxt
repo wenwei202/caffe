@@ -16,12 +16,13 @@ stepvalue: 120000
 #stepvalue: 160000
 stepvalue: 180000
 #stepvalue: 200000
-stepvalue: 240000
+#stepvalue: 240000
 #stepvalue: 300000
 #stepvalue: 400000
 
 display: 200
-max_iter: 270000
+max_iter: 240000
+#max_iter: 270000
 momentum: 0.9
 
 #weight_decay: 0
