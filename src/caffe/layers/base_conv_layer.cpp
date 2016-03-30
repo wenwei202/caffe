@@ -10,76 +10,63 @@ namespace caffe {
 
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::WeightAlign(){
-	is_sparse_format_weights_ = false;
+	//is_sparse_format_weights_ = false;
 	const LayerParameter& layerparam = this->layer_param();
 	LOG(INFO)<<"layer\t"<<layerparam.name()<<"\t"<<"has sparsity of "<< this->blobs_[0]->GetSparsity();
 	this->blobs_[0]->WriteToNistMMIO(layerparam.name()+".weight");
-#ifdef USE_MKL
-	is_sparse_format_weights_ = this->blobs_[0]->GetSparsity() > 0.8;
+
+	ConvolutionParameter conv_param = this->layer_param_.convolution_param();
 	const int M = this->blobs_[0]->shape(0)/group_;
 	const int N = this->blobs_[0]->count(1,4);
 	const int weight_offset = this->blobs_[0]->count()/group_;
 	const int row_offset = this->blobs_[0]->shape(0)/group_ + 1;
-    switch (Caffe::mode()) {
-    case Caffe::CPU:
-    	//convert trained weights in dense format to CSR format
-    	for (int g = 0; g < group_; ++g) {
-    		caffe_cpu_sparse_dense2csr(M, N,
-					this->blobs_[0]->mutable_cpu_data() + weight_offset * g,
-					nz_weight_values_.mutable_cpu_data()+ weight_offset * g,
-					nz_weight_indices_.mutable_cpu_data()+ weight_offset * g,
-					nz_weight_index_pointers_.mutable_cpu_data() + row_offset * g);
-    	}
-    	break;
-
-    case Caffe::GPU:
-#ifndef CPU_ONLY
-    	LOG(INFO)<<"Sparse storage format of weights in GPU model  is unimplemented!";
-#else
-    	NO_GPU;
-#endif
-    	break;
-
-    default:
-    	LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
-    }
-#else
-    LOG(WARNING)<<"Sparse Math BLAS is unsupported without MKL (when it's on CPU mode)!";
-#endif
-
-	// is_concatenating_weights_features_ has higher priority than is_sparse_format_weights_
-	//get the all-zero column mask for weight matrix
-	//caffe_cpu_if_all_zero(const int M, const int N, const Dtype *x, int* y);
-	//const int M = this->blobs_[0]->shape(0)/group_;
-	//const int N = this->blobs_[0]->count(1,4);
-	//const int weight_offset = this->blobs_[0]->count()/group_;
-	//const int col_buf_offset = N/group_;
-	for (int g = 0; g < group_; ++g) {
-		caffe_cpu_if_all_zero(this->blobs_[0]->shape(0)/group_,
-				this->blobs_[0]->count(1,4),
-				this->blobs_[0]->cpu_data() + this->blobs_[0]->count()/group_ * g,
-				col_buf_mask_.mutable_cpu_data() + this->blobs_[0]->count(1,4) * g);
-	}
 	int masked_col_num = 0;
-	for(int idx=0; idx<col_buf_mask_.count();++idx){
-		if(col_buf_mask_.cpu_data()[idx]){
-			masked_col_num++;
-		}
-	}
-	Dtype group_sparsity = (Dtype)masked_col_num/(Dtype)col_buf_mask_.count();
-	LOG(INFO) << Layer<Dtype>::layer_param().name() << " column sparsity: " << group_sparsity;
-	is_concatenating_weights_features_ = group_sparsity > 0.05;
-
-	// compress weight matrix
 	int left_cols = 0;
-	for (int g = 0; g < group_; ++g) {
-		caffe_cpu_del_zero_cols(conv_out_channels_ /group_,
-			  kernel_dim_ ,
-			  this->blobs_[0]->cpu_data() + weight_offset_ * g,
-			  squeezed_weight_buffer_.mutable_cpu_data() + weight_offset_ * g,
-			  &left_cols,
-			  col_buf_mask_.cpu_data() + kernel_dim_ * g );
-		left_columns_.push_back(left_cols);
+	Dtype group_sparsity = 0;
+	switch(conv_param.conv_mode()){
+		case caffe::ConvolutionParameter_ConvMode_LOWERED_CSRMM:
+			LOG(INFO)<<"ConvolutionParameter_ConvMode_LOWERED_CSRMM";
+			for (int g = 0; g < group_; ++g) {
+				caffe_cpu_sparse_dense2csr(M, N,
+						this->blobs_[0]->mutable_cpu_data() + weight_offset * g,
+						nz_weight_values_.mutable_cpu_data()+ weight_offset * g,
+						nz_weight_indices_.mutable_cpu_data()+ weight_offset * g,
+						nz_weight_index_pointers_.mutable_cpu_data() + row_offset * g);
+			}
+			break;
+		case caffe::ConvolutionParameter_ConvMode_LOWERED_CCNMM:
+			LOG(INFO)<<"ConvolutionParameter_ConvMode_LOWERED_CCNMM";
+			for (int g = 0; g < group_; ++g) {
+				caffe_cpu_if_all_zero(this->blobs_[0]->shape(0)/group_,
+						this->blobs_[0]->count(1,4),
+						this->blobs_[0]->cpu_data() + this->blobs_[0]->count()/group_ * g,
+						col_buf_mask_.mutable_cpu_data() + this->blobs_[0]->count(1,4) * g);
+			}
+			masked_col_num = 0;
+			for(int idx=0; idx<col_buf_mask_.count();++idx){
+				if(col_buf_mask_.cpu_data()[idx]){
+					masked_col_num++;
+				}
+			}
+			group_sparsity = (Dtype)masked_col_num/(Dtype)col_buf_mask_.count();
+			LOG(INFO) << Layer<Dtype>::layer_param().name() << " column sparsity: " << group_sparsity;
+			is_concatenating_weights_features_ = true;
+
+			// compress weight matrix
+			left_cols = 0;
+			for (int g = 0; g < group_; ++g) {
+				caffe_cpu_del_zero_cols(conv_out_channels_ /group_,
+					  kernel_dim_ ,
+					  this->blobs_[0]->cpu_data() + weight_offset_ * g,
+					  squeezed_weight_buffer_.mutable_cpu_data() + weight_offset_ * g,
+					  &left_cols,
+					  col_buf_mask_.cpu_data() + kernel_dim_ * g );
+				left_columns_.push_back(left_cols);
+			}
+			break;
+		default:
+			LOG(INFO)<<"ConvolutionParameter ConvMode: DEFAULT";
+			break;
 	}
 
 	//disconnect connections
@@ -390,76 +377,68 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
   Timer total_timer;
   total_timer.Start();
   for (int g = 0; g < group_; ++g) {
-		  if(is_concatenating_weights_features_){
-//			  int left_cols = 0;
-//			  caffe_cpu_del_zero_cols(conv_out_channels_ /group_,
-//					  kernel_dim_ / group_,
-//					  weights + weight_offset_ * g,
-//					  squeezed_weight_buffer_.mutable_cpu_data(),
-//					  &left_cols,
-//					  col_buf_mask_.cpu_data() + kernel_dim_ / group_ * g );
-			  //Timer timer;
-			  timer.Start();
-			  int left_cols = left_columns_[g];
-			  caffe_cpu_cblas_gemm(conv_out_channels_ /
-					  group_, conv_out_spatial_dim_, left_cols,
-					  (Dtype)1., squeezed_weight_buffer_.cpu_data() + weight_offset_ * g,
-					  kernel_dim_ , col_buff + offset_sum,
-					conv_out_spatial_dim_, (Dtype)0., output + output_offset_ * g, conv_out_spatial_dim_);
-			  offset_sum += left_cols * conv_out_spatial_dim_;
-			  //float passed_time = timer.MicroSeconds();
-			  //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Column Concatenation Timing)";
+	  const int M = conv_out_channels_ /group_;
+	  const int N = conv_out_spatial_dim_;
+	  const int K = kernel_dim_;
+	  const int row_offset = conv_out_channels_ /group_ + 1;
+	  int left_cols = 0;
+	  switch(this->layer_param_.convolution_param().conv_mode()){
+	  case caffe::ConvolutionParameter_ConvMode_LOWERED_CSRMM :
+		  //LOG(INFO)<<"ConvolutionParameter_ConvMode_LOWERED_CSRMM";
+		  //int nnz = *(nz_weight_index_pointers_.cpu_data() + row_offset * g + conv_out_channels_ /group_);
+		  //Timer timer;
+		  timer.Start();
+		  caffe_cpu_sparse_mmcsr(M,
+				  N,
+				  K,
+				  (Dtype)1.,
+				  nz_weight_values_.cpu_data()+ weight_offset_ * g,
+				  nz_weight_indices_.cpu_data()+ weight_offset_ * g,
+				  nz_weight_index_pointers_.cpu_data() + row_offset * g,
+				  nz_weight_index_pointers_.cpu_data() + row_offset * g + 1,
+				  col_buff + col_offset_ * g,
+				  (Dtype)0.,output + output_offset_ * g);
+		  //float passed_time = timer.MicroSeconds();
+	      //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Compressed Row Storage Timing)";
+	 	  //long mem_bytes = nnz*(sizeof(Dtype)+sizeof(int))+M*sizeof(int)+K*N*sizeof(Dtype)+M*N*sizeof(Dtype);//
+		  //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
+		  //						  <<"A("<<M<<"x"<<K<<" nnz:"<<nnz<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
+		  //						  <<mem_bytes<<" B/ "<<passed_time<<" us = "
+		  //						  <<""<<mem_bytes/passed_time << " MB/s";
+		  break;
+	  case caffe::ConvolutionParameter_ConvMode_LOWERED_CCNMM :
+		  //LOG(INFO)<<"ConvolutionParameter_ConvMode_LOWERED_CCNMM";
+		  //Timer timer;
+		  timer.Start();
+		  left_cols = left_columns_[g];
+		  caffe_cpu_cblas_gemm(conv_out_channels_ /
+				  group_, conv_out_spatial_dim_, left_cols,
+				  (Dtype)1., squeezed_weight_buffer_.cpu_data() + weight_offset_ * g,
+				  kernel_dim_ , col_buff + offset_sum,
+				conv_out_spatial_dim_, (Dtype)0., output + output_offset_ * g, conv_out_spatial_dim_);
+		  offset_sum += left_cols * conv_out_spatial_dim_;
+		  //float passed_time = timer.MicroSeconds();
+		  //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Column Concatenation Timing)";
+	  	  break;
+	  default:
+		//LOG(INFO)<<"ConvMode LOWERED: DEFAULT";
+		//Timer timer;
+		timer.Start();
+		caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, M, N, K,
+				  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
+				  (Dtype)0., output + output_offset_ * g);
+		//float passed_time = timer.MicroSeconds();
+		//LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Dense Scheme Timing)";
 
-		  }else{
-			  int M = conv_out_channels_ /group_;
-			  int N = conv_out_spatial_dim_;
-			  int K = kernel_dim_;
-			  if(is_sparse_format_weights_){
-				  int row_offset = conv_out_channels_ /group_ + 1;
-				  //int nnz = *(nz_weight_index_pointers_.cpu_data() + row_offset * g + conv_out_channels_ /group_);
-				  //Timer timer;
-				  timer.Start();
-				  caffe_cpu_sparse_mmcsr(M,
-						  N,
-						  K,
-						  (Dtype)1.,
-						  nz_weight_values_.cpu_data()+ weight_offset_ * g,
-						  nz_weight_indices_.cpu_data()+ weight_offset_ * g,
-						  nz_weight_index_pointers_.cpu_data() + row_offset * g,
-						  nz_weight_index_pointers_.cpu_data() + row_offset * g + 1,
-						  col_buff + col_offset_ * g,
-						  (Dtype)0.,output + output_offset_ * g);
-				  //float passed_time = timer.MicroSeconds();
-				  //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Compressed Row Storage Timing)";
-//				  long mem_bytes = nnz*(sizeof(Dtype)+sizeof(int))+M*sizeof(int)+K*N*sizeof(Dtype)+M*N*sizeof(Dtype);//
-//				  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
-//						  <<"A("<<M<<"x"<<K<<" nnz:"<<nnz<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
-//						  <<mem_bytes<<" B/ "<<passed_time<<" us = "
-//						  <<""<<mem_bytes/passed_time << " MB/s";
-
-			  }else{
-				//Timer timer;
-				timer.Start();
-				caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, M, N, K,
-						  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
-						  (Dtype)0., output + output_offset_ * g);
-				//float passed_time = timer.MicroSeconds();
-				//LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Dense Scheme Timing)";
-//				int M = conv_out_channels_ /group_;
-//				int N = conv_out_spatial_dim_;
-//				int K = kernel_dim_ / group_;
-
-//				long mem_bytes = (M*K+K*N+M*N)*sizeof(Dtype);
-//				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
-//						<<"A("<<M<<"x"<<K<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
-//						<<mem_bytes<<" B/ "<<passed_time<<" us = "
-//						<<""<<mem_bytes/passed_time << " MB/s";
-
-			  }
-			  //LOG(INFO)<<"mkl_get_max_threads="<<mkl_get_max_threads();
-		  }
+		//				long mem_bytes = (M*K+K*N+M*N)*sizeof(Dtype);
+		//				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
+		//						<<"A("<<M<<"x"<<K<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
+		//						<<mem_bytes<<" B/ "<<passed_time<<" us = "
+		//						<<""<<mem_bytes/passed_time << " MB/s";
+		break;
+	  }
   }
-  float mm_passed_time = total_timer.MicroSeconds();
+  //float mm_passed_time = total_timer.MicroSeconds();
   //LOG(INFO)<<this->layer_param().name()<<"\t group all"<<": "<< lowering_passed_time*100/(mm_passed_time+lowering_passed_time)<<" % (Lowering Over Matrix Multiplying Timing)";
 
 }
