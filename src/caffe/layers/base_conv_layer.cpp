@@ -10,6 +10,7 @@ namespace caffe {
 
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::WeightAlign(){
+	CHECK_EQ(this->blobs_[0]->num_axes(),4);//caffe now supports any dimension
 	//is_sparse_format_weights_ = false;
 	const LayerParameter& layerparam = this->layer_param();
 	LOG(INFO)<<"layer\t"<<layerparam.name()<<"\t"<<"has sparsity of "<< this->blobs_[0]->GetSparsity();
@@ -64,6 +65,32 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 				left_columns_.push_back(left_cols);
 			}
 			break;
+		case caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV:
+			{
+#ifdef USE_SCONV
+				for (int g = 0; g < group_; ++g) {
+					caffe_cpu_sparse_dense2csr(M, N,
+							this->blobs_[0]->mutable_cpu_data() + weight_offset * g,
+							nz_weight_values_.mutable_cpu_data()+ weight_offset * g,
+							nz_weight_indices_.mutable_cpu_data()+ weight_offset * g,
+							nz_weight_index_pointers_.mutable_cpu_data() + row_offset * g);
+
+					//Please be consistent to https://software.intel.com/en-us/node/468626
+					shared_ptr< CSR > weight_CSR_ptr = shared_ptr< CSR > (new CSR(M,N,
+						nz_weight_index_pointers_.mutable_cpu_data() + row_offset * g,
+						nz_weight_indices_.mutable_cpu_data() + weight_offset * g,
+						nz_weight_values_.mutable_cpu_data()) + weight_offset * g
+					);
+
+					kernel_tensers_.push_back( shared_ptr<KernelTensor> (new KernelTensor(weight_CSR_ptr.get(),
+							conv_in_channels_ / group_,
+							this->blobs_[0]->shape(2),//recommend to separate w and h
+							pad_.cpu_data()[0]        //recommend to separate pad_w and pad_h
+							)) );
+				}
+#endif
+				break;
+			}
 		default:
 			LOG(INFO)<<"ConvolutionParameter ConvMode: DEFAULT";
 			break;
@@ -420,6 +447,19 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 		  //float passed_time = timer.MicroSeconds();
 		  //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Column Concatenation Timing)";
 	  	  break;
+	  case caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV:
+#ifdef USE_SCONV
+		  // SINGLE thread currently
+		  //int tid = omp_get_thread_num();
+		  //synk::Barrier::getInstance()->wait(tid);
+		  kernel_tensers_[g]->conv(
+				  input,//pixels in the pad region are not allocated
+				  output,
+				  stride_.cpu_data()[0] //WHY NOT take stride as a parameter of constructor? stride_ may be different for h and w
+				  );
+		  //synk::Barrier::getInstance()->wait(tid);
+#endif
+		  break;
 	  default:
 		//LOG(INFO)<<"ConvMode LOWERED: DEFAULT";
 		//Timer timer;

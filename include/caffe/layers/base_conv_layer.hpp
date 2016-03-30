@@ -7,7 +7,12 @@
 #include "caffe/layer.hpp"
 #include "caffe/proto/caffe.pb.h"
 #include "caffe/util/im2col.hpp"
-
+#ifdef USE_SCONV
+#include <SpMP/CSR.hpp>
+#include <SpMP/reordering/BFSBipartite.hpp>
+#include <SpMP/test/test.hpp>
+#include <SpMP/synk/barrier.hpp>
+#endif
 namespace caffe {
 
 /**
@@ -188,7 +193,9 @@ class BaseConvolutionLayer : public Layer<Dtype> {
     Blob<Dtype> nz_weight_values_;//nonzero elements
     Blob<int> nz_weight_indices_;//index of nonzero
     Blob<int> nz_weight_index_pointers_;//pointer(index) of indices
-
+#ifdef USE_SCONV
+    vector< shared_ptr<KernelTensor> > kernel_tensers_;
+#endif
     bool is_concatenating_weights_features_; //if use concatenation scheme to compress dense weights and features together
     Blob<int> dense_feature_map_mask_;//to skip all zero rows in col_buffer_
     Blob<int> col_buf_mask_;
