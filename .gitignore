@@ -96,5 +96,9 @@ MANIFEST-*
 
 # log file
 *.info
+*.weight
+*.jpg
+*.png
+*.txt
 *.orig
 *_EDT_2016/
