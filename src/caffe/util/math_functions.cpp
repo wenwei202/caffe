@@ -690,11 +690,47 @@ void caffe_cpu_del_zero_cols(const int M, const int N, const Dtype *x, Dtype *y,
 	}
 	*left_cols = dst_col;
 }
-
 template
 void  caffe_cpu_del_zero_cols<float>(const int M, const int N, const float *x, float *y, int * left_cols, const int* mask);
-
 template
 void  caffe_cpu_del_zero_cols<double>(const int M, const int N, const double *x, double *y, int * left_cols, const int* mask);
+
+
+template <typename Dtype>
+void caffe_cpu_block_group_lasso(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const Dtype *x, Dtype* y){
+	  CHECK_LE(blk_size_n,n);
+	  CHECK_LE(blk_size_c,c);
+	  CHECK_EQ(n%blk_size_n,0);
+	  CHECK_EQ(c%blk_size_c,0);
+	  int block_num_c = c/blk_size_c;
+	  int block_num_n = n/blk_size_n;
+	  Dtype sum_val = 0;
+	  for(int bn=0;bn<block_num_n;bn++){
+		  for(int bc=0;bc<block_num_c;bc++){
+			  sum_val = 0;
+			  for(int n_idx=0;n_idx<blk_size_n;n_idx++){
+			  	  for(int c_idx=0;c_idx<blk_size_c;c_idx++){
+			  		  int idx = (bn*blk_size_n+n_idx)*c + (bc*blk_size_c+c_idx);
+			  		  sum_val += x[idx]*x[idx];
+			      }
+			  }
+			  for(int n_idx=0;n_idx<blk_size_n;n_idx++){
+			  	  for(int c_idx=0;c_idx<blk_size_c;c_idx++){
+			  		  int idx = (bn*blk_size_n+n_idx)*c + (bc*blk_size_c+c_idx);
+			  		  if(sum_val>0) y[idx] = sqrt(sum_val);
+			  		  else y[idx] = 0;
+			      }
+			  }
+		  }
+	  }
+}
+template void  caffe_cpu_block_group_lasso<float>(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const float *x, float* y);
+template void  caffe_cpu_block_group_lasso<double>(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const double *x, double* y);
 
 }  // namespace caffe

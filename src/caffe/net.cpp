@@ -663,7 +663,9 @@ const vector<Blob<Dtype>*>& Net<Dtype>::Forward(
 template <typename Dtype>
 void Net<Dtype>::BackwardFromTo(int start, int end) {
   if(Caffe::mode()==Caffe::CPU){
-	  LOG(WARNING) << "Training dynamic sparse weight in CPU mode is not supported";
+#ifdef USE_MKL
+	  LOG(FATAL) << "MKL has precision problem?!";
+#endif
   }
   CHECK_GE(end, 0);
   CHECK_LT(start, layers_.size());

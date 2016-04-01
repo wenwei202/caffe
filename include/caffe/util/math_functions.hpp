@@ -202,6 +202,12 @@ Dtype caffe_cpu_group_sparsity(const int M, const int N, const Dtype *X, bool di
 template <typename Dtype>
 void caffe_cpu_del_zero_cols(const int M, const int N, const Dtype *x, Dtype *y, int * left_cols, const int* mask);
 
+//get sqrt sum of weights within blocks and copy them at each position
+template <typename Dtype>
+void caffe_cpu_block_group_lasso(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const Dtype *x, Dtype* y);
+
 #ifndef CPU_ONLY  // GPU
 
 // Decaf gpu gemm provides an interface that is almost the same as the cpu

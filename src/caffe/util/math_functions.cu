@@ -499,6 +499,8 @@ void caffe_gpu_block_group_lasso<float>(const int n, const int c,
 		const float *x, float* y){
 	CHECK_LE(blk_size_n,n);
 	CHECK_LE(blk_size_c,c);
+	CHECK_EQ(n%blk_size_n,0);
+	CHECK_EQ(c%blk_size_c,0);
 	int threads_per_block = Caffe::get_threads_per_block();
 	int shared_mem_bytes_per_block = Caffe::get_shared_mem_bytes_per_block();
 	const int blk_num_n = (n+blk_size_n-1)/blk_size_n;

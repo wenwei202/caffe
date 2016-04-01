@@ -387,18 +387,6 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
     }
     col_buff = col_buffer_.cpu_data();
   }
-  float lowering_passed_time = timer.MicroSeconds();
-  //LOG(INFO)<<this->layer_param().name()<<"\t group all"<<": "<<lowering_passed_time<<" us (Lowering Timing)";
-
-  /*
-  col_buffer_.Snapshot(Layer<Dtype>::layer_param().name()+".blob");
-  LOG(INFO)<<Layer<Dtype>::layer_param().name();
-  for(int tmp_i=0;tmp_i<dense_feature_map_mask_.count();tmp_i++){
-  	  LOG(INFO) << tmp_i<<"\t"<<dense_feature_map_mask_.cpu_data()[tmp_i];
-  }
-  for(int tmp_i=0;tmp_i<col_buf_mask_.count();tmp_i++){
-    	  LOG(INFO) << tmp_i<<"\t"<<col_buf_mask_.cpu_data()[tmp_i];
-  }*/
 
   int offset_sum = 0;
   Timer total_timer;
@@ -411,9 +399,6 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 	  int left_cols = 0;
 	  switch(this->layer_param_.convolution_param().conv_mode()){
 	  case caffe::ConvolutionParameter_ConvMode_LOWERED_CSRMM :
-		  //LOG(INFO)<<"ConvolutionParameter_ConvMode_LOWERED_CSRMM";
-		  //int nnz = *(nz_weight_index_pointers_.cpu_data() + row_offset * g + conv_out_channels_ /group_);
-		  //Timer timer;
 		  timer.Start();
 		  caffe_cpu_sparse_mmcsr(M,
 				  N,
@@ -425,17 +410,8 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 				  nz_weight_index_pointers_.cpu_data() + row_offset * g + 1,
 				  col_buff + col_offset_ * g,
 				  (Dtype)0.,output + output_offset_ * g);
-		  //float passed_time = timer.MicroSeconds();
-	      //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Compressed Row Storage Timing)";
-	 	  //long mem_bytes = nnz*(sizeof(Dtype)+sizeof(int))+M*sizeof(int)+K*N*sizeof(Dtype)+M*N*sizeof(Dtype);//
-		  //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
-		  //						  <<"A("<<M<<"x"<<K<<" nnz:"<<nnz<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
-		  //						  <<mem_bytes<<" B/ "<<passed_time<<" us = "
-		  //						  <<""<<mem_bytes/passed_time << " MB/s";
 		  break;
 	  case caffe::ConvolutionParameter_ConvMode_LOWERED_CCNMM :
-		  //LOG(INFO)<<"ConvolutionParameter_ConvMode_LOWERED_CCNMM";
-		  //Timer timer;
 		  timer.Start();
 		  left_cols = left_columns_[g];
 		  caffe_cpu_cblas_gemm(conv_out_channels_ /
@@ -444,8 +420,6 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 				  kernel_dim_ , col_buff + offset_sum,
 				conv_out_spatial_dim_, (Dtype)0., output + output_offset_ * g, conv_out_spatial_dim_);
 		  offset_sum += left_cols * conv_out_spatial_dim_;
-		  //float passed_time = timer.MicroSeconds();
-		  //LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Column Concatenation Timing)";
 	  	  break;
 	  case caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV:
 #ifdef USE_SCONV
@@ -461,26 +435,13 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 #endif
 		  break;
 	  default:
-		//LOG(INFO)<<"ConvMode LOWERED: DEFAULT";
-		//Timer timer;
 		timer.Start();
 		caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, M, N, K,
 				  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
 				  (Dtype)0., output + output_offset_ * g);
-		//float passed_time = timer.MicroSeconds();
-		//LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<passed_time<<" us (Dense Scheme Timing)";
-
-		//				long mem_bytes = (M*K+K*N+M*N)*sizeof(Dtype);
-		//				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "
-		//						<<"A("<<M<<"x"<<K<<")*B("<<K<<"x"<<N<<")=C("<<M<<"x"<<N<<") "
-		//						<<mem_bytes<<" B/ "<<passed_time<<" us = "
-		//						<<""<<mem_bytes/passed_time << " MB/s";
 		break;
 	  }
   }
-  //float mm_passed_time = total_timer.MicroSeconds();
-  //LOG(INFO)<<this->layer_param().name()<<"\t group all"<<": "<< lowering_passed_time*100/(mm_passed_time+lowering_passed_time)<<" % (Lowering Over Matrix Multiplying Timing)";
-
 }
 
 template <typename Dtype>
@@ -494,6 +455,10 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_bias(Dtype* output,
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::backward_cpu_gemm(const Dtype* output,
     const Dtype* weights, Dtype* input) {
+  ConvolutionParameter conv_param = this->layer_param_.convolution_param();
+  if(conv_param.conv_mode() != caffe::ConvolutionParameter_ConvMode_LOWERED_GEMM){
+	  LOG(FATAL)<<"Training in sparse format is not supported";
+  }
   Dtype* col_buff = col_buffer_.mutable_cpu_data();
   if (is_1x1_) {
     col_buff = input;
@@ -528,6 +493,10 @@ void BaseConvolutionLayer<Dtype>::weight_cpu_gemm(const Dtype* input,
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::backward_cpu_bias(Dtype* bias,
     const Dtype* input) {
+  ConvolutionParameter conv_param = this->layer_param_.convolution_param();
+  if(conv_param.conv_mode() != caffe::ConvolutionParameter_ConvMode_LOWERED_GEMM){
+	  LOG(FATAL)<<"Training in sparse format is not supported";
+  }
   caffe_cpu_gemv<Dtype>(CblasNoTrans, num_output_, out_spatial_dim_, 1.,
       input, bias_multiplier_.cpu_data(), 1., bias);
 }
@@ -589,6 +558,10 @@ void BaseConvolutionLayer<Dtype>::forward_gpu_bias(Dtype* output,
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::backward_gpu_gemm(const Dtype* output,
     const Dtype* weights, Dtype* input) {
+  ConvolutionParameter conv_param = this->layer_param_.convolution_param();
+  if(conv_param.conv_mode() != caffe::ConvolutionParameter_ConvMode_LOWERED_GEMM){
+	  LOG(FATAL)<<"Training in sparse format is not supported";
+  }
   Dtype* col_buff = col_buffer_.mutable_gpu_data();
   if (is_1x1_) {
     col_buff = input;
@@ -623,6 +596,10 @@ void BaseConvolutionLayer<Dtype>::weight_gpu_gemm(const Dtype* input,
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::backward_gpu_bias(Dtype* bias,
     const Dtype* input) {
+  ConvolutionParameter conv_param = this->layer_param_.convolution_param();
+  if(conv_param.conv_mode() != caffe::ConvolutionParameter_ConvMode_LOWERED_GEMM){
+	  LOG(FATAL)<<"Training in sparse format is not supported";
+  }
   caffe_gpu_gemv<Dtype>(CblasNoTrans, num_output_, out_spatial_dim_, 1.,
       input, bias_multiplier_.gpu_data(), 1., bias);
 }
