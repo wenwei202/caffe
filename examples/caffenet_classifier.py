@@ -20,8 +20,8 @@ plt.rcParams['image.cmap'] = 'gray'
 caffe_root = './'
 
 #imagenet_val_path  = '/home/wew57/cuda-workspace/SCNN_MAKEFILE_PRJ/caffe/examples/imagenet/ilsvrc12_val_lmdb'
-imagenet_val_path  = '/home/student/Public/ImageNet/ilsvrc12_val_lmdb'
-
+imagenet_val_path  = '/home/public/imagenet/ilsvrc12_train_lmdb'
+#imagenet_val_path  = 'examples/images/ilsvrc12_train_lmdb'
 
 import os
 #if not os.path.isfile(caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel'):
@@ -30,10 +30,10 @@ import os
 #    os.system("./scripts/download_model_binary.py ./models/bvlc_reference_caffenet")
 
 # GPU mode
-#caffe.set_device(2)
-#caffe.set_mode_gpu()
+caffe.set_device(2)
+caffe.set_mode_gpu()
 
-caffe.set_mode_cpu()
+#caffe.set_mode_cpu()
 
 #net = caffe.Net(caffe_root + 'models/eilab_reference_sparsenet/deploy_scnn.prototxt',
 #                caffe_root + 'models/eilab_reference_sparsenet/eilab_reference_sparsenet.caffemodel',
@@ -55,14 +55,14 @@ caffe.set_mode_cpu()
 #                caffe_root + 'models/eilab_reference_sparsenet/sparsenet_train_iter_10000_l1.caffemodel',
 #                caffe.TEST)
 
-# net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
-#               caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
-#              caffe.TEST)
-
 net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
-              #caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.519_intel.caffemodel',
-                caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.54214_1.0e-3.caffemodel',
-              caffe.TEST)
+              caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
+             caffe.TEST)
+
+#net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
+#              #caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.519_intel.caffemodel',
+#                caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.54214_1.0e-3.caffemodel',
+#              caffe.TEST)
 
 # input preprocessing: 'data' is the name of the input blob == net.inputs[0]
 #transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})

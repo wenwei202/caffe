@@ -38,14 +38,26 @@ layer {
   type: "Convolution"
   bottom: "data"
   top: "conv1"
+  connectivity_mode: CONNECTED
   param {
     lr_mult: 1
     decay_mult: 1.0
-    group_decay_mult: 1.0
+    kernel_shape_decay_mult: 1.0
+    breadth_decay_mult: 1.0
+    block_group_lasso {
+      xdimen: 25
+      ydimen: 5
+      block_decay_mult: 1.0
+#      xdimen: 1
+#      ydimen: 20
+#      block_decay_mult: 1.0
+    }
   }
   param {
     lr_mult: 2
-#    decay_mult: 0.0
+    decay_mult: 1.0
+    kernel_shape_decay_mult: 0.0
+    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 20
@@ -75,14 +87,26 @@ layer {
   type: "Convolution"
   bottom: "pool1"
   top: "conv2"
+  connectivity_mode: CONNECTED
   param {
     lr_mult: 1
     decay_mult: 1.0
-    group_decay_mult: 1.0
+    kernel_shape_decay_mult: 1.0
+    breadth_decay_mult: 1.0
+    block_group_lasso {
+      xdimen: 25
+      ydimen: 5
+      block_decay_mult: 1.0
+#      xdimen: 1
+#      ydimen: 50
+#      block_decay_mult: 1.0
+    }
   }
   param {
     lr_mult: 2
- #   decay_mult: 0.0
+    decay_mult: 1.0
+    kernel_shape_decay_mult: 0.0
+    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 50
@@ -114,11 +138,23 @@ layer {
   top: "ip1"
   param {
     lr_mult: 1
- #   decay_mult: 0.0
+    decay_mult: 1.0
+    kernel_shape_decay_mult: 1.0
+    breadth_decay_mult: 1.0
+    block_group_lasso {
+      xdimen: 30
+      ydimen: 10
+      block_decay_mult: 1.0
+#      xdimen: 1
+#      ydimen: 500
+#      block_decay_mult: 1.0
+    }
   }
   param {
     lr_mult: 2
- #   decay_mult: 0.0
+    decay_mult: 1.0
+    kernel_shape_decay_mult: 0.0
+    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 500
@@ -143,11 +179,23 @@ layer {
   top: "ip2"
   param {
     lr_mult: 1
-#    decay_mult: 0.0
+    decay_mult: 1.0
+    kernel_shape_decay_mult: 1.0
+    breadth_decay_mult: 1.0
+    block_group_lasso {
+      xdimen: 30
+      ydimen: 5
+      block_decay_mult: 1.0
+#      xdimen: 1
+#      ydimen: 10
+#      block_decay_mult: 1.0
+    }
   }
   param {
     lr_mult: 2
-#    decay_mult: 0.0
+    decay_mult: 1.0
+    kernel_shape_decay_mult: 0.0
+    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 10

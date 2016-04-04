@@ -33,16 +33,104 @@ momentum: 0.9
 #weight_decay: 0.0003
 #group_weight_decay: 0.006
 
-weight_decay: 0.0004
-group_weight_decay: 0.000
+#weight_decay: 0.004
+#group_weight_decay: 0.006
+#regularization_type: "L2"
 
-regularization_type: "L1"
+# weight_decay: 0.0001 LIMITED SPARSITY
+# weight_decay: 0.001 75% acccuracy
+
+# 0.80 
+#weight_decay: 0.0005
+#kernel_shape_decay: 0.0
+#breadth_decay: 0.0
+#regularization_type: "L1"
+
+#weight_decay: 0.0
+#kernel_shape_decay: 0.005
+#breadth_decay: 0.0005
+#regularization_type: "L1"
+
+#---------base_lr=0.0001------begin brute force ----------------------
+# kernel_shape_decay: 0.03
+# breadth_decay: 0.01
+#kernel_shape_decay: 0.01
+#breadth_decay: 0.02
+#kernel_shape_decay: 0.005
+#breadth_decay: 0.01
+#kernel_shape_decay: 0.001
+#breadth_decay: 0.002
+#kernel_shape_decay: 0.0005
+#breadth_decay: 0.0001
+#kernel_shape_decay: 0.0009
+#breadth_decay: 0.0018
+#kernel_shape_decay: 0.0008
+#breadth_decay: 0.0016
+#kernel_shape_decay: 0.0007
+#breadth_decay: 0.0014
+#kernel_shape_decay: 0.0006
+#breadth_decay: 0.0012
+#weight_decay: 0.004
+#regularization_type: "L2"
+
+#-------------------------- base lr=0.001 -----------------------------
+# 0.8262 col: 0 21.5 0;row 18.75 0 -1
+#kernel_shape_decay: 0.0006
+#breadth_decay: 0.0012
+
+#kernel_shape_decay: 0.01
+#breadth_decay: 0.02
+#kernel_shape_decay: 0.005
+#breadth_decay: 0.01
+#kernel_shape_decay: 0.006
+#breadth_decay: 0.012
+#kernel_shape_decay: 0.004
+#breadth_decay: 0.008
+#kernel_shape_decay: 0.007
+#breadth_decay: 0.014
+#kernel_shape_decay: 0.003
+#breadth_decay: 0.006
+#kernel_shape_decay: 0.002
+#breadth_decay: 0.004
+#weight_decay: 0.004
+#regularization_type: "L2"
+
+#kernel_shape_decay: 0.006
+#breadth_decay: 0.0
+#kernel_shape_decay: 0.006
+#breadth_decay: 0.006
+#kernel_shape_decay: 0.0055
+#breadth_decay: 0.0055
+#kernel_shape_decay: 0.005
+#breadth_decay: 0.005
+#kernel_shape_decay: 0.0045
+#breadth_decay: 0.0045
+#kernel_shape_decay: 0.004
+#breadth_decay: 0.004
+#kernel_shape_decay: 0.0035
+#breadth_decay: 0.0035
+#kernel_shape_decay: 0.003
+#breadth_decay: 0.003
+#kernel_shape_decay: 0.0025
+#breadth_decay: 0.0025
+#kernel_shape_decay: 0.002
+#breadth_decay: 0.002
+#kernel_shape_decay: 0.0015
+#breadth_decay: 0.0015
+#kernel_shape_decay: 0.001
+#breadth_decay: 0.001
+#kernel_shape_decay: 0.0005
+#breadth_decay: 0.0005
+kernel_shape_decay: 0.0
+breadth_decay: 0.0
+weight_decay: 0.0
+regularization_type: "L2"
 
 # The learning rate policy
 lr_policy: "multistep"
 gamma: 0.1
-stepvalue: 240000
 stepvalue: 260000
+stepvalue: 280000
 
 # Display every 200 iterations
 display: 200
@@ -51,7 +139,7 @@ display: 200
 max_iter: 300000
 
 # snapshot intermediate results
-snapshot: 20000
+snapshot: 260000
 snapshot_prefix: "examples/cifar10/cifar10_full_grouplasso"
 
 # solver mode: CPU or GPU

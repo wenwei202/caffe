@@ -26,14 +26,14 @@ if [ ! -d "$TRAIN_DATA_ROOT" ]; then
   exit 1
 fi
 
-echo "Creating train lmdb..."
+echo "Creating split train lmdb..."
 
 GLOG_logtostderr=1 $TOOLS/convert_imageset \
     --resize_height=$RESIZE_HEIGHT \
     --resize_width=$RESIZE_WIDTH \
     --shuffle \
     $TRAIN_DATA_ROOT \
-    $DATA/train.txt \
-    $DBPATH/ilsvrc12_train_lmdb
+    $DATA/50000_split_train.txt \
+    $DBPATH/ilsvrc12_split_rain_lmdb
 
 echo "Done."

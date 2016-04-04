@@ -58,6 +58,7 @@ layer {
   type: "Convolution"
   bottom: "data"
   top: "conv1"
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1.0
@@ -113,6 +114,7 @@ layer {
   type: "Convolution"
   bottom: "norm1"
   top: "conv2"
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1.0
@@ -169,6 +171,7 @@ layer {
   type: "Convolution"
   bottom: "norm2"
   top: "conv3"
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
@@ -202,6 +205,7 @@ layer {
   type: "Convolution"
   bottom: "conv3"
   top: "conv4"
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
@@ -236,6 +240,7 @@ layer {
   type: "Convolution"
   bottom: "conv4"
   top: "conv5"
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
@@ -281,6 +286,7 @@ layer {
   type: "InnerProduct"
   bottom: "pool5"
   top: "fc6"
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
@@ -321,6 +327,7 @@ layer {
   type: "InnerProduct"
   bottom: "fc6"
   top: "fc7"
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
@@ -361,6 +368,7 @@ layer {
   type: "InnerProduct"
   bottom: "fc7"
   top: "fc8"
+  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1

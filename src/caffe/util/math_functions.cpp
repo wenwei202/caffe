@@ -82,6 +82,7 @@ void caffe_set(const int N, const Dtype alpha, Dtype* Y) {
 }
 
 template void caffe_set<int>(const int N, const int alpha, int* Y);
+template void caffe_set<unsigned int>(const int N, const unsigned int alpha, unsigned int* Y);
 template void caffe_set<float>(const int N, const float alpha, float* Y);
 template void caffe_set<double>(const int N, const double alpha, double* Y);
 
@@ -601,6 +602,76 @@ void caffe_cpu_if_all_zero(const int M, const int N, const float *x, int* y, boo
 template
 void caffe_cpu_if_all_zero(const int M, const int N, const double *x, int* y, bool dimen);
 
+template <typename Dtype>
+void caffe_cpu_all_zero_mask(const int M, const int N, const Dtype *X, Dtype* Y){
+	//along rows
+	Dtype val = (Dtype)1;
+	for(int row=0; row<M; ++row){
+		val = (Dtype)0;
+		for(int col=0; col<N; col++){
+			if(X[col+row*N]!=0){
+				val = (Dtype)1;
+				break;
+			}
+		}
+		caffe_set(N,val,Y+row*N);
+	}
+	//along columns
+	for(int col=0; col<N; ++col){
+		val = (Dtype)0;
+		for(int row=0; row<M; row++){
+			if(X[col+row*N]!=0){
+				val = (Dtype)1;
+				break;
+			}
+		}
+		if(!val){//only set 0
+			for(int row=0; row<M; row++){
+				Y[col+row*N] = val;
+			}
+		}
+	}
+}
+template
+void caffe_cpu_all_zero_mask(const int M, const int N, const float *X, float* y);
+template
+void caffe_cpu_all_zero_mask(const int M, const int N, const double *X, double* y);
+template
+void caffe_cpu_all_zero_mask(const int M, const int N, const int *X, int* y);
+template
+void caffe_cpu_all_zero_mask(const int M, const int N, const unsigned int *X, unsigned int* y);
+
+template <typename Dtype>
+Dtype caffe_cpu_group_sparsity(const int M, const int N, const Dtype *x, bool dimen){
+	Dtype sparsity = (Dtype)0;
+	int counter = 0;
+	if(dimen){//along columns
+		for(int col=0; col<N; ++col){
+			counter++;
+			for(int row=0; row<M; row++){
+				if(x[col+row*N]!=0){
+					counter--;
+					break;
+				}
+			}
+		}
+		sparsity = (Dtype)counter/(Dtype)N;
+	}else{//along rows
+		for(int row=0; row<M; ++row){
+			counter++;
+			for(int col=0; col<N; col++){
+				if(x[col+row*N]!=0){
+					counter--;
+					break;
+				}
+			}
+		}
+		sparsity = (Dtype)counter/(Dtype)M;
+	}
+	return sparsity;
+}
+template float caffe_cpu_group_sparsity(const int M, const int N, const float *x, bool dimen);
+template double caffe_cpu_group_sparsity(const int M, const int N, const double *x, bool dimen);
 
 template <typename Dtype>
 void caffe_cpu_del_zero_cols(const int M, const int N, const Dtype *x, Dtype *y, int * left_cols, const int* mask){
@@ -619,11 +690,47 @@ void caffe_cpu_del_zero_cols(const int M, const int N, const Dtype *x, Dtype *y,
 	}
 	*left_cols = dst_col;
 }
-
 template
 void  caffe_cpu_del_zero_cols<float>(const int M, const int N, const float *x, float *y, int * left_cols, const int* mask);
-
 template
 void  caffe_cpu_del_zero_cols<double>(const int M, const int N, const double *x, double *y, int * left_cols, const int* mask);
+
+
+template <typename Dtype>
+void caffe_cpu_block_group_lasso(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const Dtype *x, Dtype* y){
+	  CHECK_LE(blk_size_n,n);
+	  CHECK_LE(blk_size_c,c);
+	  CHECK_EQ(n%blk_size_n,0);
+	  CHECK_EQ(c%blk_size_c,0);
+	  int block_num_c = c/blk_size_c;
+	  int block_num_n = n/blk_size_n;
+	  Dtype sum_val = 0;
+	  for(int bn=0;bn<block_num_n;bn++){
+		  for(int bc=0;bc<block_num_c;bc++){
+			  sum_val = 0;
+			  for(int n_idx=0;n_idx<blk_size_n;n_idx++){
+			  	  for(int c_idx=0;c_idx<blk_size_c;c_idx++){
+			  		  int idx = (bn*blk_size_n+n_idx)*c + (bc*blk_size_c+c_idx);
+			  		  sum_val += x[idx]*x[idx];
+			      }
+			  }
+			  for(int n_idx=0;n_idx<blk_size_n;n_idx++){
+			  	  for(int c_idx=0;c_idx<blk_size_c;c_idx++){
+			  		  int idx = (bn*blk_size_n+n_idx)*c + (bc*blk_size_c+c_idx);
+			  		  if(sum_val>0) y[idx] = sqrt(sum_val);
+			  		  else y[idx] = 0;
+			      }
+			  }
+		  }
+	  }
+}
+template void  caffe_cpu_block_group_lasso<float>(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const float *x, float* y);
+template void  caffe_cpu_block_group_lasso<double>(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const double *x, double* y);
 
 }  // namespace caffe

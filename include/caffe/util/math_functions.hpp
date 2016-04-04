@@ -143,11 +143,16 @@ inline int8_t caffe_sign(Dtype val) {
 }
 template<typename Dtype>
 inline int8_t caffe_if_zerout(Dtype val) {
-	Dtype thre = Dtype(0.0001);
+	Dtype thre = Dtype(ZEROUT_THRESHOLD);
 	if(val<thre && val>(-thre)) return 1;
 	else return 0;
 }
-
+template<typename Dtype>
+inline int8_t caffe_if_nonzerout(Dtype val) {
+	Dtype thre = Dtype(ZEROUT_THRESHOLD);
+	if(val>=thre || val<=(-thre)) return 1;
+	else return 0;
+}
 // The following two macros are modifications of DEFINE_VSL_UNARY_FUNC
 //   in include/caffe/util/mkl_alternate.hpp authored by @Rowland Depp.
 // Please refer to commit 7e8ef25c7 of the boost-eigen branch.
@@ -166,6 +171,8 @@ inline int8_t caffe_if_zerout(Dtype val) {
 // output is 1 for the positives, 0 for zero, and -1 for the negatives
 DEFINE_CAFFE_CPU_UNARY_FUNC(sign, y[i] = caffe_sign<Dtype>(x[i]));
 DEFINE_CAFFE_CPU_UNARY_FUNC(if_zerout, y[i] = caffe_if_zerout<Dtype>(x[i]));
+DEFINE_CAFFE_CPU_UNARY_FUNC(if_nonzerout, y[i] = caffe_if_nonzerout<Dtype>(x[i]));
+DEFINE_CAFFE_CPU_UNARY_FUNC(eltwise_multi, y[i] = y[i]*x[i]);
 
 // This returns a nonzero value if the input has its sign bit set.
 // The name sngbit is meant to avoid conflicts with std::signbit in the macro.
@@ -183,9 +190,23 @@ void caffe_cpu_scale(const int n, const Dtype alpha, const Dtype *x, Dtype* y);
 template <typename Dtype>
 void caffe_cpu_if_all_zero(const int M, const int N, const Dtype *X, int* y, bool dimen=true);
 
+//get the mask(0) of all-zero columns and rows
+template <typename Dtype>
+void caffe_cpu_all_zero_mask(const int M, const int N, const Dtype *X, Dtype* y);
+
+//get column(true)/row(false) sparsity in matrix
+template <typename Dtype>
+Dtype caffe_cpu_group_sparsity(const int M, const int N, const Dtype *X, bool dimen=true);
+
 //get masked cols
 template <typename Dtype>
 void caffe_cpu_del_zero_cols(const int M, const int N, const Dtype *x, Dtype *y, int * left_cols, const int* mask);
+
+//get sqrt sum of weights within blocks and copy them at each position
+template <typename Dtype>
+void caffe_cpu_block_group_lasso(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const Dtype *x, Dtype* y);
 
 #ifndef CPU_ONLY  // GPU
 
@@ -297,13 +318,19 @@ template <typename Dtype>
 void caffe_gpu_dot(const int n, const Dtype* x, const Dtype* y, Dtype* out);
 
 template <typename Dtype>
-void caffe_gpu_asum(const int n, const Dtype* x, Dtype* y);
+void caffe_gpu_asum(const int n, const Dtype* x, Dtype* y, int stride = 1);
 
 template<typename Dtype>
 void caffe_gpu_sign(const int n, const Dtype* x, Dtype* y);
 
 template<typename Dtype>
 void caffe_gpu_if_zerout(const int n, const Dtype* x, Dtype* y);
+
+template<typename Dtype>
+void caffe_gpu_if_nonzerout(const int n, const Dtype* x, Dtype* y);
+
+template<typename Dtype>
+void caffe_gpu_eltwise_multi(const int n, const Dtype* x, Dtype* y);
 
 template<typename Dtype>
 void caffe_gpu_sgnbit(const int n, const Dtype* x, Dtype* y);
@@ -314,9 +341,15 @@ void caffe_gpu_fabs(const int n, const Dtype* x, Dtype* y);
 template <typename Dtype>
 void caffe_gpu_scale(const int n, const Dtype alpha, const Dtype *x, Dtype* y);
 
-//get sqrt sum of weights within groups and copy them at each position
+//get sqrt sum of weights within bars(column(true)/row(false)) and copy them at each position
 template <typename Dtype>
-void caffe_gpu_group_lasso(const int n, const int c, const Dtype *x, Dtype* y);
+void caffe_gpu_bar_group_lasso(const int n, const int c, const Dtype *x, Dtype* y, bool along_column_or_row = true);
+
+//get sqrt sum of weights within blocks and copy them at each position
+template <typename Dtype>
+void caffe_gpu_block_group_lasso(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const Dtype *x, Dtype* y);
 
 #define DEFINE_AND_INSTANTIATE_GPU_UNARY_FUNC(name, operation) \
 template<typename Dtype> \
@@ -324,6 +357,14 @@ __global__ void name##_kernel(const int n, const Dtype* x, Dtype* y) { \
   CUDA_KERNEL_LOOP(index, n) { \
     operation; \
   } \
+} \
+template <> \
+void caffe_gpu_##name<int>(const int n, const int* x, int* y) { \
+	NOT_IMPLEMENTED; \
+} \
+template <> \
+void caffe_gpu_##name<unsigned int>(const int n, const unsigned int* x, unsigned int* y) { \
+	NOT_IMPLEMENTED; \
 } \
 template <> \
 void caffe_gpu_##name<float>(const int n, const float* x, float* y) { \

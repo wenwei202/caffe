@@ -475,10 +475,18 @@ void Net<Dtype>::AppendParam(const NetParameter& param, const int layer_id,
     learnable_param_ids_.push_back(learnable_param_id);
     has_params_lr_.push_back(param_spec->has_lr_mult());
     has_params_decay_.push_back(param_spec->has_decay_mult());
-    has_params_group_decay_.push_back(param_spec->has_group_decay_mult());
+    has_params_breadth_decay_.push_back(param_spec->has_breadth_decay_mult());
+    has_params_kernel_shape_decay_.push_back(param_spec->has_kernel_shape_decay_mult());
+    has_params_block_group_lasso_.push_back(param_spec->block_group_lasso_size());
     params_lr_.push_back(param_spec->lr_mult());
     params_weight_decay_.push_back(param_spec->decay_mult());
-    params_group_weight_decay_.push_back(param_spec->group_decay_mult());
+    params_breadth_decay_.push_back(param_spec->breadth_decay_mult());
+    params_kernel_shape_decay_.push_back(param_spec->kernel_shape_decay_mult());
+    vector<BlockGroupLassoSpec> block_spec;
+    for(int i=0;i<param_spec->block_group_lasso_size();i++){
+    	block_spec.push_back(param_spec->block_group_lasso(i));
+    }
+    params_block_group_lasso_.push_back(block_spec);
     if(layer_param.has_convolution_param()){
 		  param_groups_.push_back(layer_param.convolution_param().group());
 	}
@@ -540,14 +548,36 @@ void Net<Dtype>::AppendParam(const NetParameter& param, const int layer_id,
         params_weight_decay_[learnable_param_id] = param_spec->decay_mult();
       }
     }
-    if (param_spec->has_group_decay_mult()) {
-	  if (has_params_group_decay_[learnable_param_id]) {
-		CHECK_EQ(param_spec->group_decay_mult(),
-				params_group_weight_decay_[learnable_param_id])
-			<< "Shared param '" << param_name << "' has mismatched group_decay_mult.";
+    if (param_spec->has_breadth_decay_mult()) {
+	  if (has_params_breadth_decay_[learnable_param_id]) {
+		CHECK_EQ(param_spec->breadth_decay_mult(),
+				params_breadth_decay_[learnable_param_id])
+			<< "Shared param '" << param_name << "' has mismatched breadth_decay_mult.";
 	  } else {
-		has_params_group_decay_[learnable_param_id] = true;
-		params_group_weight_decay_[learnable_param_id] = param_spec->group_decay_mult();
+		  has_params_breadth_decay_[learnable_param_id] = true;
+		  params_breadth_decay_[learnable_param_id] = param_spec->breadth_decay_mult();
+	  }
+	}
+    if (param_spec->has_kernel_shape_decay_mult()) {
+	  if (has_params_kernel_shape_decay_[learnable_param_id]) {
+		CHECK_EQ(param_spec->kernel_shape_decay_mult(),
+				params_kernel_shape_decay_[learnable_param_id])
+			<< "Shared param '" << param_name << "' has mismatched kernel_shape_decay_mult.";
+	  } else {
+		  has_params_kernel_shape_decay_[learnable_param_id] = true;
+		  params_kernel_shape_decay_[learnable_param_id] = param_spec->kernel_shape_decay_mult();
+	  }
+	}
+    if (param_spec->block_group_lasso_size()) {
+	  if (has_params_block_group_lasso_[learnable_param_id]) {
+		LOG(FATAL) << "duplicate block_group_lasso among shared params.";
+	  } else {
+		  has_params_block_group_lasso_[learnable_param_id] = true;
+	      vector<BlockGroupLassoSpec> block_spec;
+		  for(int i=0;i<param_spec->block_group_lasso_size();i++){
+			  block_spec.push_back(param_spec->block_group_lasso(i));
+		  }
+		  params_block_group_lasso_[learnable_param_id] = block_spec;
 	  }
 	}
   }
@@ -633,7 +663,9 @@ const vector<Blob<Dtype>*>& Net<Dtype>::Forward(
 template <typename Dtype>
 void Net<Dtype>::BackwardFromTo(int start, int end) {
   if(Caffe::mode()==Caffe::CPU){
-	  LOG(WARNING) << "Training dynamic sparse weight in CPU mode is not supported";
+#ifdef USE_MKL
+	  LOG(FATAL) << "MKL has precision problem?!";
+#endif
   }
   CHECK_GE(end, 0);
   CHECK_LT(start, layers_.size());

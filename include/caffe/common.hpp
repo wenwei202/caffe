@@ -146,6 +146,29 @@ class Caffe {
 	  	  cusparseSetMatIndexBase(Get().cusparse_matdescr_,CUSPARSE_INDEX_BASE_ZERO);
 	  }
   }
+  //inline static cudaDeviceProp master_device_properties() { return Get().master_device_properties_; }
+  inline static int get_threads_per_block() {
+	  cudaDeviceProp prop;
+	  int device;
+	  if (cudaSuccess != cudaGetDevice(&device)) {
+		LOG(FATAL)<<"No cuda device present.";
+	    return CAFFE_CUDA_NUM_THREADS;
+	  }
+	  CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
+	  return prop.maxThreadsPerBlock;
+  }
+
+  //inline static cudaDeviceProp master_device_properties() { return Get().master_device_properties_; }
+  inline static int get_shared_mem_bytes_per_block() {
+	  cudaDeviceProp prop;
+	  int device;
+	  if (cudaSuccess != cudaGetDevice(&device)) {
+	    LOG(FATAL)<<"No cuda device present.";
+	    return 0;
+	  }
+	  CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
+	  return prop.sharedMemPerBlock;
+  }
 #endif
 
   // Returns the mode: running on CPU or GPU.
@@ -175,6 +198,7 @@ class Caffe {
   cusparseHandle_t cusparse_handle_;
   cusparseMatDescr_t cusparse_matdescr_;
   curandGenerator_t curand_generator_;
+  //cudaDeviceProp master_device_properties_;
 #endif
   shared_ptr<RNG> random_generator_;
 

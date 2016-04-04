@@ -24,13 +24,13 @@ template <typename Dtype>
 class Blob {
  public:
   Blob()
-       : data_(), diff_(), count_(0), capacity_(0) {}
+       : data_(), connectivity_(), diff_(), count_(0), capacity_(0) {}
 
   /// @brief Deprecated; use <code>Blob(const vector<int>& shape)</code>.
   explicit Blob(const int num, const int channels, const int height,
       const int width);
   explicit Blob(const vector<int>& shape);
-
+  enum DisconnectMode { ELTWISE, GRPWISE };//how to disconnect
   /// @brief Deprecated; use <code>Reshape(const vector<int>& shape)</code>.
   void Reshape(const int num, const int channels, const int height,
       const int width);
@@ -211,6 +211,11 @@ class Blob {
     return data_;
   }
 
+  inline const shared_ptr<SyncedMemory>& connectivity() const {
+    CHECK(connectivity_);
+    return connectivity_;
+  }
+
   inline const shared_ptr<SyncedMemory>& diff() const {
     CHECK(diff_);
     return diff_;
@@ -222,12 +227,18 @@ class Blob {
   const Dtype* gpu_data() const;
   const Dtype* cpu_diff() const;
   const Dtype* gpu_diff() const;
+  const Dtype* cpu_connectivity() const;
+  const Dtype* gpu_connectivity() const;
   Dtype* mutable_cpu_data();
   Dtype* mutable_gpu_data();
   Dtype* mutable_cpu_diff();
   Dtype* mutable_gpu_diff();
+  Dtype* mutable_cpu_connectivity();
+  Dtype* mutable_gpu_connectivity();
   void Update();
   void Zerout();
+  void Disconnect(DisconnectMode mode, int group=1);
+  inline void Connect(){ InitializeConnectivity(); }
   Dtype GetSparsity();
   void FromProto(const BlobProto& proto, bool reshape = true);
   void ToProto(BlobProto* proto, bool write_diff = false) const;
@@ -271,8 +282,11 @@ class Blob {
 
   bool ShapeEquals(const BlobProto& other);
 
+  void InitializeConnectivity(Dtype val = 1.0);
+
  protected:
   shared_ptr<SyncedMemory> data_;
+  shared_ptr<SyncedMemory> connectivity_;
   shared_ptr<SyncedMemory> diff_;
   shared_ptr<SyncedMemory> shape_data_;
   vector<int> shape_;

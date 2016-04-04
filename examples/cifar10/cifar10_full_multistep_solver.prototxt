@@ -13,13 +13,14 @@ test_interval: 1000
 base_lr: 0.001
 momentum: 0.9
 weight_decay: 0.004
-#weight_decay: 0.001
 
 # The learning rate policy
 lr_policy: "multistep"
 gamma: 0.1
-stepvalue: 120000
-stepvalue: 240000
+stepvalue: 100000
+stepvalue: 200000
+#stepvalue: 60000
+#stepvalue: 65000
 
 # Display every 200 iterations
 display: 200
