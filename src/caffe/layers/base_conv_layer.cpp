@@ -333,7 +333,7 @@ void BaseConvolutionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
   // overly large memory usage. In the special case of 1x1 convolution
   // it goes lazily unused to save memory.
   col_buffer_shape_.clear();
-  col_buffer_shape_.push_back(kernel_dim_ * group_);
+  col_buffer_shape_.push_back(kernel_dim_ * group_ * num_);
   for (int i = 0; i < num_spatial_axes_; ++i) {
     if (reverse_dimensions()) {
       col_buffer_shape_.push_back(input_shape(i + 1));
@@ -372,20 +372,23 @@ void BaseConvolutionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
 
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
-    const Dtype* weights, Dtype* output, bool skip_im2col) {
+    const Dtype* weights, Dtype* output, int batch_idx, bool skip_im2col) {
   const Dtype* col_buff = input;
 
   Timer timer;
   timer.Start();
   if (!is_1x1_ ||  is_concatenating_weights_features_) {
+	int offset = 0;
     if (!skip_im2col || is_concatenating_weights_features_) {
+      offset = col_offset_*group_*batch_idx;
+      Dtype *col_buff_mutable = col_buffer_.mutable_cpu_data() + offset;
       if(is_concatenating_weights_features_){
-    	  conv_im2col_cpu(input, col_buffer_.mutable_cpu_data(),col_buf_mask_.mutable_cpu_data()/*, dense_feature_map_mask_.mutable_cpu_data()*/);
+    	  conv_im2col_cpu(input, col_buff_mutable, col_buf_mask_.mutable_cpu_data()/*, dense_feature_map_mask_.mutable_cpu_data()*/);
       }else{
-    	  conv_im2col_cpu(input, col_buffer_.mutable_cpu_data());
+    	  conv_im2col_cpu(input, col_buff_mutable);
       }
     }
-    col_buff = col_buffer_.cpu_data();
+    col_buff = col_buffer_.cpu_data() + offset;
   }
 
   int offset_sum = 0;

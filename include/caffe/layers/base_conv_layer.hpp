@@ -42,7 +42,7 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   // The last argument in forward_cpu_gemm is so that we can skip the im2col if
   // we just called weight_cpu_gemm with the same input.
   void forward_cpu_gemm(const Dtype* input, const Dtype* weights,
-      Dtype* output, bool skip_im2col = false);
+      Dtype* output, int batch_idx, bool skip_im2col = false);
   void forward_cpu_bias(Dtype* output, const Dtype* bias);
   void backward_cpu_gemm(const Dtype* input, const Dtype* weights,
       Dtype* output);
@@ -114,6 +114,8 @@ class BaseConvolutionLayer : public Layer<Dtype> {
           dilation_.cpu_data()[0], dilation_.cpu_data()[1], col_buff,
           all_zero_mask);
     } else {
+      // JSP: FIXME - parallelization over multiple inputs in a batch probably
+      // won't work for this code path
       im2col_nd_cpu(data, num_spatial_axes_, conv_input_shape_.cpu_data(),
           col_buffer_shape_.data(), kernel_shape_.cpu_data(),
           pad_.cpu_data(), stride_.cpu_data(), dilation_.cpu_data(), col_buff);
