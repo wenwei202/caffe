@@ -384,18 +384,21 @@ __global__ void block_group_lasso_kernel(const int n, const int c,
 	int c_offset = 0;
 	const int blk_size_n = n%gridDim.y ? n/gridDim.y+1 : n/gridDim.y;
 	const int blk_size_c = c%gridDim.x ? c/gridDim.x+1 : c/gridDim.x;
-	extern __shared__ Dtype shared_mem[];
+	//extern __shared__ Dtype shared_mem[];
 	//initialize 1D shared memory
 	while(c_offset<blk_size_n*blk_size_c){
+		int offset_x = XOFFSET(c_offset + threadIdx.x);
+		int offset_y = YOFFSET(c_offset + threadIdx.x);
 		int x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset + threadIdx.x);
 		int y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset + threadIdx.x);
 		int idx1 = y_pos * c + x_pos;
-		if(x_pos < c && y_pos < n){//WITHOUT THIS: THE C MUST BE MULTIPLE TIMES OF BLOCKDIM.X IN CURRENT IMPLEMENTATION !!!
-			//y[idx1] = x[idx1]*x[idx1];
-			shared_mem[c_offset + threadIdx.x] = x[idx1]*x[idx1];
-		}else{
-			shared_mem[c_offset + threadIdx.x] = 0;
-		}
+		//if(x_pos < c && y_pos < n){//WITHOUT THIS: THE C MUST BE MULTIPLE TIMES OF BLOCKDIM.X IN CURRENT IMPLEMENTATION !!!
+		if(offset_x < blk_size_c && offset_y < blk_size_n){//WITHOUT THIS: THE C MUST BE MULTIPLE TIMES OF BLOCKDIM.X IN CURRENT IMPLEMENTATION !!!
+			y[idx1] = x[idx1]*x[idx1];
+			//shared_mem[c_offset + threadIdx.x] = x[idx1]*x[idx1];
+		}//else{
+			//shared_mem[c_offset + threadIdx.x] = 0;
+		//}
 		c_offset += blockDim.x;
 	}
 	__syncthreads();
@@ -407,29 +410,33 @@ __global__ void block_group_lasso_kernel(const int n, const int c,
 		int len = (c_offset + blockDim.x)<blk_size_n*blk_size_c ? blockDim.x : (blk_size_n*blk_size_c-c_offset);//valid threads to process
 		while(len/2>0){
 			if(threadIdx.x<len/2){
-				/*
+
 				int x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset + threadIdx.x);
 				int y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset + threadIdx.x);
 				int idx1 = y_pos * c + x_pos;
-				Dtype sum_elem1 = (x_pos < c && y_pos < n) ? y[idx1] : 0;
+				//Dtype sum_elem1 = (x_pos < c && y_pos < n) ? y[idx1] : 0;
 				x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset + threadIdx.x + (len+1)/2);
 				y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset + threadIdx.x + (len+1)/2);
 				int idx2 = y_pos * c + x_pos;
-				Dtype sum_elem2 = (x_pos < c && y_pos < n) ? y[idx2] : 0;
+				//Dtype sum_elem2 = (x_pos < c && y_pos < n) ? y[idx2] : 0;
 				//BUG: we must ALWAYS store this data. Use shared memory with size of blk_size_n*blk_size_c!!!
-				//if(flag) y[idx1] = sum_elem1+sum_elem2;
-				shared_mem[c_offset+threadIdx.x] = sum_elem1+sum_elem2;
-				*/
-				int idx1 = c_offset + threadIdx.x;
-				int idx2 = c_offset + threadIdx.x + (len+1)/2;
-				shared_mem[idx1] += shared_mem[idx2];
+				y[idx1] += y[idx2];
+				//shared_mem[c_offset+threadIdx.x] = sum_elem1+sum_elem2;
+
+				//int idx1 = c_offset + threadIdx.x;
+				//int idx2 = c_offset + threadIdx.x + (len+1)/2;
+				//shared_mem[idx1] += shared_mem[idx2];
 			}
 			__syncthreads();
 			len=(len+1)/2;
 		}
 
 		//res += y[blockIdx.y * c + c_offset];
-		res += shared_mem[c_offset];
+		int x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset);
+		int y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset);
+		int idx1 = y_pos * c + x_pos;
+		res += y[idx1];
+		//res += shared_mem[c_offset];
 		c_offset += blockDim.x;
 	}
 	__syncthreads();
@@ -437,10 +444,13 @@ __global__ void block_group_lasso_kernel(const int n, const int c,
 	//copy
 	c_offset=0;
 	while(c_offset<blk_size_n*blk_size_c){
+		int offset_x = XOFFSET(c_offset + threadIdx.x);
+		int offset_y = YOFFSET(c_offset + threadIdx.x);
 		int x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset + threadIdx.x);
 		int y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset + threadIdx.x);
 		int idx1 = y_pos * c + x_pos;
-		if(x_pos < c && y_pos < n){
+		//if(x_pos < c && y_pos < n){
+		if(offset_x < blk_size_c && offset_y < blk_size_n){
 			if(res){
 				y[idx1] = Dtype(sqrt(res));
 			}else{
@@ -502,18 +512,20 @@ void caffe_gpu_block_group_lasso<float>(const int n, const int c,
 	CHECK_EQ(n%blk_size_n,0);
 	CHECK_EQ(c%blk_size_c,0);
 	int threads_per_block = Caffe::get_threads_per_block();
-	int shared_mem_bytes_per_block = Caffe::get_shared_mem_bytes_per_block();
+	//int shared_mem_bytes_per_block = Caffe::get_shared_mem_bytes_per_block();
 	const int blk_num_n = (n+blk_size_n-1)/blk_size_n;
 	const int blk_num_c = (c+blk_size_c-1)/blk_size_c;
 	const int blk_size = blk_size_n*blk_size_c;
-	CHECK_GE(shared_mem_bytes_per_block,blk_size*sizeof(float));
+	//const int sharedmem_bytes = blk_size*sizeof(float)*2;
+	//CHECK_GE(shared_mem_bytes_per_block,sharedmem_bytes);
 	dim3 block(blk_num_c,blk_num_n);
 	dim3 thread(blk_size>threads_per_block?threads_per_block:blk_size, 1);
 	//LOG(INFO)<< "blk_size_n:" << blk_size_n
 	//		<< " blk_size_c:" << blk_size_c
 	//		<< " blk_num_n:" << blk_num_n
 	//		<< " blk_num_c:" << blk_num_c;
-	block_group_lasso_kernel<<<block,thread,blk_size*sizeof(float)>>>(n, c,x,y);
+	//block_group_lasso_kernel<<<block,thread,sharedmem_bytes>>>(n, c,x,y);
+	block_group_lasso_kernel<<<block,thread>>>(n, c,x,y);
 	CUDA_POST_KERNEL_CHECK;
 }
 
