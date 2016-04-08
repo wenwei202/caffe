@@ -20,7 +20,7 @@ plt.rcParams['image.cmap'] = 'gray'
 caffe_root = './'
 
 #imagenet_val_path  = '/home/wew57/cuda-workspace/SCNN_MAKEFILE_PRJ/caffe/examples/imagenet/ilsvrc12_val_lmdb'
-imagenet_val_path  = '/home/public/imagenet/ilsvrc12_train_lmdb'
+imagenet_val_path  = '/home/public/imagenet/ilsvrc12_val_lmdb'
 #imagenet_val_path  = 'examples/images/ilsvrc12_train_lmdb'
 
 import os
@@ -60,8 +60,14 @@ net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
              caffe.TEST)
 
 #net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
-#              #caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.519_intel.caffemodel',
-#                caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.54214_1.0e-3.caffemodel',
+#              caffe_root + 'models/bvlc_reference_caffenet/0.001_0.0_0.0_0.0_Sat_Mar_19_17-38-48_EDT_2016/caffenet_train_iter_200000.caffemodel',
+#             caffe.TEST)
+
+#net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
+#net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy_conv_mode.prototxt',
+              #caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.519_intel.caffemodel',
+              #caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.54214_1.0e-3.caffemodel',
+#              caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_iter_160000_0.56318_finetuned_from_0.001_0.0005_0.0_0.0_0.0003.caffemodel',
 #              caffe.TEST)
 
 # input preprocessing: 'data' is the name of the input blob == net.inputs[0]
@@ -134,8 +140,13 @@ labels_set = set()
 lmdb_env = lmdb.open(imagenet_val_path)
 lmdb_txn = lmdb_env.begin()
 lmdb_cursor = lmdb_txn.cursor()
-pixel_mean = np.load(caffe_root + 'python/caffe/imagenet/ilsvrc_2012_mean.npy').mean(1).mean(1)
-pixel_mean = tile(pixel_mean.reshape([1,3]),(height*width,1)).reshape(height,width,3).transpose(2,0,1)
+#pixel_mean = np.load(caffe_root + 'python/caffe/imagenet/ilsvrc_2012_mean.npy').mean(1).mean(1)
+mean_blob = caffe.proto.caffe_pb2.BlobProto()
+mean_data = open( 'data/ilsvrc12/imagenet_mean.binaryproto' , 'rb' ).read()
+mean_blob.ParseFromString(mean_data)
+#pixel_mean = tile(pixel_mean.reshape([1,3]),(height*width,1)).reshape(height,width,3).transpose(2,0,1)
+pixel_mean = np.array( caffe.io.blobproto_to_array(mean_blob) )
+
 avg_time = 0
 batch_size = net.blobs['data'].num
 label = zeros((batch_size,1))
@@ -153,10 +164,11 @@ for key, value in lmdb_cursor:
     #image_tmp = image_tmp.transpose(0,2,1)
     #plt.imshow(image.transpose(1,2,0)[:,:,(2,1,0)])
     #plt.show()
-    crop_range = range(14,14+227)
+    #crop_range = range(14,14+227)
+    image = image-pixel_mean
     image = image[:,14:14+227,14:14+227]
     #net.blobs['data'].data[...] = image-pixel_mean #transformer.preprocess('data', image)
-    net.blobs['data'].data[image_count%batch_size] = image-pixel_mean
+    net.blobs['data'].data[image_count%batch_size] = image#image-pixel_mean
     if image_count % batch_size == (batch_size-1):
         starttime = time.time()
         out = net.forward()
