@@ -34,4 +34,4 @@ regularization_type: "L2"
 
 snapshot: 6000
 #snapshot_prefix: "models/bvlc_reference_caffenet/caffenet_train_grouplasso"
-solver_mode: GPU
+#solver_mode: GPU

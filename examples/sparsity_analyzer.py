@@ -51,10 +51,10 @@ if __name__ == "__main__":
 # --prototxt /home/wew57/bincaffe/models/eilab_reference_sparsenet/train_val_scnn.prototxt  --origimodel /home/wew57/bincaffe/models/eilab_reference_sparsenet/eilab_reference_sparsenet_zerout.caffemodel --tunedmodel /home/wew57/bincaffe/models/eilab_reference_sparsenet/sparsenet_train_iter_160000.caffemodel
 # --prototxt examples/cifar10/cifar10_full_train_test.prototxt --origimodel examples/cifar10/cifar10_full_step_iter_200000.caffemodel --tunedmodel examples/cifar10/cifar10_full_grouplasso_iter_100000.caffemodel
 # --prototxt examples/mnist/lenet_train_test.prototxt --origimodel examples/mnist/lenet_iter_10000.caffemodel --tunedmodel examples/mnist/lenet_grouplasso_iter_10000.caffemodel
-#    caffe.set_mode_cpu()
+    caffe.set_mode_cpu()
     # GPU mode
-    caffe.set_device(1)
-    caffe.set_mode_gpu()
+    #caffe.set_device(1)
+    #caffe.set_mode_gpu()
     orig_net = caffe.Net(prototxt,original_caffemodel, caffe.TEST)
     tuned_net = caffe.Net(prototxt,fine_tuned_caffemodel, caffe.TEST)
     #orig_net = tuned_net
@@ -108,37 +108,6 @@ if __name__ == "__main__":
                 print "[{}] tuned: %{} zeros".format(layer_name,100*sum((abs(weights_tuned)<r_width).flatten())/(float)(weights_tuned.size))
                 zero_out(weights_tuned,r_width)
 
-
-################################## scnn paper ##############################################
-#                #analyze the average ratio of nonzero elements in S in paper SCNN
-#                xIdx = range(0,kernel_max_sizexsize,1)
-#                if re.match("^conv[0-9]",layer_name):
-#                    nonzero_ratio = zeros((1,kernel_max_sizexsize))
-#                    for i in xIdx:
-#                        steps=range(i,weights_tuned.shape[1],kernel_max_sizexsize)
-#                        tmp = weights_tuned[:,steps,:,:]
-#                        nonzero_ratio[0,i] = sum(abs(tmp)>=r_width)/(float)(tmp.size)
-#                    plt.figure(1)
-#                    plt.plot(xIdx,nonzero_ratio[0,:],label=layer_name,linewidth=2.0)
-#
-#
-#                #analyze the average ratio of nonzero elements in S in our method
-#                xIdx = range(0,weights_tuned.shape[1],1)
-#                if re.match("^conv[0-9]",layer_name):
-#                    nonzero_ratio = zeros((1,weights_tuned.shape[1]))
-#                    for i in xIdx:
-#                        tmp = weights_tuned[:,i,:,:]
-#                        nonzero_ratio[0,i] = sum(abs(tmp)>=r_width)/(float)(tmp.size)
-#                    nonzero_ratio.sort()
-#                    plt.figure(2)
-#                    plot_count += 1
-#                    plt.subplot(subplot_num,1,plot_count)
-#                    #plt.xlabel(layer_name)
-#                    plt.plot( xIdx,nonzero_ratio[0,::-1],"-r",label=layer_name,linewidth=2.0)
-#                    plt.legend(loc='upper right', shadow=True)
-#                    plt.axis([0, weights_tuned.shape[1],0, 1])
-############################################################################################################
-
                 #analyze the average ratio of after group lasso
                 if re.match("^conv[0-9]",layer_name) or re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
                     group = net_parser.getLayerByName(net_msg,layer_name).convolution_param.group
@@ -162,16 +131,34 @@ if __name__ == "__main__":
                         plt.legend(loc='upper right', shadow=True)
                         plt.axis([0, weights_tuned_reshaped.shape[1],0, 1])
                         show_matrix(abs(weights_tuned_reshaped)>0)
+                        # display sparsity
                         counts_along_row = sum(weights_tuned_reshaped!=0,axis=1)
                         col_sparsity = sum(nonzero_ratio==0)*1.0/nonzero_ratio.size
                         row_sparsity = sum(counts_along_row==0)*1.0/counts_along_row.size
                         elem_sparsity = sum(weights_tuned_reshaped==0)*1.0/weights_tuned_reshaped.size
-                        plt.title("{}_{}: weight sparsity (col:{:.1%} row:{:.1%} elem:{:.1%})".format(layer_name,g,\
+                        titlename = "{}_{}: weight sparsity (col:{:.1%} row:{:.1%} elem:{:.1%})\n".format(layer_name,g,\
                                     col_sparsity, \
                                     row_sparsity,\
-                                    elem_sparsity))
+                                    elem_sparsity)
                         plt.xlabel("{:.2f}X speedup".format(1.0/(1-col_sparsity)/(1-row_sparsity)))
                         speedupinfo = speedupinfo + "{:.2f}X".format(1.0/(1-col_sparsity)/(1-row_sparsity))
+                        block_group_lasso_array = net_parser.getLayerByName(net_msg,layer_name).param._values[0].block_group_lasso._values
+                        for blk_idx in range(0,len(block_group_lasso_array)):
+                            xdim = block_group_lasso_array[blk_idx].xdimen
+                            ydim = block_group_lasso_array[blk_idx].ydimen
+                            assert weights_tuned_reshaped.shape[0]%ydim == 0
+                            assert weights_tuned_reshaped.shape[1]%xdim == 0
+                            count = 0
+                            blk_num_y = weights_tuned_reshaped.shape[0]/ydim
+                            blk_num_x = weights_tuned_reshaped.shape[1]/xdim
+                            for by in range(0,blk_num_y):
+                                for bx in range(0,blk_num_x):
+                                    count += (sum(abs(weights_tuned_reshaped[by*ydim:by*ydim+ydim, bx*xdim:bx*xdim+xdim])) == 0)
+                            titlename = "{} ({},{}):{:.1%}".format(titlename,xdim,ydim,(float)(count)/blk_num_x/blk_num_y)
+                        plt.title(titlename)
+                        print titlename
+
+
 
 
             #else:
