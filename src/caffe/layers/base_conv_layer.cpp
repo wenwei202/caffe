@@ -67,28 +67,55 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 			break;
 		case caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV:
 			{
-#ifdef USE_SCONV
+				LOG(INFO)<<"ConvolutionParameter_ConvMode_DIRECT_SCONV";
 				for (int g = 0; g < group_; ++g) {
+					// first create a CSR matrix as for LOWERED_CSRMM
 					caffe_cpu_sparse_dense2csr(M, N,
 							this->blobs_[0]->mutable_cpu_data() + weight_offset * g,
 							nz_weight_values_.mutable_cpu_data()+ weight_offset * g,
 							nz_weight_indices_.mutable_cpu_data()+ weight_offset * g,
 							nz_weight_index_pointers_.mutable_cpu_data() + row_offset * g);
 
-					//Please be consistent to https://software.intel.com/en-us/node/468626
-					shared_ptr< CSR > weight_CSR_ptr = shared_ptr< CSR > (new CSR(M,N,
-						nz_weight_index_pointers_.mutable_cpu_data() + row_offset * g,
-						nz_weight_indices_.mutable_cpu_data() + weight_offset * g,
-						nz_weight_values_.mutable_cpu_data()) + weight_offset * g
-					);
+					int height = conv_input_shape_.cpu_data()[1];
+					int width = conv_input_shape_.cpu_data()[2];
+					int kernel_h = kernel_shape_.cpu_data()[0];
+					int kernel_w = kernel_shape_.cpu_data()[1];
+					int pad_h = pad_.cpu_data()[0];
+					int pad_w = pad_.cpu_data()[1];
 
-					kernel_tensers_.push_back( shared_ptr<KernelTensor> (new KernelTensor(weight_CSR_ptr.get(),
-							conv_in_channels_ / group_,
-							this->blobs_[0]->shape(2),//recommend to separate w and h
-							pad_.cpu_data()[0]        //recommend to separate pad_w and pad_h
-							)) );
+					// declare variables for sparsity statistics
+					vector<vector<int> > nnz_per_channel_pair(M);
+					for(int i = 0; i < M; ++i) {
+						nnz_per_channel_pair[i] = vector<int>(conv_in_channels_, 0);
+					}
+					int num_of_non_zero_kernels = 0;
+
+					// transform the indices for direct convolution
+					const int *rowptr = nz_weight_index_pointers_.cpu_data() + row_offset * g;
+					int *colidx = nz_weight_indices_.mutable_cpu_data() + weight_offset * g;
+					for (int out_channel = 0; out_channel < M; ++out_channel) {
+						for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
+							int col = colidx[j];
+
+							int kernel_col = col%kernel_w;
+							int kernel_row = (col/kernel_w)%kernel_h;
+							int in_channel = col/(kernel_w*kernel_h);
+							assert(in_channel < conv_in_channels_);
+
+							colidx[j] = (in_channel*(height + pad_h) + kernel_row)*(width + pad_w) + kernel_col;
+
+							nnz_per_channel_pair[out_channel][in_channel]++;
+						}
+
+						for (int in_channel = 0; in_channel < conv_in_channels_; ++in_channel) {
+							if (nnz_per_channel_pair[out_channel][in_channel] != 0) {
+								++num_of_non_zero_kernels;
+							}
+						}
+					}
+
+					printf("k-mode sparsity %g\n", (double)num_of_non_zero_kernels/(M*conv_in_channels_));
 				}
-#endif
 				break;
 			}
 		default:
@@ -377,8 +404,39 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 
   Timer timer;
   timer.Start();
-  if (!is_1x1_ ||  is_concatenating_weights_features_) {
-	int offset = 0;
+
+  Dtype *input_padded;
+  int input_padded_len;
+  if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+	  int height = conv_input_shape_.cpu_data()[1];
+	  int width = conv_input_shape_.cpu_data()[2];
+	  int pad_h = pad_.cpu_data()[0];
+	  int pad_w = pad_.cpu_data()[1];
+
+	  input_padded_len = conv_in_channels_ * (height + pad_h) * (width + pad_w) + pad_h * (width + 2 * pad_w);
+	  input_padded = new Dtype[input_padded_len];
+	  assert(input_padded);
+	  for (int in_channel = 0; in_channel < conv_in_channels_; ++in_channel) {
+	    memset(
+	        input_padded + in_channel * (height + pad_h) * (width + pad_w),
+	        0, sizeof(Dtype) * pad_h * (width + pad_w));
+	  	for (int input_row = 0; input_row < height; ++input_row) {
+	  	  memset(
+	  	      input_padded + (in_channel * (height + pad_h) + input_row + pad_h) * (width + pad_w),
+	  	      0, sizeof(Dtype) * pad_w);
+	  	  memcpy(
+	  	      input_padded + (in_channel * (height + pad_h) + input_row + pad_h) * (width + pad_w) + pad_w,
+	  	      input + (in_channel * height + input_row) * width,
+	  	      sizeof(Dtype) * width);
+	  	}
+	  }
+	  memset(
+	      input_padded + conv_in_channels_ * (height + pad_h) * (width + pad_w),
+	      0,
+	      sizeof(Dtype) * pad_h * (width + 2 * pad_w));
+  }
+  else if (!is_1x1_ ||  is_concatenating_weights_features_) {
+    int offset = 0;
     if (!skip_im2col || is_concatenating_weights_features_) {
       offset = col_offset_*group_*batch_idx;
       Dtype *col_buff_mutable = col_buffer_.mutable_cpu_data() + offset;
@@ -425,18 +483,79 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 		  offset_sum += left_cols * conv_out_spatial_dim_;
 	  	  break;
 	  case caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV:
-#ifdef USE_SCONV
-		  // SINGLE thread currently
-		  //int tid = omp_get_thread_num();
-		  //synk::Barrier::getInstance()->wait(tid);
-		  kernel_tensers_[g]->conv(
-				  input,//pixels in the pad region are not allocated
-				  output,
-				  stride_.cpu_data()[0] //WHY NOT take stride as a parameter of constructor? stride_ may be different for h and w
-				  );
-		  //synk::Barrier::getInstance()->wait(tid);
-#endif
+	  {
+		  timer.Start();
+
+		  int height = conv_input_shape_.cpu_data()[1];
+		  int width = conv_input_shape_.cpu_data()[2];
+		  int kernel_h = kernel_shape_.cpu_data()[0];
+		  int kernel_w = kernel_shape_.cpu_data()[1];
+		  int pad_h = pad_.cpu_data()[0];
+		  int pad_w = pad_.cpu_data()[1];
+		  int stride_h = stride_.cpu_data()[0];
+		  int stride_w = stride_.cpu_data()[1];
+		  int dilation_h = dilation_.cpu_data()[0];
+		  int dilation_w = dilation_.cpu_data()[1];
+
+		  int begin = 0;
+		  int end = M;
+
+		  const int *rowptr = nz_weight_index_pointers_.cpu_data() + row_offset * g;
+		  const Dtype *values = nz_weight_values_.cpu_data()+ weight_offset_ * g;
+		  const int *colidx = nz_weight_indices_.cpu_data()+ weight_offset_ * g;
+
+		  const int output_h = (height + 2 * pad_h -
+				  (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
+		  const int output_w = (width + 2 * pad_w -
+				  (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
+		  assert(output_h*output_w == N);
+	      const Dtype *in_temp = input_padded + conv_in_channels_/group_ * g * (height + pad_h) * (width + pad_w);
+	      if (dilation_h != 1 || dilation_w != 1) {
+			  for (int output_row = 0; output_row < output_h; ++output_row) {
+				for (int output_col = 0; output_col < output_w; ++output_col) {
+
+				  for (int out_channel = begin; out_channel < end; ++out_channel) {
+					Dtype sum = 0;
+
+					for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
+						int col = colidx[j];
+
+						int kernel_col = col%(width + pad_w);
+						int kernel_row = (col/(width + pad_w))%(height + pad_h);
+						int in_channel = col/((width + pad_w)*(height + pad_h));
+
+						int input_row = kernel_row * dilation_h + output_row * stride_h;
+						int input_col = kernel_col * dilation_w + output_col * stride_w;
+
+						sum += values[j]*in_temp[(in_channel * (height + pad_h) + input_row) * (width + pad_w) + input_col];
+					}
+
+					output[output_offset_ * g + (out_channel*output_h + output_row)*output_w + output_col] = sum;
+				  }
+				}
+			  }
+		  }
+		  else {
+			  for (int output_row = 0; output_row < output_h; ++output_row) {
+					for (int output_col = 0; output_col < output_w; ++output_col) {
+
+					  const Dtype *in_temp2 = in_temp + output_row * stride_h * (width + pad_w) + output_col * stride_w;
+
+					  for (int out_channel = begin; out_channel < end; ++out_channel) {
+              Dtype sum = 0;
+
+              for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
+                assert(in_temp2 + colidx[j] - input_padded < input_padded_len);
+                sum += values[j]*in_temp2[colidx[j]];
+              }
+
+              output[output_offset_ * g + (out_channel*output_h + output_row)*output_w + output_col] = sum;
+					  }
+					}
+				}
+		  }
 		  break;
+	  }
 	  default:
 		timer.Start();
 		caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, M, N, K,
@@ -444,6 +563,10 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 				  (Dtype)0., output + output_offset_ * g);
 		break;
 	  }
+  }
+
+  if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+    delete[] input_padded;
   }
 }
 
