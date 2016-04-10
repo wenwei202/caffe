@@ -148,8 +148,16 @@ void PoolingLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     }
     caffe_set(top_count, Dtype(-FLT_MAX), top_data);
     // The main loop
-    for (int n = 0; n < bottom[0]->num(); ++n) {
+    int num = bottom[0]->num();
+#pragma omp parallel for collapse(2)
+    for (int n = 0; n < num; ++n) {
       for (int c = 0; c < channels_; ++c) {
+        // compute offset
+        const Dtype *bottom_data_cur = bottom_data + bottom[0]->offset(0, 1)*(channels_*n + c);
+        Dtype *top_data_cur = top_data + top[0]->offset(0, 1)*(channels_*n + c);
+        int *mask_cur = mask + top[0]->offset(0, 1)*(channels_*n + c);
+        Dtype *top_mask_cur = top_mask + top[0]->offset(0, 1)*(channels_*n + c);
+
         for (int ph = 0; ph < pooled_height_; ++ph) {
           for (int pw = 0; pw < pooled_width_; ++pw) {
             int hstart = ph * stride_h_ - pad_h_;
@@ -162,25 +170,17 @@ void PoolingLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
             for (int h = hstart; h < hend; ++h) {
               for (int w = wstart; w < wend; ++w) {
                 const int index = h * width_ + w;
-                if (bottom_data[index] > top_data[pool_index]) {
-                  top_data[pool_index] = bottom_data[index];
+                if (bottom_data_cur[index] > top_data_cur[pool_index]) {
+                  top_data_cur[pool_index] = bottom_data_cur[index];
                   if (use_top_mask) {
-                    top_mask[pool_index] = static_cast<Dtype>(index);
+                    top_mask_cur[pool_index] = static_cast<Dtype>(index);
                   } else {
-                    mask[pool_index] = index;
+                    mask_cur[pool_index] = index;
                   }
                 }
               }
             }
           }
-        }
-        // compute offset
-        bottom_data += bottom[0]->offset(0, 1);
-        top_data += top[0]->offset(0, 1);
-        if (use_top_mask) {
-          top_mask += top[0]->offset(0, 1);
-        } else {
-          mask += top[0]->offset(0, 1);
         }
       }
     }
