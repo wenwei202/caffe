@@ -138,51 +138,85 @@ void PoolingLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   // loop to save time, although this results in more code.
   switch (this->layer_param_.pooling_param().pool()) {
   case PoolingParameter_PoolMethod_MAX:
-    // Initialize
+    int num = bottom[0]->num();
     if (use_top_mask) {
       top_mask = top[1]->mutable_cpu_data();
-      caffe_set(top_count, Dtype(-1), top_mask);
-    } else {
-      mask = max_idx_.mutable_cpu_data();
-      caffe_set(top_count, -1, mask);
-    }
-    caffe_set(top_count, Dtype(-FLT_MAX), top_data);
-    // The main loop
-    int num = bottom[0]->num();
-#pragma omp parallel for collapse(2)
-    for (int n = 0; n < num; ++n) {
-      for (int c = 0; c < channels_; ++c) {
-        // compute offset
-        const Dtype *bottom_data_cur = bottom_data + bottom[0]->offset(0, 1)*(channels_*n + c);
-        Dtype *top_data_cur = top_data + top[0]->offset(0, 1)*(channels_*n + c);
-        int *mask_cur = mask + top[0]->offset(0, 1)*(channels_*n + c);
-        Dtype *top_mask_cur = top_mask + top[0]->offset(0, 1)*(channels_*n + c);
 
-        for (int ph = 0; ph < pooled_height_; ++ph) {
-          for (int pw = 0; pw < pooled_width_; ++pw) {
-            int hstart = ph * stride_h_ - pad_h_;
-            int wstart = pw * stride_w_ - pad_w_;
-            int hend = min(hstart + kernel_h_, height_);
-            int wend = min(wstart + kernel_w_, width_);
-            hstart = max(hstart, 0);
-            wstart = max(wstart, 0);
-            const int pool_index = ph * pooled_width_ + pw;
-            for (int h = hstart; h < hend; ++h) {
-              for (int w = wstart; w < wend; ++w) {
-                const int index = h * width_ + w;
-                if (bottom_data_cur[index] > top_data_cur[pool_index]) {
-                  top_data_cur[pool_index] = bottom_data_cur[index];
-                  if (use_top_mask) {
-                    top_mask_cur[pool_index] = static_cast<Dtype>(index);
-                  } else {
-                    mask_cur[pool_index] = index;
+      // The main loop
+#pragma omp parallel for collapse(2)
+      for (int n = 0; n < num; ++n) {
+        for (int c = 0; c < channels_; ++c) {
+          // compute offset
+          const Dtype *bottom_data_cur = bottom_data + bottom[0]->offset(0, 1)*(channels_*n + c);
+          Dtype *top_data_cur = top_data + top[0]->offset(0, 1)*(channels_*n + c);
+          int *mask_cur = mask + top[0]->offset(0, 1)*(channels_*n + c);
+          Dtype *top_mask_cur = top_mask + top[0]->offset(0, 1)*(channels_*n + c);
+
+          for (int ph = 0; ph < pooled_height_; ++ph) {
+            for (int pw = 0; pw < pooled_width_; ++pw) {
+              int hstart = ph * stride_h_ - pad_h_;
+              int wstart = pw * stride_w_ - pad_w_;
+              int hend = min(hstart + kernel_h_, height_);
+              int wend = min(wstart + kernel_w_, width_);
+              hstart = max(hstart, 0);
+              wstart = max(wstart, 0);
+              Dtype maximum = -FLT_MAX;
+              int mask = -1;
+              for (int h = hstart; h < hend; ++h) {
+                for (int w = wstart; w < wend; ++w) {
+                  const int index = h * width_ + w;
+                  if (bottom_data_cur[index] > maximum) {
+                    maximum = bottom_data_cur[index];
+                    mask = static_cast<Dtype>(index);
                   }
                 }
               }
+              const int pool_index = ph * pooled_width_ + pw;
+              top_data_cur[pool_index] = maximum;
+              top_data_cur[pool_index] = mask;
             }
           }
-        }
-      }
+        } // for each channel
+      } // for each input layer
+    }
+    else { // !use_top_mask
+      mask = max_idx_.mutable_cpu_data();
+
+      // The main loop
+#pragma omp parallel for collapse(2)
+      for (int n = 0; n < num; ++n) {
+        for (int c = 0; c < channels_; ++c) {
+          // compute offset
+          const Dtype *bottom_data_cur = bottom_data + bottom[0]->offset(0, 1)*(channels_*n + c);
+          Dtype *top_data_cur = top_data + top[0]->offset(0, 1)*(channels_*n + c);
+          int *mask_cur = mask + top[0]->offset(0, 1)*(channels_*n + c);
+
+          for (int ph = 0; ph < pooled_height_; ++ph) {
+            for (int pw = 0; pw < pooled_width_; ++pw) {
+              int hstart = ph * stride_h_ - pad_h_;
+              int wstart = pw * stride_w_ - pad_w_;
+              int hend = min(hstart + kernel_h_, height_);
+              int wend = min(wstart + kernel_w_, width_);
+              hstart = max(hstart, 0);
+              wstart = max(wstart, 0);
+              Dtype maximum = -FLT_MAX;
+              int mask = -1;
+              for (int h = hstart; h < hend; ++h) {
+                for (int w = wstart; w < wend; ++w) {
+                  const int index = h * width_ + w;
+                  if (bottom_data_cur[index] > maximum) {
+                    maximum = bottom_data_cur[index];
+                    mask = index;
+                  }
+                }
+              }
+              const int pool_index = ph * pooled_width_ + pw;
+              top_data_cur[pool_index] = maximum;
+              mask_cur[pool_index] = mask;
+            }
+          }
+        } // for each channel
+      } // for each input layer
     }
     break;
   case PoolingParameter_PoolMethod_AVE:
