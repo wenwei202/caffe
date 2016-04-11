@@ -1,4 +1,5 @@
 #include <vector>
+#include <omp.h>
 
 #include "caffe/layers/lrn_layer.hpp"
 #include "caffe/util/math_functions.hpp"
@@ -109,46 +110,63 @@ void LRNLayer<Dtype>::CrossChannelForward_cpu(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_data = bottom[0]->cpu_data();
   Dtype* top_data = top[0]->mutable_cpu_data();
-  Dtype* scale_data = scale_.mutable_cpu_data();
-  // start with the constant value
-  for (int i = 0; i < scale_.count(); ++i) {
-    scale_data[i] = k_;
-  }
-  Blob<Dtype> padded_square(1, channels_ + size_ - 1, height_, width_);
-  Dtype* padded_square_data = padded_square.mutable_cpu_data();
-  caffe_set(padded_square.count(), Dtype(0), padded_square_data);
+  Blob<Dtype> padded_square(omp_get_max_threads(), channels_ + size_ - 1, 1, width_);
   Dtype alpha_over_size = alpha_ / size_;
-  // go through the images
-  for (int n = 0; n < num_; ++n) {
-    // compute the padded square
-    caffe_sqr(channels_ * height_ * width_,
-        bottom_data + bottom[0]->offset(n),
-        padded_square_data + padded_square.offset(0, pre_pad_));
-    // Create the first channel scale
-    for (int c = 0; c < size_; ++c) {
-      caffe_axpy<Dtype>(height_ * width_, alpha_over_size,
-          padded_square_data + padded_square.offset(0, c),
-          scale_data + scale_.offset(n, 0));
-    }
-    for (int c = 1; c < channels_; ++c) {
-      // copy previous scale
-      caffe_copy<Dtype>(height_ * width_,
-          scale_data + scale_.offset(n, c - 1),
-          scale_data + scale_.offset(n, c));
-      // add head
-      caffe_axpy<Dtype>(height_ * width_, alpha_over_size,
-          padded_square_data + padded_square.offset(0, c + size_ - 1),
-          scale_data + scale_.offset(n, c));
-      // subtract tail
-      caffe_axpy<Dtype>(height_ * width_, -alpha_over_size,
-          padded_square_data + padded_square.offset(0, c - 1),
-          scale_data + scale_.offset(n, c));
-    }
-  }
+#pragma omp parallel
+  {
+    int tid = omp_get_thread_num();
 
-  // In the end, compute output
-  caffe_powx<Dtype>(scale_.count(), scale_data, -beta_, top_data);
-  caffe_mul<Dtype>(scale_.count(), top_data, bottom_data, top_data);
+    int padded_square_offset = padded_square.offset(tid, 0);
+    Dtype* padded_square_data = padded_square.mutable_cpu_data() + padded_square_offset;
+    for (int i = 0; i < pre_pad_ * width_; ++i) {
+      padded_square_data[i] = 0;
+    }
+    for (int i = (channels_ + pre_pad_) * width_; i < (channels_ + size_ - 1) * width_; ++i) {
+      padded_square_data[i] = 0;
+    }
+
+    Dtype scale[channels_ * height_ * width_];
+
+    // go through the images
+#pragma omp for
+    for (int n = 0; n < num_; ++n) {
+      int bottom_offset = bottom[0]->offset(n);
+      int offset = scale_.offset(n, 0);
+
+      for (int i = 0; i < height_; ++i) {
+        // compute the padded square
+        for (int c = pre_pad_; c < channels_ + pre_pad_; ++c) {
+          for (int j = 0; j < width_; ++j) {
+            Dtype d = bottom_data[bottom_offset + (c - pre_pad_) * height_ * width_ + i * width_ + j];
+            padded_square_data[c * width_ + j] = d * d;
+          }
+        }
+
+        // Create the first channel scale
+        for (int j = 0; j < width_; ++j) {
+          scale[i * width_ + j] = k_ + alpha_over_size*padded_square_data[j];
+        }
+        for (int c = 1; c < size_; ++c) {
+          for (int j = 0; j < width_; ++j) {
+            scale[i * width_ + j] += alpha_over_size*padded_square_data[c * width_ + j];
+          }
+        }
+
+        for (int c = 1; c < channels_; ++c) {
+          for (int j = 0; j < width_; ++j) {
+            scale[(c * height_ + i) * width_ + j] =
+              scale[((c - 1) * height_ + i) * width_ + j] +
+              alpha_over_size*(
+                  padded_square_data[(c + size_ - 1) * width_ + j] -
+                  padded_square_data[(c - 1) * width_ + j]);
+          }
+        }
+      }
+
+      caffe_powx<Dtype>(channels_ * height_ * width_, scale, -beta_, scale);
+      caffe_mul<Dtype>(channels_ * height_ * width_, scale, bottom_data + offset, top_data + offset);
+    }
+  } // omp parallel
 }
 
 template <typename Dtype>
