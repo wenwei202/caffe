@@ -197,8 +197,13 @@ Dtype SGDSolver<Dtype>::Regularize(int param_id) {
   const vector<Blob<Dtype>*>& net_params = this->net_->learnable_params();
   const vector<float>& net_params_weight_decay =
       this->net_->params_weight_decay();
+  const vector<string>& net_params_local_regular_types = this->net_->params_regularization_type();
   Dtype weight_decay = this->param_.weight_decay();
   string regularization_type = this->param_.regularization_type();
+  string local_regularization_type = net_params_local_regular_types[param_id];
+  if(!local_regularization_type.empty()){
+	  regularization_type = local_regularization_type;
+  }
   Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
   Dtype regularization_term = Dtype(0);
   switch (Caffe::mode()) {
