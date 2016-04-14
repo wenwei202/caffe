@@ -663,9 +663,9 @@ const vector<Blob<Dtype>*>& Net<Dtype>::Forward(
 template <typename Dtype>
 void Net<Dtype>::BackwardFromTo(int start, int end) {
   if(Caffe::mode()==Caffe::CPU){
-#ifdef USE_MKL
-	  LOG(FATAL) << "MKL has precision problem?!";
-#endif
+//#ifdef USE_MKL
+	  //LOG(FATAL) << "MKL has precision problem?!";
+//#endif
   }
   CHECK_GE(end, 0);
   CHECK_LT(start, layers_.size());
