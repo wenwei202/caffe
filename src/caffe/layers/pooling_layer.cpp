@@ -133,6 +133,7 @@ void PoolingLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   // We'll output the mask to top[1] if it's of size >1.
   const bool use_top_mask = top.size() > 1;
   int* mask = NULL;  // suppress warnings about uninitalized variables
+  if (!use_top_mask) mask = max_idx_.mutable_cpu_data();
   Dtype* top_mask = NULL;
   // Different pooling methods. We explicitly do the switch outside the for
   // loop to save time, although this results in more code.
@@ -180,7 +181,7 @@ void PoolingLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       } // for each input layer
     }
     else { // !use_top_mask
-      mask = max_idx_.mutable_cpu_data();
+      // JSP: typical path, stride=2 kernel=3
 
       // The main loop
 #pragma omp parallel for collapse(2)
@@ -192,12 +193,13 @@ void PoolingLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
           int *mask_cur = mask + top[0]->offset(0, 1)*(channels_*n + c);
 
           for (int ph = 0; ph < pooled_height_; ++ph) {
+            int hstart = ph * stride_h_ - pad_h_;
+            int hend = min(hstart + kernel_h_, height_);
+            hstart = max(hstart, 0);
+
             for (int pw = 0; pw < pooled_width_; ++pw) {
-              int hstart = ph * stride_h_ - pad_h_;
               int wstart = pw * stride_w_ - pad_w_;
-              int hend = min(hstart + kernel_h_, height_);
               int wend = min(wstart + kernel_w_, width_);
-              hstart = max(hstart, 0);
               wstart = max(wstart, 0);
               Dtype maximum = -FLT_MAX;
               int mask = -1;

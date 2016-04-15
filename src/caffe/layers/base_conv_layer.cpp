@@ -1,5 +1,9 @@
 #include <algorithm>
 #include <vector>
+#include <omp.h>
+#ifdef __INTEL_COMPILER
+#include <immintrin.h>
+#endif
 
 #include "caffe/filler.hpp"
 #include "caffe/layers/base_conv_layer.hpp"
@@ -397,15 +401,23 @@ void BaseConvolutionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
   }
 }
 
-template <typename Dtype>
-void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
-    const Dtype* weights, Dtype* output, int batch_idx, bool skip_im2col) {
-  const Dtype* col_buff = input;
+template <>
+void BaseConvolutionLayer<double>::forward_cpu_gemm(const double* input,
+    const double* weights, double* output, int batch_idx, bool skip_im2col) {
+  NOT_IMPLEMENTED;
+}
+
+extern double padding_time, im2col_time;
+
+template<>
+void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
+    const float* weights, float* output, int batch_idx, bool skip_im2col) {
+  const float* col_buff = input;
 
   Timer timer;
   timer.Start();
 
-  Dtype *input_padded;
+  float *input_padded;
   int input_padded_len;
   if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
 	  int height = conv_input_shape_.cpu_data()[1];
@@ -414,32 +426,43 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 	  int pad_w = pad_.cpu_data()[1];
 
 	  input_padded_len = conv_in_channels_ * (height + pad_h) * (width + pad_w) + pad_h * (width + 2 * pad_w);
-	  input_padded = new Dtype[input_padded_len];
-	  assert(input_padded);
-	  for (int in_channel = 0; in_channel < conv_in_channels_; ++in_channel) {
-	    memset(
-	        input_padded + in_channel * (height + pad_h) * (width + pad_w),
-	        0, sizeof(Dtype) * pad_h * (width + pad_w));
-	  	for (int input_row = 0; input_row < height; ++input_row) {
-	  	  memset(
-	  	      input_padded + (in_channel * (height + pad_h) + input_row + pad_h) * (width + pad_w),
-	  	      0, sizeof(Dtype) * pad_w);
-	  	  memcpy(
-	  	      input_padded + (in_channel * (height + pad_h) + input_row + pad_h) * (width + pad_w) + pad_w,
-	  	      input + (in_channel * height + input_row) * width,
-	  	      sizeof(Dtype) * width);
-	  	}
+	  if (pad_h == 0 && pad_w == 0) {
+	    input_padded = (float *)input;
 	  }
-	  memset(
-	      input_padded + conv_in_channels_ * (height + pad_h) * (width + pad_w),
-	      0,
-	      sizeof(Dtype) * pad_h * (width + 2 * pad_w));
+	  else {
+	    if (omp_get_thread_num() == 0) padding_time -= omp_get_wtime();
+
+      input_padded = new float[input_padded_len];
+      assert(input_padded);
+      for (int in_channel = 0; in_channel < conv_in_channels_; ++in_channel) {
+        memset(
+            input_padded + in_channel * (height + pad_h) * (width + pad_w),
+            0, sizeof(float) * pad_h * (width + pad_w));
+        for (int input_row = 0; input_row < height; ++input_row) {
+          memset(
+              input_padded + (in_channel * (height + pad_h) + input_row + pad_h) * (width + pad_w),
+              0, sizeof(float) * pad_w);
+          memcpy(
+              input_padded + (in_channel * (height + pad_h) + input_row + pad_h) * (width + pad_w) + pad_w,
+              input + (in_channel * height + input_row) * width,
+              sizeof(float) * width);
+        }
+      }
+      memset(
+          input_padded + conv_in_channels_ * (height + pad_h) * (width + pad_w),
+          0,
+          sizeof(float) * pad_h * (width + 2 * pad_w));
+
+      if (omp_get_thread_num() == 0) padding_time += omp_get_wtime();
+	  }
   }
   else if (!is_1x1_ ||  is_concatenating_weights_features_) {
+    if (omp_get_thread_num() == 0) im2col_time -= omp_get_wtime();
+
     int offset = 0;
     if (!skip_im2col || is_concatenating_weights_features_) {
       offset = col_offset_*group_*batch_idx;
-      Dtype *col_buff_mutable = col_buffer_.mutable_cpu_data() + offset;
+      float *col_buff_mutable = col_buffer_.mutable_cpu_data() + offset;
       if(is_concatenating_weights_features_){
     	  conv_im2col_cpu(input, col_buff_mutable, col_buf_mask_.mutable_cpu_data()/*, dense_feature_map_mask_.mutable_cpu_data()*/);
       }else{
@@ -447,6 +470,8 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
       }
     }
     col_buff = col_buffer_.cpu_data() + offset;
+
+    if (omp_get_thread_num() == 0) im2col_time += omp_get_wtime();
   }
 
   int offset_sum = 0;
@@ -464,22 +489,22 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 		  caffe_cpu_sparse_mmcsr(M,
 				  N,
 				  K,
-				  (Dtype)1.,
+				  (float)1.,
 				  nz_weight_values_.cpu_data()+ weight_offset_ * g,
 				  nz_weight_indices_.cpu_data()+ weight_offset_ * g,
 				  nz_weight_index_pointers_.cpu_data() + row_offset * g,
 				  nz_weight_index_pointers_.cpu_data() + row_offset * g + 1,
 				  col_buff + col_offset_ * g,
-				  (Dtype)0.,output + output_offset_ * g);
+				  (float)0.,output + output_offset_ * g);
 		  break;
 	  case caffe::ConvolutionParameter_ConvMode_LOWERED_CCNMM :
 		  timer.Start();
 		  left_cols = left_columns_[g];
 		  caffe_cpu_cblas_gemm(conv_out_channels_ /
 				  group_, conv_out_spatial_dim_, left_cols,
-				  (Dtype)1., squeezed_weight_buffer_.cpu_data() + weight_offset_ * g,
+				  (float)1., squeezed_weight_buffer_.cpu_data() + weight_offset_ * g,
 				  kernel_dim_ , col_buff + offset_sum,
-				conv_out_spatial_dim_, (Dtype)0., output + output_offset_ * g, conv_out_spatial_dim_);
+				conv_out_spatial_dim_, (float)0., output + output_offset_ * g, conv_out_spatial_dim_);
 		  offset_sum += left_cols * conv_out_spatial_dim_;
 	  	  break;
 	  case caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV:
@@ -497,11 +522,8 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 		  int dilation_h = dilation_.cpu_data()[0];
 		  int dilation_w = dilation_.cpu_data()[1];
 
-		  int begin = 0;
-		  int end = M;
-
 		  const int *rowptr = nz_weight_index_pointers_.cpu_data() + row_offset * g;
-		  const Dtype *values = nz_weight_values_.cpu_data()+ weight_offset_ * g;
+		  const float *values = nz_weight_values_.cpu_data()+ weight_offset_ * g;
 		  const int *colidx = nz_weight_indices_.cpu_data()+ weight_offset_ * g;
 
 		  const int output_h = (height + 2 * pad_h -
@@ -509,64 +531,407 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 		  const int output_w = (width + 2 * pad_w -
 				  (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
 		  assert(output_h*output_w == N);
-	      const Dtype *in_temp = input_padded + conv_in_channels_/group_ * g * (height + pad_h) * (width + pad_w);
-	      if (dilation_h != 1 || dilation_w != 1) {
-			  for (int output_row = 0; output_row < output_h; ++output_row) {
-				for (int output_col = 0; output_col < output_w; ++output_col) {
+      const float *in_temp = input_padded + conv_in_channels_/group_ * g * (height + pad_h) * (width + pad_w);
+      if (dilation_h != 1 || dilation_w != 1 || !this->bias_term_) {
+        printf("%s:%d\n WARNING: inefficient code path\n", __FILE__, __LINE__);
+        for (int output_row = 0; output_row < output_h; ++output_row) {
+          for (int output_col = 0; output_col < output_w; ++output_col) {
 
-				  for (int out_channel = begin; out_channel < end; ++out_channel) {
-					Dtype sum = 0;
-
-					for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
-						int col = colidx[j];
-
-						int kernel_col = col%(width + pad_w);
-						int kernel_row = (col/(width + pad_w))%(height + pad_h);
-						int in_channel = col/((width + pad_w)*(height + pad_h));
-
-						int input_row = kernel_row * dilation_h + output_row * stride_h;
-						int input_col = kernel_col * dilation_w + output_col * stride_w;
-
-						sum += values[j]*in_temp[(in_channel * (height + pad_h) + input_row) * (width + pad_w) + input_col];
-					}
-
-					output[output_offset_ * g + (out_channel*output_h + output_row)*output_w + output_col] = sum;
-				  }
-				}
-			  }
-		  }
-		  else {
-			  for (int output_row = 0; output_row < output_h; ++output_row) {
-					for (int output_col = 0; output_col < output_w; ++output_col) {
-
-					  const Dtype *in_temp2 = in_temp + output_row * stride_h * (width + pad_w) + output_col * stride_w;
-
-					  for (int out_channel = begin; out_channel < end; ++out_channel) {
-              Dtype sum = 0;
+            for (int out_channel = 0; out_channel < M; ++out_channel) {
+              float sum = 0;
 
               for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
-                assert(in_temp2 + colidx[j] - input_padded < input_padded_len);
-                sum += values[j]*in_temp2[colidx[j]];
+                int col = colidx[j];
+
+                int kernel_col = col%(width + pad_w);
+                int kernel_row = (col/(width + pad_w))%(height + pad_h);
+                int in_channel = col/((width + pad_w)*(height + pad_h));
+
+                int input_row = kernel_row * dilation_h + output_row * stride_h;
+                int input_col = kernel_col * dilation_w + output_col * stride_w;
+
+                sum += values[j]*in_temp[(in_channel * (height + pad_h) + input_row) * (width + pad_w) + input_col];
               }
 
               output[output_offset_ * g + (out_channel*output_h + output_row)*output_w + output_col] = sum;
-					  }
-					}
+            }
+          }
+			  }
+		  }
+		  else {
+		    const float *bias = this->blobs_[1]->cpu_data();
+		    const float *bias_multiplier = bias_multiplier_.cpu_data();
+
+#if 1 //defined(__AVX2__) && defined(__INTEL_COMPILER)
+        if (height == 13 && width == 13 && pad_h == 1 && pad_w == 1 && stride_h == 1 && stride_w == 1 && kernel_h == 3 && kernel_w == 3) {
+          int WIDTH = 13;
+          int WOUT = 13;
+          int PAD = 1;
+
+          __m256 sum[(WOUT + 1)/2][2];
+          __declspec(aligned(64)) float sum_temp[8];
+
+          for (int out_channel = 0; out_channel < M; ++out_channel) {
+            if (rowptr[out_channel + 1] == rowptr[out_channel]) continue;
+
+            // Upper half of images
+            int hbegin = 0, hend = (WOUT + 1)/2;
+            int j = rowptr[out_channel];
+            __m256 c = _mm256_set1_ps(values[j]);
+            int off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8));
+            }
+
+            int jbegin = rowptr[out_channel] + 1;
+            int jend = rowptr[out_channel + 1];
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g  + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+              _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
+              for (int w = 8; w < WOUT; ++w) {
+                output[output_offset_ * g + out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
+              }
+            }
+
+            // Lower half of images
+            hbegin = (WOUT + 1)/2; hend = WOUT;
+            j = rowptr[out_channel];
+            c = _mm256_set1_ps(values[j]);
+            off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8));
+            }
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+              _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
+              for (int w = 8; w < WOUT; ++w) {
+                output[output_offset_ * g + out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
+              }
+            }
+          }
+        }
+        else if (height == 27 && width == 27 && pad_h == 2 && pad_w == 2 && stride_h == 1 && stride_w == 1 && kernel_w == 5 && kernel_h == 5) {
+          int WIDTH = 27;
+          int WOUT = 27;
+          int PAD = 2;
+
+          __m256 sum[(WOUT + 3)/4][2];
+          __declspec(aligned(64)) float sum_temp[8];
+
+          for (int out_channel = 0; out_channel < M; ++out_channel) {
+            if (rowptr[out_channel + 1] == rowptr[out_channel]) continue;
+
+            // (0, 0) block
+            int hbegin = 0, hend = (WOUT + 3)/4;
+            int j = rowptr[out_channel];
+            __m256 c = _mm256_set1_ps(values[j]);
+            int off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8));
+            }
+
+            int jbegin = rowptr[out_channel] + 1;
+            int jend = rowptr[out_channel + 1];
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT + 8, sum[h - hbegin][1]);
+            }
+
+            // (0, 1) block
+            j = rowptr[out_channel];
+            c = _mm256_set1_ps(values[j]);
+            off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 16));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 24));
+            }
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 16), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 24), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT + 16, sum[h - hbegin][0]);
+              _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
+              for (int w = 24; w < WOUT; ++w) {
+                output[output_offset_ * g + out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
+              }
+            }
+
+            // (1, 0) block
+            hbegin = (WOUT + 3)/4; hend = (WOUT + 3)/4*2;
+
+            j = rowptr[out_channel];
+            c = _mm256_set1_ps(values[j]);
+            off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8));
+            }
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT + 8, sum[h - hbegin][1]);
+            }
+
+            // (1, 1) block
+            j = rowptr[out_channel];
+            c = _mm256_set1_ps(values[j]);
+            off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 16));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 24));
+            }
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 16), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 24), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT + 16, sum[h - hbegin][0]);
+              _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
+              for (int w = 24; w < WOUT; ++w) {
+                output[output_offset_ * g + out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
+              }
+            }
+
+            // (2, 0) block
+            hbegin = (WOUT + 3)/4*2; hend = (WOUT + 3)/4*3;
+
+            j = rowptr[out_channel];
+            c = _mm256_set1_ps(values[j]);
+            off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8));
+            }
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT + 8, sum[h - hbegin][1]);
+            }
+
+            // (2, 1) block
+            j = rowptr[out_channel];
+            c = _mm256_set1_ps(values[j]);
+            off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 16));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 24));
+            }
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 16), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 24), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT + 16, sum[h - hbegin][0]);
+              _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
+              for (int w = 24; w < WOUT; ++w) {
+                output[output_offset_ * g + out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
+              }
+            }
+
+            // (3, 0) block
+            hbegin = (WOUT + 3)/4*3; hend = WOUT;
+
+            j = rowptr[out_channel];
+            c = _mm256_set1_ps(values[j]);
+            off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8));
+            }
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT + 8, sum[h - hbegin][1]);
+            }
+
+            // (3, 1) block
+            j = rowptr[out_channel];
+            c = _mm256_set1_ps(values[j]);
+            off = colidx[j];
+
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 16));
+              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 24));
+            }
+
+            for (j = jbegin; j < jend; ++j) {
+              c = _mm256_set1_ps(values[j]);
+              off = colidx[j];
+
+              for (int h = hbegin; h < hend; ++h) {
+                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 16), sum[h - hbegin][0]);
+                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 24), sum[h - hbegin][1]);
+              }
+            }
+
+            for (int h = hbegin; h < hend; ++h) {
+              _mm256_store_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT + 16, sum[h - hbegin][0]);
+              _mm256_store_ps(sum_temp, sum[h - hbegin][1]);
+              for (int w = 24; w < WOUT; ++w) {
+                output[output_offset_ * g + out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 24];
+              }
+            }
+          }
+        }
+        else
+#endif
+        if (height == 227 && width == 227 && pad_h == 0 && pad_w == 0 && stride_h == 4 && stride_w == 4 && kernel_w == 11 && kernel_h == 11) {
+          int WIDTH = 227;
+          int STRIDE = 4;
+          int K = 11;
+          int WOUT = (WIDTH - K)/STRIDE + 1;
+
+          float sum[WOUT];
+
+          for (int h = 0; h < WOUT; ++h) {
+            const float *in_temp2 = in_temp + STRIDE*h*WIDTH;
+
+            for (int out_channel = 0; out_channel < M; ++out_channel) {
+              for (int w = 0; w < WOUT; ++w) {
+                sum[w] = 0;
+              }
+
+              for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
+                float c = values[j];
+                int off = colidx[j];
+                for (int w = 0; w < WOUT; ++w) {
+                  sum[w] += c*in_temp2[off + STRIDE*w];
+                }
+              }
+
+              for (int w = 0; w < WOUT; ++w) {
+                output[output_offset_ * g + (out_channel*WOUT + h)*WOUT + w] = sum[w];
+              }
+            }
+          }
+        }
+        else
+        {
+          for (int output_row = 0; output_row < output_h; ++output_row) {
+            for (int output_col = 0; output_col < output_w; ++output_col) {
+
+              const float *in_temp2 = in_temp + output_row * stride_h * (width + pad_w) + output_col * stride_w;
+
+              for (int out_channel = 0; out_channel < M; ++out_channel) {
+                float sum = 0;
+
+                for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
+                  assert(in_temp2 + colidx[j] - input_padded < input_padded_len);
+                  sum += values[j]*in_temp2[colidx[j]];
+                }
+
+                output[output_offset_ * g + (out_channel*output_h + output_row)*output_w + output_col] = sum;
+              }
+            }
+          } // !__AVX2__
 				}
 		  }
 		  break;
 	  }
 	  default:
 		timer.Start();
-		caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, M, N, K,
-				  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
-				  (Dtype)0., output + output_offset_ * g);
+		caffe_cpu_gemm<float>(CblasNoTrans, CblasNoTrans, M, N, K,
+				  (float)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
+				  (float)0., output + output_offset_ * g);
 		break;
 	  }
-  }
-
-  if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
-    delete[] input_padded;
   }
 }
 

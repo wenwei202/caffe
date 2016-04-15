@@ -25,6 +25,10 @@ template <typename Dtype>
 void ConvolutionReLULayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   const Dtype* weight = this->blobs_[0]->cpu_data();
+  const Dtype *bias = NULL;
+  if (this->bias_term_) {
+    bias = this->blobs_[1]->cpu_data();
+  }
   Dtype negative_slope = this->layer_param_.relu_param().negative_slope();
   for (int i = 0; i < bottom.size(); ++i) {
     const Dtype* bottom_data = bottom[i]->cpu_data();
@@ -37,7 +41,6 @@ void ConvolutionReLULayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom
             bottom_data + n * this->bottom_dim_, weight, top_current, n);
       if (this->bias_term_) {
         // JSP: common path of AlexNet
-        const Dtype* bias = this->blobs_[1]->cpu_data();
         this->forward_cpu_bias(top_current, bias);
       }
 

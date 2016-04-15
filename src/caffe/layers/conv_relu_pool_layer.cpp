@@ -147,8 +147,24 @@ template <typename Dtype>
 void ConvolutionReLUPoolLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   const Dtype* weight = this->blobs_[0]->cpu_data();
+  const Dtype *bias = NULL;
+  if (this->bias_term_) {
+    bias = this->blobs_[1]->cpu_data();
+  }
+
   Dtype negative_slope = this->layer_param_.relu_param().negative_slope();
   assert(negative_slope == 0);
+
+  Dtype* top_data = top[0]->mutable_cpu_data();
+  int* mask = NULL;  // suppress warnings about uninitalized variables
+  Dtype* top_mask = NULL;
+  const bool use_top_mask = top.size() > 1;
+  if (use_top_mask) {
+    top_mask = top[1]->mutable_cpu_data();
+  }
+  else {
+    mask = max_idx_.mutable_cpu_data();
+  }
 
   for (int i = 0; i < bottom.size(); ++i) {
     const Dtype* bottom_data = bottom[i]->cpu_data();
@@ -162,17 +178,12 @@ void ConvolutionReLUPoolLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
             bottom_data + n * this->bottom_dim_, weight, middle_current, n);
       if (this->bias_term_) {
         // JSP: common path of AlexNet
-        const Dtype* bias = this->blobs_[1]->cpu_data();
         this->forward_cpu_bias(middle_current, bias);
       }
 
       // Pooling
-      Dtype* top_data = top[0]->mutable_cpu_data();
       const int top_count = top[0]->count();
       // We'll output the mask to top[1] if it's of size >1.
-      const bool use_top_mask = top.size() > 1;
-      int* mask = NULL;  // suppress warnings about uninitalized variables
-      Dtype* top_mask = NULL;
 
       using std::min;
       using std::max;
@@ -187,7 +198,6 @@ void ConvolutionReLUPoolLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
           Dtype *top_data_cur = top_data + top[0]->offset(0, 1)*(this->num_output_*n + c);
 
           if (use_top_mask) {
-            top_mask = top[1]->mutable_cpu_data();
             Dtype *top_mask_cur = top_mask + top[0]->offset(0, 1)*(this->num_output_*n + c);
 
             for (int ph = 0; ph < pooled_height_; ++ph) {
@@ -217,7 +227,6 @@ void ConvolutionReLUPoolLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
           }
           else {
             // JSP: common path for AlexNet (stride=2, kernel=3)
-            mask = max_idx_.mutable_cpu_data();
             int *mask_cur = mask + top[0]->offset(0, 1)*(this->num_output_*n + c);
 
             for (int ph = 0; ph < pooled_height_; ++ph) {

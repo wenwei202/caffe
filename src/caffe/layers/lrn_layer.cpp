@@ -110,14 +110,14 @@ void LRNLayer<Dtype>::CrossChannelForward_cpu(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_data = bottom[0]->cpu_data();
   Dtype* top_data = top[0]->mutable_cpu_data();
-  Blob<Dtype> padded_square(omp_get_max_threads(), channels_ + size_ - 1, 1, width_);
+  Dtype *padded_square = new Dtype[omp_get_max_threads() * (channels_ + size_ - 1) * width_];
   Dtype alpha_over_size = alpha_ / size_;
+  Dtype *scale = new Dtype[omp_get_max_threads() * channels_ * height_ * width_];
 #pragma omp parallel
   {
     int tid = omp_get_thread_num();
 
-    int padded_square_offset = padded_square.offset(tid, 0);
-    Dtype* padded_square_data = padded_square.mutable_cpu_data() + padded_square_offset;
+    Dtype* padded_square_data = padded_square + tid * (channels_ + size_ - 1) * width_;
     for (int i = 0; i < pre_pad_ * width_; ++i) {
       padded_square_data[i] = 0;
     }
@@ -125,7 +125,7 @@ void LRNLayer<Dtype>::CrossChannelForward_cpu(
       padded_square_data[i] = 0;
     }
 
-    Dtype scale[channels_ * height_ * width_];
+    Dtype *scale_data = scale + tid * channels_ * height_ * width_;
 
     // go through the images
 #pragma omp for
@@ -144,18 +144,18 @@ void LRNLayer<Dtype>::CrossChannelForward_cpu(
 
         // Create the first channel scale
         for (int j = 0; j < width_; ++j) {
-          scale[i * width_ + j] = k_ + alpha_over_size*padded_square_data[j];
+          scale_data[i * width_ + j] = k_ + alpha_over_size*padded_square_data[j];
         }
         for (int c = 1; c < size_; ++c) {
           for (int j = 0; j < width_; ++j) {
-            scale[i * width_ + j] += alpha_over_size*padded_square_data[c * width_ + j];
+            scale_data[i * width_ + j] += alpha_over_size*padded_square_data[c * width_ + j];
           }
         }
 
         for (int c = 1; c < channels_; ++c) {
           for (int j = 0; j < width_; ++j) {
-            scale[(c * height_ + i) * width_ + j] =
-              scale[((c - 1) * height_ + i) * width_ + j] +
+            scale_data[(c * height_ + i) * width_ + j] =
+              scale_data[((c - 1) * height_ + i) * width_ + j] +
               alpha_over_size*(
                   padded_square_data[(c + size_ - 1) * width_ + j] -
                   padded_square_data[(c - 1) * width_ + j]);
@@ -163,10 +163,12 @@ void LRNLayer<Dtype>::CrossChannelForward_cpu(
         }
       }
 
-      caffe_powx<Dtype>(channels_ * height_ * width_, scale, -beta_, scale);
-      caffe_mul<Dtype>(channels_ * height_ * width_, scale, bottom_data + offset, top_data + offset);
+      caffe_powx<Dtype>(channels_ * height_ * width_, scale_data, -beta_, scale_data);
+      caffe_mul<Dtype>(channels_ * height_ * width_, scale_data, bottom_data + offset, top_data + offset);
     }
   } // omp parallel
+  delete[] padded_square;
+  delete[] scale;
 }
 
 template <typename Dtype>
