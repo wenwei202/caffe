@@ -373,7 +373,6 @@ layer {
     decay_mult: 0
     regularization_type: "L2"
   }
-  }
   param {
     lr_mult: 2
     decay_mult: 0
