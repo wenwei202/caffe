@@ -58,9 +58,9 @@ caffe.set_mode_gpu()
 net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
               caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
              caffe.TEST)
-
+#
 #net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
-#              caffe_root + 'models/bvlc_reference_caffenet/0.001_0.0_0.0_0.0_Sat_Mar_19_17-38-48_EDT_2016/caffenet_train_iter_200000.caffemodel',
+#              caffe_root + 'models/bvlc_reference_caffenet/0.001_0.0003_0.0_0.0_0.0_Fri_Apr__8_13-24-15_EDT_2016/caffenet_train_iter_160000_0.57278_0.001_0.0003_0.0_0.0_0.0.caffemodel',
 #             caffe.TEST)
 
 #net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
@@ -165,7 +165,7 @@ for key, value in lmdb_cursor:
     #plt.imshow(image.transpose(1,2,0)[:,:,(2,1,0)])
     #plt.show()
     #crop_range = range(14,14+227)
-    image = image-pixel_mean
+    image = image-pixel_mean.mean(0)
     image = image[:,14:14+227,14:14+227]
     #net.blobs['data'].data[...] = image-pixel_mean #transformer.preprocess('data', image)
     net.blobs['data'].data[image_count%batch_size] = image#image-pixel_mean
