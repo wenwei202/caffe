@@ -58,10 +58,10 @@ layer {
   type: "Convolution"
   bottom: "data"
   top: "conv1"
-  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1.0
+    regularization_type: "L2"
   }
   param {
     lr_mult: 2
@@ -114,10 +114,10 @@ layer {
   type: "Convolution"
   bottom: "norm1"
   top: "conv2"
-  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1.0
+    regularization_type: "L1"
   }
   param {
     lr_mult: 2
@@ -171,10 +171,10 @@ layer {
   type: "Convolution"
   bottom: "norm2"
   top: "conv3"
-  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
+    regularization_type: "L1"
   }
   param {
     lr_mult: 2
@@ -205,10 +205,10 @@ layer {
   type: "Convolution"
   bottom: "conv3"
   top: "conv4"
-  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
+    regularization_type: "L1"
   }
   param {
     lr_mult: 2
@@ -240,10 +240,10 @@ layer {
   type: "Convolution"
   bottom: "conv4"
   top: "conv5"
-  connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
     decay_mult: 1
+    regularization_type: "L1"
   }
   param {
     lr_mult: 2
@@ -288,7 +288,8 @@ layer {
   top: "fc6"
   param {
     lr_mult: 1
-    decay_mult: 1
+    decay_mult: 0
+    regularization_type: "L2"
   }
   param {
     lr_mult: 2
@@ -328,7 +329,8 @@ layer {
   top: "fc7"
   param {
     lr_mult: 1
-    decay_mult: 1
+    decay_mult: 0
+    regularization_type: "L2"
   }
   param {
     lr_mult: 2
@@ -368,7 +370,9 @@ layer {
   top: "fc8"
   param {
     lr_mult: 1
-    decay_mult: 1
+    decay_mult: 0
+    regularization_type: "L2"
+  }
   }
   param {
     lr_mult: 2
