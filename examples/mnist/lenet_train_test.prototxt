@@ -142,7 +142,7 @@ layer {
     kernel_shape_decay_mult: 1.0
     breadth_decay_mult: 1.0
     block_group_lasso {
-      xdimen: 30
+      xdimen: 10
       ydimen: 10
       block_decay_mult: 1.0
 #      xdimen: 1
@@ -183,8 +183,8 @@ layer {
     kernel_shape_decay_mult: 1.0
     breadth_decay_mult: 1.0
     block_group_lasso {
-      xdimen: 30
-      ydimen: 5
+      xdimen: 10
+      ydimen: 10
       block_decay_mult: 1.0
 #      xdimen: 1
 #      ydimen: 10

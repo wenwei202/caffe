@@ -9,15 +9,24 @@ import re
 import pittnuts
 import os
 
-def add_conv_layer(net_msg,name,bottom,num_output,pad,kernel_size,stride,bias_term=True):
+def add_conv_layer(net_msg,name,bottom,num_output,pad,kernel_size,stride,bias_term=True,learn_depth=False,input_channel=1,connectivity_mode=0):
     conv_layer = net_msg.layer.add()
     conv_layer.name = name
     conv_layer.type = 'Convolution'
     conv_layer.bottom._values.append(bottom)
     conv_layer.top._values.append(conv_layer.name)
+    if 1==connectivity_mode:
+        conv_layer.connectivity_mode = caffe_pb2.LayerParameter.DISCONNECTED_ELTWISE
+    elif 2==connectivity_mode:
+        conv_layer.connectivity_mode = caffe_pb2.LayerParameter.DISCONNECTED_GRPWISE
     # param info for weight and bias
     lr_param = caffe_pb2.ParamSpec()
     lr_param.lr_mult = 1
+    if learn_depth:
+        blk_param = caffe_pb2.BlockGroupLassoSpec()
+        blk_param.xdimen = kernel_size*kernel_size*input_channel
+        blk_param.ydimen = num_output
+        lr_param.block_group_lasso._values.append(blk_param)
     conv_layer.param._values.append(lr_param)
     if bias_term:
         lr_param = caffe_pb2.ParamSpec()
@@ -127,55 +136,55 @@ def add_loss_layer(net_msg,bottom):
     loss_layer.bottom._values.append('label')
     loss_layer.top._values.append('loss')
 
-def add_1st_res_layers(net_msg,name,bottom):
+def add_1st_res_layers(net_msg,name,bottom,learn_depth=False,connectivity_mode=0):
     # first layer
-    add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False)
+    add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode)
     add_BN_layer(net_msg,name=name+'_bn1',bottom=name+'_conv1')
     add_relu_layer(net_msg,name=name+'_relu1',bottom=name+'_bn1')
     #second conv
-    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False)
+    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode)
     add_BN_layer(net_msg,name=name+'_bn2',bottom=name+'_conv2')
     #add layer
     add_eltwise_add_layer(net_msg,name+'_add',bottom,name+'_bn2')
     #final relu
     add_relu_layer(net_msg,name=name,bottom=name+'_add')
 
-def add_2nd_res_layers(net_msg,name,bottom,downsample=False):
+def add_2nd_res_layers(net_msg,name,bottom,downsample=False,learn_depth=False,connectivity_mode=0):
     # first layer
     if downsample:
-        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=2,bias_term=False)
+        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=2,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode)
     else:
-        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False)
+        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode)
     add_BN_layer(net_msg,name=name+'_bn1',bottom=name+'_conv1')
     add_relu_layer(net_msg,name=name+'_relu1',bottom=name+'_bn1')
     #second conv
-    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False)
+    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode)
     add_BN_layer(net_msg,name=name+'_bn2',bottom=name+'_conv2')
     #add layer
     if downsample:
         #add_downsampling_layer(net_msg,name+'_downsampling',bottom,2)
-        add_conv_layer(net_msg,name=name+'_downsampling',bottom=bottom,num_output=32,pad=0,kernel_size=1,stride=2,bias_term=False)
+        add_conv_layer(net_msg,name=name+'_downsampling',bottom=bottom,num_output=32,pad=0,kernel_size=1,stride=2,bias_term=False,connectivity_mode=connectivity_mode)
         add_eltwise_add_layer(net_msg,name+'_add',name+'_downsampling',name+'_bn2')
     else:
         add_eltwise_add_layer(net_msg,name+'_add',bottom,name+'_bn2')
     #final relu
     add_relu_layer(net_msg,name=name,bottom=name+'_add')
 
-def add_3rd_res_layers(net_msg,name,bottom,downsample=False):
+def add_3rd_res_layers(net_msg,name,bottom,downsample=False,learn_depth=False,connectivity_mode=0):
     # first layer
     if downsample:
-        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=2,bias_term=False)
+        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=2,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode)
     else:
-        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False)
+        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=64,connectivity_mode=connectivity_mode)
     add_BN_layer(net_msg,name=name+'_bn1',bottom=name+'_conv1')
     add_relu_layer(net_msg,name=name+'_relu1',bottom=name+'_bn1')
     #second conv
-    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False)
+    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=64,connectivity_mode=connectivity_mode)
     add_BN_layer(net_msg,name=name+'_bn2',bottom=name+'_conv2')
     #add layer
     if downsample:
         #add_downsampling_layer(net_msg,name+'_downsampling',bottom,2)
-        add_conv_layer(net_msg,name=name+'_downsampling',bottom=bottom,num_output=64,pad=0,kernel_size=1,stride=2,bias_term=False)
+        add_conv_layer(net_msg,name=name+'_downsampling',bottom=bottom,num_output=64,pad=0,kernel_size=1,stride=2,bias_term=False,connectivity_mode=connectivity_mode)
         add_eltwise_add_layer(net_msg,name+'_add',name+'_downsampling',name+'_bn2')
     else:
         add_eltwise_add_layer(net_msg,name+'_add',bottom,name+'_bn2')
@@ -187,35 +196,42 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--net_template', type=str, required=True)
     parser.add_argument('--n', type=int, required=True)
+    parser.add_argument('--connectivity_mode', type=int, required=True)
+    #parser.add_argument('--learn_depth', type=bool, required=False)
+    parser.add_argument('--learndepth', dest='learndepth', action='store_true')
+    parser.add_argument('--no-learndepth', dest='learndepth', action='store_false')
+    parser.set_defaults(learndepth=False)
     args = parser.parse_args()
     net_template = args.net_template
     n = args.n
+    learn_depth = args.learndepth
+    connectivity_mode = args.connectivity_mode
 
     caffe.set_mode_cpu()
     net_parser = caffeparser.CaffeProtoParser(net_template)
     net_msg = net_parser.readProtoNetFile()
 
-    add_conv_layer(net_msg,name='conv1',bottom='data',num_output=16,pad=1,kernel_size=3,stride=1)
+    add_conv_layer(net_msg,name='conv1',bottom='data',num_output=16,pad=1,kernel_size=3,stride=1,connectivity_mode=connectivity_mode)
     add_BN_layer(net_msg,name='conv1_bn',bottom='conv1')
     add_relu_layer(net_msg,name='conv1_relu',bottom='conv1_bn')
 
     for i in range(1,n+1):
         if i==1:
-            add_1st_res_layers(net_msg,name='res_grp1_{}'.format(i),bottom='conv1_relu')
+            add_1st_res_layers(net_msg,name='res_grp1_{}'.format(i),bottom='conv1_relu',learn_depth=learn_depth,connectivity_mode=connectivity_mode)
         else:
-            add_1st_res_layers(net_msg,'res_grp1_{}'.format(i),'res_grp1_{}'.format(i-1))
+            add_1st_res_layers(net_msg,'res_grp1_{}'.format(i),'res_grp1_{}'.format(i-1),learn_depth=learn_depth,connectivity_mode=connectivity_mode)
 
     for i in range(1,n+1):
         if i==1:
-            add_2nd_res_layers(net_msg,name='res_grp2_{}'.format(i),bottom='res_grp1_{}'.format(n),downsample=True)
+            add_2nd_res_layers(net_msg,name='res_grp2_{}'.format(i),bottom='res_grp1_{}'.format(n),downsample=True,learn_depth=learn_depth,connectivity_mode=connectivity_mode)
         else:
-            add_2nd_res_layers(net_msg,'res_grp2_{}'.format(i),'res_grp2_{}'.format(i-1))
+            add_2nd_res_layers(net_msg,'res_grp2_{}'.format(i),'res_grp2_{}'.format(i-1),downsample=False,learn_depth=learn_depth,connectivity_mode=connectivity_mode)
 
     for i in range(1,n+1):
         if i==1:
-            add_3rd_res_layers(net_msg,name='res_grp3_{}'.format(i),bottom='res_grp2_{}'.format(n),downsample=True)
+            add_3rd_res_layers(net_msg,name='res_grp3_{}'.format(i),bottom='res_grp2_{}'.format(n),downsample=True,learn_depth=learn_depth,connectivity_mode=connectivity_mode)
         else:
-            add_3rd_res_layers(net_msg,'res_grp3_{}'.format(i),'res_grp3_{}'.format(i-1))
+            add_3rd_res_layers(net_msg,'res_grp3_{}'.format(i),'res_grp3_{}'.format(i-1),downsample=False,learn_depth=learn_depth,connectivity_mode=connectivity_mode)
 
 
     #conv_cur_layer.CopyFrom(conv_layer)

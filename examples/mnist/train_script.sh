@@ -3,7 +3,7 @@ set -e
 set -x
 
 folder="examples/mnist/"
-file_prefix="lenet"
+file_prefix="mlp_500_300"
 model_path="examples/mnist/"
 
 if [ "$#" -lt 7 ]; then

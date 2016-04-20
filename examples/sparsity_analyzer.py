@@ -142,19 +142,20 @@ if __name__ == "__main__":
                                     elem_sparsity)
                         plt.xlabel("{:.2f}X speedup".format(1.0/(1-col_sparsity)/(1-row_sparsity)))
                         speedupinfo = speedupinfo + "{:.2f}X".format(1.0/(1-col_sparsity)/(1-row_sparsity))
-                        block_group_lasso_array = net_parser.getLayerByName(net_msg,layer_name).param._values[0].block_group_lasso._values
-                        for blk_idx in range(0,len(block_group_lasso_array)):
-                            xdim = block_group_lasso_array[blk_idx].xdimen
-                            ydim = block_group_lasso_array[blk_idx].ydimen
-                            assert weights_tuned_reshaped.shape[0]%ydim == 0
-                            assert weights_tuned_reshaped.shape[1]%xdim == 0
-                            count = 0
-                            blk_num_y = weights_tuned_reshaped.shape[0]/ydim
-                            blk_num_x = weights_tuned_reshaped.shape[1]/xdim
-                            for by in range(0,blk_num_y):
-                                for bx in range(0,blk_num_x):
-                                    count += (sum(abs(weights_tuned_reshaped[by*ydim:by*ydim+ydim, bx*xdim:bx*xdim+xdim])) == 0)
-                            titlename = "{} ({},{}):{:.1%}".format(titlename,xdim,ydim,(float)(count)/blk_num_x/blk_num_y)
+                        if len(net_parser.getLayerByName(net_msg,layer_name).param):
+                            block_group_lasso_array = net_parser.getLayerByName(net_msg,layer_name).param._values[0].block_group_lasso._values
+                            for blk_idx in range(0,len(block_group_lasso_array)):
+                                xdim = block_group_lasso_array[blk_idx].xdimen
+                                ydim = block_group_lasso_array[blk_idx].ydimen
+                                assert weights_tuned_reshaped.shape[0]%ydim == 0
+                                assert weights_tuned_reshaped.shape[1]%xdim == 0
+                                count = 0
+                                blk_num_y = weights_tuned_reshaped.shape[0]/ydim
+                                blk_num_x = weights_tuned_reshaped.shape[1]/xdim
+                                for by in range(0,blk_num_y):
+                                    for bx in range(0,blk_num_x):
+                                        count += (sum(abs(weights_tuned_reshaped[by*ydim:by*ydim+ydim, bx*xdim:bx*xdim+xdim])) == 0)
+                                titlename = "{} ({},{}):{:.1%}".format(titlename,xdim,ydim,(float)(count)/blk_num_x/blk_num_y)
                         plt.title(titlename)
                         print titlename
 

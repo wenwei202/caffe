@@ -1,0 +1,81 @@
+name: "MLP"
+layer {
+  name: "data"
+  type: "Input"
+  top: "data"
+  input_param { shape: { dim: 1 dim: 1 dim: 28 dim: 28 } }
+}
+
+layer {
+  name: "ip1"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "ip1"
+  param {
+    lr_mult: 1
+    decay_mult: 1.0
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 1.0
+  }
+  inner_product_param {
+    num_output: 500
+  }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "ip1"
+  top: "ip1"
+}
+
+layer {
+  name: "ip2"
+  type: "InnerProduct"
+  bottom: "ip1"
+  top: "ip2"
+  param {
+    lr_mult: 1
+    decay_mult: 1.0
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 1.0
+  }
+  inner_product_param {
+    num_output: 300
+  }
+}
+
+
+layer {
+  name: "relu2"
+  type: "ReLU"
+  bottom: "ip2"
+  top: "ip2"
+}
+layer {
+  name: "ip3"
+  type: "InnerProduct"
+  bottom: "ip2"
+  top: "ip3"
+  param {
+    lr_mult: 1
+    decay_mult: 1.0
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 1.0
+  }
+  inner_product_param {
+    num_output: 10
+  }
+}
+layer {
+  name: "prob"
+  type: "Softmax"
+  bottom: "ip3"
+  top: "prob"
+}
+
