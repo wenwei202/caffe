@@ -20,11 +20,9 @@ inline void CaffeMallocHost(void** ptr, size_t size, bool* use_cuda) {
     return;
   }
 #endif
-  *ptr = malloc(size);
+  int err_code = posix_memalign((void **)ptr, 4096, size);
   *use_cuda = false;
-  CHECK(*ptr) << "host allocation of size " << size << " failed";
-  //int err_code = posix_memalign(ptr, 16, size);
-  //CHECK(!err_code) << "host allocation of size " << size << " failed";
+  CHECK(!err_code) << "host allocation of size " << size << " failed";
 }
 
 inline void CaffeFreeHost(void* ptr, bool use_cuda) {
