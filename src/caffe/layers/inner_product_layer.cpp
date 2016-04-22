@@ -9,7 +9,7 @@ template <typename Dtype>
 void InnerProductLayer<Dtype>::WeightAlign(){
 	const LayerParameter& layerparam = this->layer_param();
 	LOG(INFO)<<"layer\t"<<layerparam.name()<<"\t"<<"has sparsity of "<< this->blobs_[0]->GetSparsity();
-	this->blobs_[0]->WriteToNistMMIO(layerparam.name()+".weight");
+//	this->blobs_[0]->WriteToNistMMIO(layerparam.name()+".weight");
 
 	//disconnect connections
 	if( layerparam.connectivity_mode() == caffe::LayerParameter_ConnectivityMode_DISCONNECTED_ELTWISE ){
