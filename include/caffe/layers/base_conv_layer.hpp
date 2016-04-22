@@ -23,10 +23,11 @@ template <typename Dtype>
 class BaseConvolutionLayer : public Layer<Dtype> {
  public:
   explicit BaseConvolutionLayer(const LayerParameter& param)
-      : Layer<Dtype>(param) {
+      : Layer<Dtype>(param), weight_interleaved_(NULL), input_padded_(NULL) {
 	  //is_sparse_format_weights_ = false;
 	  is_concatenating_weights_features_ = false;
   }
+  virtual ~BaseConvolutionLayer();
   virtual void WeightAlign();
   virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
@@ -200,6 +201,9 @@ class BaseConvolutionLayer : public Layer<Dtype> {
     Blob<int> col_buf_mask_;
     vector<int> left_columns_;//the number of left columns of weight matrix for each group
     Blob<Dtype> squeezed_weight_buffer_;
+//    Dtype *weight_aligned_, *weight_aligned2_;
+    Dtype *weight_interleaved_; /**< JSP: interleave 8 output channels to vectorize over output channels */
+    Dtype *input_padded_;
     //Blob<Dtype> connectivity_mask_;//0.0 means the connection is off, 1.0 means ON
 };
 

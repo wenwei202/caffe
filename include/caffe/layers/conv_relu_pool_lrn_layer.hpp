@@ -66,7 +66,8 @@ class ConvolutionReLUPoolLRNLayer : public BaseConvolutionLayer<Dtype> {
    *    kernels + stream parallelism) engines.
    */
   explicit ConvolutionReLUPoolLRNLayer(const LayerParameter& param)
-      : BaseConvolutionLayer<Dtype>(param) {}
+      : BaseConvolutionLayer<Dtype>(param), scale_temp_(NULL), padded_square_(NULL) {}
+  virtual ~ConvolutionReLUPoolLRNLayer();
   virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
         const vector<Blob<Dtype>*>& top);
   virtual void Reshape(const vector<Blob<Dtype>*>& bottom,
@@ -76,6 +77,9 @@ class ConvolutionReLUPoolLRNLayer : public BaseConvolutionLayer<Dtype> {
   // MAX POOL layers can output an extra top blob for the mask;
   // others can only output the pooled inputs.
   virtual inline int ExactNumTopBlobs() const { return 1; }
+
+  Blob<int> max_idx_;
+  vector<Blob<Dtype>*> pool_top_;
 
  protected:
   virtual void Forward_cpu(const vector<Blob<Dtype>*>& bottom,
@@ -90,7 +94,6 @@ class ConvolutionReLUPoolLRNLayer : public BaseConvolutionLayer<Dtype> {
   virtual void compute_output_shape();
 
   vector<Blob<Dtype>*> conv_top_;
-  vector<Blob<Dtype>*> pool_top_;
 
   // JSP: copied from pooling_layer.hpp
   int kernel_h_, kernel_w_;
@@ -100,7 +103,6 @@ class ConvolutionReLUPoolLRNLayer : public BaseConvolutionLayer<Dtype> {
   int pooled_height_, pooled_width_;
   bool global_pooling_;
   Blob<Dtype> rand_idx_;
-  Blob<int> max_idx_;
 
   // JSP: copied from lrn_layer.hpp
   int size_;
@@ -130,6 +132,8 @@ class ConvolutionReLUPoolLRNLayer : public BaseConvolutionLayer<Dtype> {
   shared_ptr<EltwiseLayer<Dtype> > product_layer_;
   Blob<Dtype> product_input_;
   vector<Blob<Dtype>*> product_bottom_vec_;
+
+  Dtype *scale_temp_, *padded_square_;
 };
 
 }  // namespace caffe

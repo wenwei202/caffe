@@ -3,6 +3,8 @@
 
 #include "caffe/layers/conv_relu_pool_lrn_layer.hpp"
 
+unsigned long long conv_time = 0, transpose_time = 0, pool_time = 0;
+
 namespace caffe {
 
 template <typename Dtype>
@@ -129,6 +131,13 @@ void ConvolutionReLUPoolLRNLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& 
 }
 
 template <typename Dtype>
+ConvolutionReLUPoolLRNLayer<Dtype>::~ConvolutionReLUPoolLRNLayer()
+{
+  free(scale_temp_);
+  free(padded_square_);
+}
+
+template <typename Dtype>
 void ConvolutionReLUPoolLRNLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   if (conv_top_.empty()) {
@@ -251,9 +260,19 @@ void ConvolutionReLUPoolLRNLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
   }
 
   assert(this->layer_param_.lrn_param().norm_region() == LRNParameter_NormRegion_ACROSS_CHANNELS);
-  Dtype *padded_square = new Dtype[omp_get_max_threads() * (this->num_output_ + size_ - 1) * width_];
+  if (!padded_square_) {
+    posix_memalign(
+        (void **)&padded_square_,
+        4096,
+        sizeof(Dtype)*(omp_get_max_threads() * (this->num_output_ + size_ - 1) * width_));
+  }
   Dtype alpha_over_size = alpha_ / size_;
-  Dtype *scale = new Dtype[omp_get_max_threads() * this->num_output_ * pooled_height_ * pooled_width_];
+  if (!scale_temp_) {
+    posix_memalign(
+        (void **)&scale_temp_,
+        4096,
+        sizeof(Dtype)*(omp_get_max_threads() * this->num_output_ * pooled_height_ * pooled_width_));
+  }
   Dtype* top_data = top[0]->mutable_cpu_data();
 
   double bias_time = 0;
@@ -261,6 +280,9 @@ void ConvolutionReLUPoolLRNLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
   double lrn_time = 0;
   padding_time = 0;
   im2col_time = 0;
+  conv_time = 0;
+  transpose_time = 0;
+  ::pool_time = 0;
 
   for (int i = 0; i < bottom.size(); ++i) {
     const Dtype* bottom_data = bottom[i]->cpu_data();
@@ -270,7 +292,7 @@ void ConvolutionReLUPoolLRNLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
     {
       int tid = omp_get_thread_num();
 
-      Dtype* padded_square_data = padded_square + tid * (this->num_output_ + size_ - 1) * width_;
+      Dtype* padded_square_data = padded_square_ + tid * (this->num_output_ + size_ - 1) * width_;
       for (int j = 0; j < pre_pad_ * width_; ++j) {
         padded_square_data[j] = 0;
       }
@@ -278,7 +300,7 @@ void ConvolutionReLUPoolLRNLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
         padded_square_data[j] = 0;
       }
 
-      Dtype *scale_data = scale + tid * this->num_output_ * pooled_height_ * pooled_width_;
+      Dtype *scale_data = scale_temp_ + tid * this->num_output_ * pooled_height_ * pooled_width_;
 
 #pragma omp for
       for (int n = 0; n < this->num_; ++n) { // JSP: this->num_ is batch size
@@ -287,7 +309,11 @@ void ConvolutionReLUPoolLRNLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
         // Convolution
         this->forward_cpu_gemm(
               bottom_data + n * this->bottom_dim_, weight, conv_top_data, n);
-        if (this->bias_term_) {
+        if (this->bias_term_ &&
+            this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_DCONV &&
+            this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+          // bias term is fused with direct convolution
+
           // JSP: common path of AlexNet
           if (0 == tid) bias_time -= omp_get_wtime();
           // conv_top_data += bias outer-prod bias_mult
@@ -308,81 +334,199 @@ void ConvolutionReLUPoolLRNLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
 
         if (0 == tid) pool_time -= omp_get_wtime();
 
-        switch (this->layer_param_.pooling_param().pool()) {
-        case PoolingParameter_PoolMethod_MAX:
-          // The main loop
-          int len = conv_top_[i]->offset(0, 1);
-          for (int c = 0; c < this->num_output_; ++c) {
-            // compute offset
-            Dtype *conv_top_data_cur = conv_top_data + len*c;
-            Dtype *pool_top_data_cur = pool_top_data + pool_top_[0]->offset(0, 1)*c;
+        if (this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_DCONV &&
+            this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+          // pooling is fused with direct convolution
 
-            if (use_top_mask) {
-              Dtype *pool_top_mask_cur = pool_top_mask + pool_top_offset + pool_top_[0]->offset(0, 1)*c;
+          switch (this->layer_param_.pooling_param().pool()) {
+          case PoolingParameter_PoolMethod_MAX:
+            // The main loop
+            int len = conv_top_[i]->offset(0, 1);
+            for (int c = 0; c < this->num_output_; ++c) {
+              // compute offset
+              Dtype *conv_top_data_cur = conv_top_data + len*c;
+              Dtype *pool_top_data_cur = pool_top_data + pool_top_[0]->offset(0, 1)*c;
 
-              for (int ph = 0; ph < pooled_height_; ++ph) {
-                for (int pw = 0; pw < pooled_width_; ++pw) {
-                  int hstart = ph * stride_h_ - pad_h_;
-                  int wstart = pw * stride_w_ - pad_w_;
-                  int hend = min(hstart + kernel_h_, height_);
-                  int wend = min(wstart + kernel_w_, width_);
-                  hstart = max(hstart, 0);
-                  wstart = max(wstart, 0);
-                  Dtype maximum = 0;
-                  int mask = -1;
-                  for (int h = hstart; h < hend; ++h) {
-                    for (int w = wstart; w < wend; ++w) {
-                      const int index = h * width_ + w;
-                      if (conv_top_data_cur[index] > maximum) {
-                        maximum = conv_top_data_cur[index];
-                        mask = static_cast<Dtype>(index);
+              if (use_top_mask) {
+                Dtype *pool_top_mask_cur = pool_top_mask + pool_top_offset + pool_top_[0]->offset(0, 1)*c;
+
+                for (int ph = 0; ph < pooled_height_; ++ph) {
+                  for (int pw = 0; pw < pooled_width_; ++pw) {
+                    int hstart = ph * stride_h_ - pad_h_;
+                    int wstart = pw * stride_w_ - pad_w_;
+                    int hend = min(hstart + kernel_h_, height_);
+                    int wend = min(wstart + kernel_w_, width_);
+                    hstart = max(hstart, 0);
+                    wstart = max(wstart, 0);
+                    Dtype maximum = 0;
+                    int mask = -1;
+                    for (int h = hstart; h < hend; ++h) {
+                      for (int w = wstart; w < wend; ++w) {
+                        const int index = h * width_ + w;
+                        if (conv_top_data_cur[index] > maximum) {
+                          maximum = conv_top_data_cur[index];
+                          mask = static_cast<Dtype>(index);
+                        }
                       }
                     }
+                    const int pool_index = ph * pooled_width_ + pw;
+                    pool_top_data_cur[pool_index] = maximum;
+                    pool_top_data_cur[pool_index] = mask;
                   }
-                  const int pool_index = ph * pooled_width_ + pw;
-                  pool_top_data_cur[pool_index] = maximum;
-                  pool_top_data_cur[pool_index] = mask;
                 }
               }
-            }
-            else {
-              // JSP: common path for AlexNet (stride=2, kernel=3)
-              int *mask_cur = mask + pool_top_offset + pool_top_[0]->offset(0, 1)*c;
+              else {
+                // JSP: common path for AlexNet (stride=2, kernel=3)
+                int *mask_cur = mask + pool_top_offset + pool_top_[0]->offset(0, 1)*c;
 
-              for (int ph = 0; ph < pooled_height_; ++ph) {
-                int hstart = max(ph * stride_h_ - pad_h_, 0);
-                int hend = min(hstart + kernel_h_, height_);
+                if (stride_h_ == 2 && stride_w_ == 2 && kernel_h_ == 3 && kernel_w_ == 3 && pad_h_ == 0 && pad_w_ == 0) {
+                  const int STRIDE = 2;
+                  const int K = 3;
 
-                for (int pw = 0; pw < pooled_width_; ++pw) {
-                  int wstart = max(pw * stride_w_ - pad_w_, 0);
-                  int wend = min(wstart + kernel_w_, width_);
-                  Dtype maximum = 0; // JSP: using 0 instead of -FLT_MAX does ReLU for us.
-                  int mask = -1;
-                  for (int h = hstart; h < hend; ++h) {
-                    for (int w = wstart; w < wend; ++w) {
-                      const int index = h * width_ + w;
+                  for (int ph = 0; ph < (height_ - K)/STRIDE; ++ph) {
+                    int hstart = ph * STRIDE;
+                    int hend = hstart + K;
+
+                    for (int pw = 0; pw < (width_ - K)/STRIDE; ++pw) {
+                      int wstart = pw * STRIDE;
+                      Dtype maximum = 0; // JSP: using 0 instead of -FLT_MAX does ReLU for us.
+                      int mask = -1;
+
+                      int index = hstart * width_ + wstart;
                       if (conv_top_data_cur[index] > maximum) {
                         maximum = conv_top_data_cur[index];
                         mask = index;
                       }
+                      index = hstart * width_ + wstart + 1;
+                      if (conv_top_data_cur[index] > maximum) {
+                        maximum = conv_top_data_cur[index];
+                        mask = index;
+                      }
+                      index = hstart * width_ + wstart + 2;
+                      if (conv_top_data_cur[index] > maximum) {
+                        maximum = conv_top_data_cur[index];
+                        mask = index;
+                      }
+
+                      index = (hstart + 1) * width_ + wstart;
+                      if (conv_top_data_cur[index] > maximum) {
+                        maximum = conv_top_data_cur[index];
+                        mask = index;
+                      }
+                      index = (hstart + 1) * width_ + wstart + 1;
+                      if (conv_top_data_cur[index] > maximum) {
+                        maximum = conv_top_data_cur[index];
+                        mask = index;
+                      }
+                      index = (hstart + 1) * width_ + wstart + 2;
+                      if (conv_top_data_cur[index] > maximum) {
+                        maximum = conv_top_data_cur[index];
+                        mask = index;
+                      }
+
+                      index = (hstart + 2) * width_ + wstart;
+                      if (conv_top_data_cur[index] > maximum) {
+                        maximum = conv_top_data_cur[index];
+                        mask = index;
+                      }
+                      index = (hstart + 2) * width_ + wstart + 1;
+                      if (conv_top_data_cur[index] > maximum) {
+                        maximum = conv_top_data_cur[index];
+                        mask = index;
+                      }
+                      index = (hstart + 2) * width_ + wstart + 2;
+                      if (conv_top_data_cur[index] > maximum) {
+                        maximum = conv_top_data_cur[index];
+                        mask = index;
+                      }
+
+                      const int pool_index = ph * pooled_width_ + pw;
+                      pool_top_data_cur[pool_index] = maximum;
+                      mask_cur[pool_index] = mask;
+                    }
+
+                    for (int pw = (width_ - K)/STRIDE; pw < pooled_width_; ++pw) {
+                      int wstart = pw * STRIDE;
+                      int wend = min(wstart + K, width_);
+                      Dtype maximum = 0; // JSP: using 0 instead of -FLT_MAX does ReLU for us.
+                      int mask = -1;
+                      for (int h = hstart; h < hend; ++h) {
+                        for (int w = wstart; w < wend; ++w) {
+                          const int index = h * width_ + w;
+                          if (conv_top_data_cur[index] > maximum) {
+                            maximum = conv_top_data_cur[index];
+                            mask = index;
+                          }
+                        }
+                      }
+                      const int pool_index = ph * pooled_width_ + pw;
+                      pool_top_data_cur[pool_index] = maximum;
+                      mask_cur[pool_index] = mask;
                     }
                   }
-                  const int pool_index = ph * pooled_width_ + pw;
-                  pool_top_data_cur[pool_index] = maximum;
-                  mask_cur[pool_index] = mask;
+
+                  for (int ph = (height_ - K)/STRIDE; ph < pooled_height_; ++ph) {
+                    int hstart = ph * STRIDE;
+                    int hend = min(hstart + K, height_);
+
+                    for (int pw = 0; pw < pooled_width_; ++pw) {
+                      int wstart = pw * STRIDE;
+                      int wend = min(wstart + K, width_);
+                      Dtype maximum = 0; // JSP: using 0 instead of -FLT_MAX does ReLU for us.
+                      int mask = -1;
+                      for (int h = hstart; h < hend; ++h) {
+                        for (int w = wstart; w < wend; ++w) {
+                          const int index = h * width_ + w;
+                          if (conv_top_data_cur[index] > maximum) {
+                            maximum = conv_top_data_cur[index];
+                            mask = index;
+                          }
+                        }
+                      }
+                      const int pool_index = ph * pooled_width_ + pw;
+                      pool_top_data_cur[pool_index] = maximum;
+                      mask_cur[pool_index] = mask;
+                    }
+                  }
                 }
-              }
-            } // !use_pool_top_mask
-          } // for each channel
-          break;
-        case PoolingParameter_PoolMethod_AVE:
-          NOT_IMPLEMENTED;
-          break;
-        case PoolingParameter_PoolMethod_STOCHASTIC:
-          NOT_IMPLEMENTED;
-          break;
-        default:
-          LOG(FATAL) << "Unknown pooling method.";
+                else {
+                  LOG(WARNING) << "Inefficient code path";
+                  for (int ph = 0; ph < pooled_height_; ++ph) {
+                    int hstart = max(ph * stride_h_ - pad_h_, 0);
+                    int hend = min(hstart + kernel_h_, height_);
+
+                    for (int pw = 0; pw < pooled_width_; ++pw) {
+                      int wstart = max(pw * stride_w_ - pad_w_, 0);
+                      int wend = min(wstart + kernel_w_, width_);
+                      Dtype maximum = 0; // JSP: using 0 instead of -FLT_MAX does ReLU for us.
+                      int mask = -1;
+                      for (int h = hstart; h < hend; ++h) {
+                        for (int w = wstart; w < wend; ++w) {
+                          const int index = h * width_ + w;
+                          if (conv_top_data_cur[index] > maximum) {
+                            maximum = conv_top_data_cur[index];
+                            mask = index;
+                          }
+                        }
+                      }
+                      const int pool_index = ph * pooled_width_ + pw;
+                      pool_top_data_cur[pool_index] = maximum;
+                      mask_cur[pool_index] = mask;
+                    }
+                  }
+                }
+              } // !use_pool_top_mask
+            } // for each channel
+            break;
+          case PoolingParameter_PoolMethod_AVE:
+            NOT_IMPLEMENTED;
+            break;
+          case PoolingParameter_PoolMethod_STOCHASTIC:
+            NOT_IMPLEMENTED;
+            break;
+          default:
+            LOG(FATAL) << "Unknown pooling method.";
+          }
         }
 
         if (0 == tid) {
@@ -435,16 +579,18 @@ void ConvolutionReLUPoolLRNLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>&
     int pad_w = this->pad_.cpu_data()[1];
 
     if (pad_h != 0 || pad_w != 0) {
-      printf("padding %g ms\n", padding_time*1e3);
+      LOG(INFO) << "padding " << padding_time*1e3 << " ms";
     }
   }
   else {
-    printf("im2col %g ms\n", im2col_time*1e3);
+    LOG(INFO) << "im2col " << im2col_time*1e3 << " ms";
+  }
+  if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_DCONV ||
+      this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+    LOG(INFO) << "conv " << conv_time << " transpose " << transpose_time << " pool " << ::pool_time;
   }
 
-  printf("bias %g ms, pool %g ms, lrn %g ms\n", bias_time*1e3, pool_time*1e3, lrn_time*1e3);
-
-  delete[] scale;
+  LOG(INFO) << "bias " << bias_time*1e3 << " ms, pool " << pool_time*1e3 << " ms, lrn " << lrn_time*1e3 << " ms";
 }
 
 template <typename Dtype>
