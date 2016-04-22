@@ -7,6 +7,13 @@
 namespace caffe {
 
 template <typename Dtype>
+LRNLayer<Dtype>::~LRNLayer()
+{
+  free(scale_temp_);
+  free(padded_square_);
+}
+
+template <typename Dtype>
 void LRNLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   size_ = this->layer_param_.lrn_param().local_size();
@@ -110,14 +117,24 @@ void LRNLayer<Dtype>::CrossChannelForward_cpu(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_data = bottom[0]->cpu_data();
   Dtype* top_data = top[0]->mutable_cpu_data();
-  Dtype *padded_square = new Dtype[omp_get_max_threads() * (channels_ + size_ - 1) * width_];
+  if (!padded_square_) {
+    posix_memalign(
+        (void **)&padded_square_,
+        4096,
+        sizeof(Dtype) * omp_get_max_threads() * (channels_ + size_ - 1) * width_);
+  }
   Dtype alpha_over_size = alpha_ / size_;
-  Dtype *scale = new Dtype[omp_get_max_threads() * channels_ * height_ * width_];
+  if (!scale_temp_) {
+    posix_memalign(
+        (void **)&scale_temp_,
+        4096,
+        sizeof(Dtype) * omp_get_max_threads() * channels_ * height_ * width_);
+  }
 #pragma omp parallel
   {
     int tid = omp_get_thread_num();
 
-    Dtype* padded_square_data = padded_square + tid * (channels_ + size_ - 1) * width_;
+    Dtype* padded_square_data = padded_square_ + tid * (channels_ + size_ - 1) * width_;
     for (int i = 0; i < pre_pad_ * width_; ++i) {
       padded_square_data[i] = 0;
     }
@@ -125,7 +142,7 @@ void LRNLayer<Dtype>::CrossChannelForward_cpu(
       padded_square_data[i] = 0;
     }
 
-    Dtype *scale_data = scale + tid * channels_ * height_ * width_;
+    Dtype *scale_data = scale_temp_ + tid * channels_ * height_ * width_;
 
     // go through the images
 #pragma omp for
@@ -167,8 +184,6 @@ void LRNLayer<Dtype>::CrossChannelForward_cpu(
       caffe_mul<Dtype>(channels_ * height_ * width_, scale_data, bottom_data + offset, top_data + offset);
     }
   } // omp parallel
-  delete[] padded_square;
-  delete[] scale;
 }
 
 template <typename Dtype>
