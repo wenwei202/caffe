@@ -79,16 +79,18 @@ void DataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   if (this->output_labels_) {
     top_label = batch->label_.mutable_cpu_data();
   }
+#pragma omp parallel for reduction(+:read_time, trans_time)
   for (int item_id = 0; item_id < batch_size; ++item_id) {
     timer.Start();
     // get a datum
     Datum& datum = *(reader_.full().pop("Waiting for data"));
+    assert(!datum.encoded());
     read_time += timer.MicroSeconds();
     timer.Start();
     // Apply data transformations (mirror, scale, crop...)
     int offset = batch->data_.offset(item_id);
-    this->transformed_data_.set_cpu_data(top_data + offset);
-    this->data_transformer_->Transform(datum, &(this->transformed_data_));
+    //this->transformed_data_.set_cpu_data(top_data + offset);
+    this->data_transformer_->Transform(datum, top_data + offset);
     // Copy label.
     if (this->output_labels_) {
       top_label[item_id] = datum.label();
