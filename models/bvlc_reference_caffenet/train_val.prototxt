@@ -49,13 +49,13 @@ layer {
 #  }
   data_param {
     source: "examples/imagenet/ilsvrc12_val_lmdb"
-    batch_size: 50
+    batch_size: 256
     backend: LMDB
   }
 }
 layer {
   name: "conv1"
-  type: "Convolution"
+  type: "ConvolutionReLUPoolLRN"
   bottom: "data"
   top: "conv1"
   param {
@@ -78,40 +78,54 @@ layer {
       type: "constant"
       value: 0
     }
+    #conv_mode: LOWERED_CCNMM
+    #conv_mode: LOWERED_GEMM
+    #conv_mode: DIRECT_SCONV
+    conv_mode: DIRECT_DCONV
   }
-}
-layer {
-  name: "relu1"
-  type: "ReLU"
-  bottom: "conv1"
-  top: "conv1"
-}
-layer {
-  name: "pool1"
-  type: "Pooling"
-  bottom: "conv1"
-  top: "pool1"
   pooling_param {
     pool: MAX
     kernel_size: 3
     stride: 2
   }
-}
-layer {
-  name: "norm1"
-  type: "LRN"
-  bottom: "pool1"
-  top: "norm1"
   lrn_param {
     local_size: 5
     alpha: 0.0001
     beta: 0.75
   }
 }
+#layer {
+  #name: "relu1"
+  #type: "ReLU"
+  #bottom: "conv1"
+  #top: "conv1"
+#}
+#layer {
+  #name: "pool1"
+  #type: "Pooling"
+  #bottom: "conv1"
+  #top: "pool1"
+  #pooling_param {
+    #pool: MAX
+    #kernel_size: 3
+    #stride: 2
+  #}
+#}
+#layer {
+  #name: "norm1"
+  #type: "LRN"
+  #bottom: "conv1"
+  #top: "norm1"
+  #lrn_param {
+    #local_size: 5
+    #alpha: 0.0001
+    #beta: 0.75
+  #}
+#}
 layer {
   name: "conv2"
-  type: "Convolution"
-  bottom: "norm1"
+  type: "ConvolutionReLUPoolLRN"
+  bottom: "conv1"
   top: "conv2"
   param {
     lr_mult: 1
@@ -134,40 +148,51 @@ layer {
       type: "constant"
       value: 1
     }
+    conv_mode: DIRECT_SCONV
   }
-}
-layer {
-  name: "relu2"
-  type: "ReLU"
-  bottom: "conv2"
-  top: "conv2"
-}
-layer {
-  name: "pool2"
-  type: "Pooling"
-  bottom: "conv2"
-  top: "pool2"
   pooling_param {
     pool: MAX
     kernel_size: 3
     stride: 2
   }
-}
-layer {
-  name: "norm2"
-  type: "LRN"
-  bottom: "pool2"
-  top: "norm2"
   lrn_param {
-    local_size: 5
+    #local_size: 5
     alpha: 0.0001
     beta: 0.75
   }
 }
+#layer {
+  #name: "relu2"
+  #type: "ReLU"
+  #bottom: "conv2"
+  #top: "conv2"
+#}
+#layer {
+  #name: "pool2"
+  #type: "Pooling"
+  #bottom: "conv2"
+  #top: "pool2"
+  #pooling_param {
+    #pool: MAX
+    #kernel_size: 3
+    #stride: 2
+  #}
+#}
+#layer {
+  #name: "norm2"
+  #type: "LRN"
+  #bottom: "conv2"
+  #top: "norm2"
+  #lrn_param {
+    #local_size: 5
+    #alpha: 0.0001
+    #beta: 0.75
+  #}
+#}
 layer {
   name: "conv3"
-  type: "Convolution"
-  bottom: "norm2"
+  type: "ConvolutionReLU"
+  bottom: "conv2"
   top: "conv3"
   param {
     lr_mult: 1
@@ -189,17 +214,18 @@ layer {
       type: "constant"
       value: 0
     }
+    conv_mode: DIRECT_SCONV
   }
 }
-layer {
-  name: "relu3"
-  type: "ReLU"
-  bottom: "conv3"
-  top: "conv3"
-}
+#layer {
+  #name: "relu3"
+  #type: "ReLU"
+  #bottom: "conv3"
+  #top: "conv3"
+#}
 layer {
   name: "conv4"
-  type: "Convolution"
+  type: "ConvolutionReLU"
   bottom: "conv3"
   top: "conv4"
   param {
@@ -223,17 +249,18 @@ layer {
       type: "constant"
       value: 1
     }
+    conv_mode: DIRECT_SCONV
   }
 }
-layer {
-  name: "relu4"
-  type: "ReLU"
-  bottom: "conv4"
-  top: "conv4"
-}
+#layer {
+  #name: "relu4"
+  #type: "ReLU"
+  #bottom: "conv4"
+  #top: "conv4"
+#}
 layer {
   name: "conv5"
-  type: "Convolution"
+  type: "ConvolutionReLUPool"
   bottom: "conv4"
   top: "conv5"
   param {
@@ -257,29 +284,35 @@ layer {
       type: "constant"
       value: 1
     }
+    conv_mode: DIRECT_SCONV
   }
-}
-layer {
-  name: "relu5"
-  type: "ReLU"
-  bottom: "conv5"
-  top: "conv5"
-}
-layer {
-  name: "pool5"
-  type: "Pooling"
-  bottom: "conv5"
-  top: "pool5"
   pooling_param {
     pool: MAX
     kernel_size: 3
     stride: 2
   }
 }
+#layer {
+  #name: "relu5"
+  #type: "ReLU"
+  #bottom: "conv5"
+  #top: "conv5"
+#}
+#layer {
+  #name: "pool5"
+  #type: "Pooling"
+  #bottom: "conv5"
+  #top: "pool5"
+  #pooling_param {
+    #pool: MAX
+    #kernel_size: 3
+    #stride: 2
+  #}
+#}
 layer {
   name: "fc6"
   type: "InnerProduct"
-  bottom: "pool5"
+  bottom: "conv5"
   top: "fc6"
   param {
     lr_mult: 1
