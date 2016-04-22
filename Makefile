@@ -184,7 +184,7 @@ LIBRARIES += glog gflags protobuf boost_system boost_filesystem m hdf5_hl hdf5
 # handle IO dependencies
 USE_LEVELDB ?= 1
 USE_LMDB ?= 1
-USE_OPENCV ?= 1
+USE_OPENCV ?= 0
 
 ifeq ($(USE_LEVELDB), 1)
 	LIBRARIES += leveldb snappy
@@ -322,7 +322,7 @@ ifeq ($(DEBUG), 1)
 	COMMON_FLAGS += -DDEBUG -g -O0
 	NVCCFLAGS += -G
 else
-	COMMON_FLAGS += -DNDEBUG -O2
+	COMMON_FLAGS += -DNDEBUG -O3 -xHost
 endif
 
 # cuDNN acceleration configuration.
