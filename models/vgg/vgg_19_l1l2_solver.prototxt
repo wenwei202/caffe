@@ -1,0 +1,37 @@
+net: "models/vgg/vgg_19_train_val_convl1l2.prototxt"
+test_iter: 1000
+test_interval: 1000
+#base_lr: 0.001
+
+#lr_policy: "step"
+lr_policy: "multistep"
+gamma: 0.1
+stepvalue: 120000
+#stepvalue: 100000
+#stepvalue: 100000
+stepvalue: 180000
+#stepvalue: 130000
+#stepvalue: 140000
+stepvalue: 210000
+#stepvalue: 160000
+#stepvalue: 180000
+#stepvalue: 200000
+#stepvalue: 240000
+#stepvalue: 300000
+#stepvalue: 400000
+
+display: 200
+max_iter: 220000
+#max_iter: 240000
+#max_iter: 270000
+momentum: 0.9
+
+#weight_decay: 0
+#kernel_shape_decay: 8.0e-4
+#breadth_decay: 3.0e-5
+
+regularization_type: "L1"
+
+snapshot: 6000
+#snapshot_prefix: "models/bvlc_reference_caffenet/caffenet_train_grouplasso"
+#solver_mode: GPU
