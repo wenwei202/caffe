@@ -67,55 +67,55 @@ if __name__ == "__main__":
     plot_count = 0
     subplot_num = 0
     for layer_name in orig_net.params.keys():
-        if re.match("^conv[0-9]$",layer_name):
+        layer_type = net_parser.getLayerByName(net_msg,layer_name).type
+        if layer_type =='Convolution':
             subplot_num += net_parser.getLayerByName(net_msg,layer_name).convolution_param.group
-        elif re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
+        elif layer_type =='InnerProduct':
             subplot_num += 1
 
     r_width = 0.0001
     #einet_plt = plt.figure().add_subplot(111)
     for layer_name in orig_net.params.keys():
-            if re.match("^conv.*[pq]",layer_name) :
+            #if re.match("^conv.*[pq]",layer_name) :
+            #    print "analyzing {}".format(layer_name)
+            #    weights = orig_net.params[layer_name][0].data
+            #    #bias = orig_net.params[layer_name][1].data
+            #    #print "src weight {}, bias {}".format(weights.shape, bias.shape)
+            #    #print "dst weight, bias"
+            #    weights_orig = orig_net.params[layer_name][0].data
+            #    weights_tuned = tuned_net.params[layer_name][0].data
+#           #     assert (weights_orig==weights_tuned).all()
+            #    if re.match("^fc.*",layer_name):
+            #        bias_orig = orig_net.params[layer_name][1].data
+            #        bias_tuned = tuned_net.params[layer_name][1].data
+            #        assert (bias_orig==bias_tuned).all()
+            #    if re.match("^conv.*[q]",layer_name):
+            #        kernel_max_sizexsize = weights_tuned.shape[3]*weights_tuned.shape[2]
+            #elif re.match("^conv[0-9]",layer_name)  or re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
+            layer_type = net_parser.getLayerByName(net_msg,layer_name).type
+            if layer_type=='Convolution' or layer_type =='InnerProduct':
                 print "analyzing {}".format(layer_name)
-                weights = orig_net.params[layer_name][0].data
-                #bias = orig_net.params[layer_name][1].data
-                #print "src weight {}, bias {}".format(weights.shape, bias.shape)
-                #print "dst weight, bias"
-                weights_orig = orig_net.params[layer_name][0].data
-                weights_tuned = tuned_net.params[layer_name][0].data
-#                assert (weights_orig==weights_tuned).all()
-                if re.match("^fc.*",layer_name):
-                    bias_orig = orig_net.params[layer_name][1].data
-                    bias_tuned = tuned_net.params[layer_name][1].data
-                    assert (bias_orig==bias_tuned).all()
-                if re.match("^conv.*[q]",layer_name):
-                    kernel_max_sizexsize = weights_tuned.shape[3]*weights_tuned.shape[2]
-            elif re.match("^conv[0-9]",layer_name)  or re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
-                print "analyzing {}".format(layer_name)
-                bias_orig = orig_net.params[layer_name][1].data
-                bias_tuned = tuned_net.params[layer_name][1].data
-                unequal_percentage = 100*sum(bias_orig!=bias_tuned)/(float)(bias_orig.size)
-                #print unequal_percentage
-#                assert unequal_percentage>99.0 and unequal_percentage<=100
-                #assert (bias_orig!=bias_tuned).all()
+                #bias_orig = orig_net.params[layer_name][1].data
+                #bias_tuned = tuned_net.params[layer_name][1].data
+                #unequal_percentage = 100*sum(bias_orig!=bias_tuned)/(float)(bias_orig.size)
+
                 weights_orig = orig_net.params[layer_name][0].data
                 weights_tuned = tuned_net.params[layer_name][0].data
                 unequal_percentage = 100*sum(weights_orig!=weights_tuned)/(float)(weights_orig.size)
-                #print "{}% unequal".format(unequal_percentage)
-#                assert unequal_percentage>99.999 and unequal_percentage<=100
 
                 print "[{}] original: %{} zeros".format(layer_name,100*sum((abs(weights_orig)<r_width).flatten())/(float)(weights_orig.size))
                 print "[{}] tuned: %{} zeros".format(layer_name,100*sum((abs(weights_tuned)<r_width).flatten())/(float)(weights_tuned.size))
                 zero_out(weights_tuned,r_width)
 
                 #analyze the average ratio of after group lasso
-                if re.match("^conv[0-9]",layer_name) or re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
+                #if re.match("^conv[0-9]",layer_name) or re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
+                if layer_type=='Convolution' or layer_type =='InnerProduct':
                     group = net_parser.getLayerByName(net_msg,layer_name).convolution_param.group
                     group_size = weights_tuned.shape[0]/group
                     for g in range(0,group):
-                        if re.match("^conv[0-9]",layer_name):
+                        if layer_type=='Convolution':
                             weights_tuned_reshaped = reshape(weights_tuned[g*group_size:(g+1)*group_size,:,:,:],(weights_tuned.shape[0]/group,weights_tuned.size/weights_tuned.shape[0]))
-                        elif re.match("^ip.*",layer_name) or re.match("^fc.*",layer_name):
+                        elif layer_type =='InnerProduct':
                             weights_tuned_reshaped = weights_tuned
                         nonzero_ratio = zeros((1,weights_tuned_reshaped.shape[1]))
                         xIdx = range(0,weights_tuned_reshaped.shape[1],1)
@@ -158,35 +158,6 @@ if __name__ == "__main__":
                                 titlename = "{} ({},{}):{:.1%}".format(titlename,xdim,ydim,(float)(count)/blk_num_x/blk_num_y)
                         plt.title(titlename)
                         print titlename
-
-
-
-
-            #else:
-            #    weights_q = orig_net.params[layer_name+'q'][0].data
-            #    weights_s = orig_net.params[layer_name][0].data
-            #    bias_s = dst_net.params[layer_name][1].data
-            #    print "P {} {}".format(weights_p.shape,0)
-            #    print "Q {} {}".format(weights_q.shape,0)
-            #    print "S {} {}".format(weights_s.shape,bias_s.shape)
-            #    weights = transpose(weights,(2,3,1,0))
-            #    group = weights_p.shape[0]/weights_p.shape[1]
-            #    group_size = weights.shape[3]/group
-            #    group_p_size = weights_p.shape[0]/group
-            #    group_q_size = weights_q.shape[0]/group
-            #    group_s_size = weights_s.shape[0]/group
-            #    print "{} group(s) ".format(group)
-            #    for g in range(0,group):
-            #        group_weights = weights[:,:,:,g*group_size:(g+1)*group_size]
-            #        P,S,Q,qi = pittnuts.kernel_factorization(group_weights)
-            #        weights_p[g*group_p_size:(g+1)*group_p_size,:,0,0] = P
-            #        weights_q[g*group_q_size:(g+1)*group_q_size,:,:,:] = Q.transpose((0,3,1,2)).reshape((group_q_size,weights_q.shape[1],weights_q.shape[2],weights_q.shape[3]))
-            #        weights_s[g*group_s_size:(g+1)*group_s_size,:,:,:] = S.transpose(2,0,1).reshape((group_s_size,weights_s.shape[1],weights_s.shape[2],weights_s.shape[3]))
-            #    bias_s[:] = bias
-            #elif re.match("^fc.*",layer_name):
-            #    print "filling {}".format(layer_name)
-            #    dst_net.params[layer_name][0].data[:] = src_net.params[layer_name][0].data[:]
-            #    dst_net.params[layer_name][1].data[:] = src_net.params[layer_name][1].data[:]
 
     #save zeroed out net
     file_split = os.path.splitext(fine_tuned_caffemodel)
