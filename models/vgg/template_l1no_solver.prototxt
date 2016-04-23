@@ -1,4 +1,4 @@
-net: "models/vgg/train_val_convl1no.prototxt"
+net: "models/vgg/vgg_train_val_convl1no.prototxt"
 test_iter: 1000
 test_interval: 1000
 #base_lr: 0.001
