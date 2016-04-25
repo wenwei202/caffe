@@ -24,6 +24,18 @@ void ConvolutionLayer<Dtype>::compute_output_shape() {
 template <typename Dtype>
 void ConvolutionLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
+
+  int height = this->conv_input_shape_.cpu_data()[1];
+  int width = this->conv_input_shape_.cpu_data()[2];
+  int kernel_h = this->kernel_shape_.cpu_data()[0];
+  int kernel_w = this->kernel_shape_.cpu_data()[1];
+  int pad_h = this->pad_.cpu_data()[0];
+  int pad_w = this->pad_.cpu_data()[1];
+  int stride_h = this->stride_.cpu_data()[0];
+  int stride_w = this->stride_.cpu_data()[1];
+  int dilation_h = this->dilation_.cpu_data()[0];
+  int dilation_w = this->dilation_.cpu_data()[1];
+
   const Dtype* weight = this->blobs_[0]->cpu_data();
   const Dtype *bias = NULL;
   if (this->bias_term_) {
@@ -37,6 +49,7 @@ void ConvolutionLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       this->forward_cpu_gemm(bottom_data + n * this->bottom_dim_, weight,
           top_data + n * this->top_dim_, n);
       if (this->bias_term_) {
+        // bias term is fused with direct convolution for second layer
         this->forward_cpu_bias(top_data + n * this->top_dim_, bias);
       }
     }

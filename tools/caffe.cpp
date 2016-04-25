@@ -3,6 +3,16 @@
 namespace bp = boost::python;
 #endif
 
+#include <map>
+#include <string>
+
+extern unsigned long long conv_cycles_of_this_batch[1024*16];
+extern std::map<std::string, unsigned long long> total_conv_cycles;
+extern std::map<std::string, double> total_conv_flops;
+extern int total_files;
+
+double get_cpu_freq();
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -285,8 +295,8 @@ int test() {
   loss /= FLAGS_iterations;
   LOG(INFO) << "Loss: " << loss;
   for (int i = 0; i < test_score.size(); ++i) {
-    //const std::string& output_name = caffe_net.blob_names()[
-    //    caffe_net.output_blob_indices()[test_score_output_id[i]]];
+    const std::string& output_name = caffe_net.blob_names()[
+        caffe_net.output_blob_indices()[test_score_output_id[i]]];
     const float loss_weight = caffe_net.blob_loss_weights()[
         caffe_net.output_blob_indices()[test_score_output_id[i]]];
     std::ostringstream loss_msg_stream;
@@ -295,8 +305,18 @@ int test() {
       loss_msg_stream << " (* " << loss_weight
                       << " = " << loss_weight * mean_score << " loss)";
     }
-    //LOG(INFO) << output_name << " = " << mean_score << loss_msg_stream.str();
+    LOG(INFO) << output_name << " = " << mean_score << loss_msg_stream.str();
   }
+
+  total_files /= total_conv_cycles.size(); // compensate for duplicated counts at each conv layer
+  LOG(INFO) << "Total-images-processed: " << total_files;
+  std::map<std::string, unsigned long long>::const_iterator itr;
+  for (itr = total_conv_cycles.begin(); itr != total_conv_cycles.end(); ++itr) {
+    LOG(INFO) << itr->first << " K-cycles-per-file " << itr->second/total_files/1e3 <<
+        " mFlops-per-file " << total_conv_flops[itr->first]/total_files/1e6 <<
+        " GF/s " << total_conv_flops[itr->first]/(itr->second/get_cpu_freq())/1e9;
+  }
+//  LOG(INFO) << "Time-taken-per-image: " << (double)total_conv_cycles/total_files/1e3;
 
   return 0;
 }
@@ -394,6 +414,9 @@ int time() {
 RegisterBrewFunction(time);
 
 int main(int argc, char** argv) {
+
+  printf("freq = %g\n", get_cpu_freq());
+
    //CUDA_CHECK(cudaProfilerInitialize());
   // Print output to stderr (while still logging).
   FLAGS_alsologtostderr = 1;

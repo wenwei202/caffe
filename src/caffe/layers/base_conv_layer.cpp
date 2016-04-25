@@ -12,8 +12,6 @@
 #include "caffe/util/math_functions_intel.hpp"
 #include "caffe/layers/conv_relu_pool_lrn_layer.hpp"
 
-#include "conv.hpp"
-
 namespace caffe {
 
 template <typename Dtype>
@@ -488,7 +486,6 @@ void BaseConvolutionLayer<double>::forward_cpu_gemm(const double* input,
 }
 
 extern double padding_time, im2col_time;
-unsigned long long conv_time, transpose_time, pool_time;
 
 template<>
 void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
@@ -605,6 +602,8 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
       int dilation_h = dilation_.cpu_data()[0];
       int dilation_w = dilation_.cpu_data()[1];
 
+      const int weight_offset = this->blobs_[0]->count()/group_;
+
       if (height == 227 && width == 227 && pad_h == 0 && pad_w == 0 && stride_h == 4 && stride_w == 4 && kernel_w == 11 && kernel_h == 11 && dilation_h == 1 && dilation_w == 1 && conv_in_channels_/group_ == 3) {
         //      const int weight_offset = this->blobs_[0]->count()/group_;
         //      const float *weight = this->blobs_[0]->cpu_data() + weight_offset * g;
@@ -615,26 +614,25 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
         //      const float *weight = weight_aligned2_ + g*M*(conv_in_channels_/group_)*kernel_size_aligned2;
 
         const float *weight = weight_interleaved_;
+        assert(std::string(type()) == "ConvolutionReLUPoolLRN");
         caffe_cpu_dconv<float>(
             input + conv_in_channels_/group_ * g * height * width,
             conv_in_channels_, height, width,
             pad_h, pad_w,
             stride_h, stride_w,
             dilation_h, dilation_w,
-            weight_interleaved_,
+            weight_interleaved_ + weight_offset * g,
             kernel_h, kernel_w,
             this->blobs_[1]->cpu_data(), bias_multiplier_.cpu_data(),
-            ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(batch_idx),
-            ((ConvolutionReLUPoolLRNLayer<float> *)this)->max_idx_.mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(batch_idx),
-            output,
-            M + output_offset_ * g);
+            ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g),
+            ((ConvolutionReLUPoolLRNLayer<float> *)this)->max_idx_.mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g),
+            output + output_offset_ * g,
+            M);
       }
       else {
-        const int weight_offset = this->blobs_[0]->count()/group_;
-
         caffe_cpu_dconv<float>(
             input + conv_in_channels_/group_ * g * height * width,
-            conv_in_channels_, height, width,
+            conv_in_channels_/group_, height, width,
             pad_h, pad_w,
             stride_h, stride_w,
             dilation_h, dilation_w,
@@ -665,580 +663,38 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
 		  const float *values = nz_weight_values_.cpu_data()+ weight_offset_ * g;
 		  const int *colidx = nz_weight_indices_.cpu_data()+ weight_offset_ * g;
 
-		  const int output_h = (height + 2 * pad_h -
-				  (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
-		  const int output_w = (width + 2 * pad_w -
-				  (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
-		  assert(output_h*output_w == N);
-      const float *in_temp = input_padded + conv_in_channels_/group_ * g * (height + pad_h) * (width + pad_w);
-      if (dilation_h != 1 || dilation_w != 1 || !this->bias_term_) {
-        LOG(WARNING) << "Inefficient code path";
-        for (int output_row = 0; output_row < output_h; ++output_row) {
-          for (int output_col = 0; output_col < output_w; ++output_col) {
+		  if (height == 27 && width == 27 && pad_h == 2 && pad_w == 2 && stride_h == 1 && stride_w == 1 && kernel_w == 5 && kernel_h == 5 && dilation_h == 1 && dilation_w == 1) {
+		    // 2nd layer of AlexNet fused with bias term and pooling
 
-            for (int out_channel = 0; out_channel < M; ++out_channel) {
-              float sum = 0;
-
-              for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
-                int col = colidx[j];
-
-                int kernel_col = col%(width + pad_w);
-                int kernel_row = (col/(width + pad_w))%(height + pad_h);
-                int in_channel = col/((width + pad_w)*(height + pad_h));
-
-                int input_row = kernel_row * dilation_h + output_row * stride_h;
-                int input_col = kernel_col * dilation_w + output_col * stride_w;
-
-                sum += values[j]*in_temp[(in_channel * (height + pad_h) + input_row) * (width + pad_w) + input_col];
-              }
-
-              output[output_offset_ * g + (out_channel * output_h + output_row) * output_w + output_col] = sum;
-            }
-          }
-			  }
+		    assert(std::string(type()) == "ConvolutionReLUPoolLRN");
+        caffe_cpu_sconv<float>(
+            input_padded + conv_in_channels_/group_ * g * (height + pad_h) * (width + pad_w),
+            height, width,
+            pad_h, pad_w,
+            stride_h, stride_w,
+            dilation_h, dilation_w,
+            rowptr, colidx, values,
+            kernel_h, kernel_w,
+            this->blobs_[1]->cpu_data(), bias_multiplier_.cpu_data(),
+            ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g),
+            ((ConvolutionReLUPoolLRNLayer<float> *)this)->max_idx_.mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g),
+            output + output_offset_ * g,
+            M);
 		  }
 		  else {
-		    const float *bias = this->blobs_[1]->cpu_data();
-		    const float *bias_multiplier = bias_multiplier_.cpu_data();
-
-#if 1 //defined(__AVX2__) && defined(__INTEL_COMPILER)
-        if (height == 13 && width == 13 && pad_h == 1 && pad_w == 1 && stride_h == 1 && stride_w == 1 && kernel_h == 3 && kernel_w == 3) {
-
-          int WIDTH = 13;
-          int WOUT = 13;
-          int PAD = 1;
-
-          __m256 sum[(WOUT + 1)/2][2]; // [7][2]
-          __declspec(aligned(64)) float sum_temp[8];
-
-          for (int out_channel = 0; out_channel < M; ++out_channel) {
-            if (rowptr[out_channel + 1] == rowptr[out_channel]) continue;
-
-            // Upper half of images
-            int hbegin = 0, hend = (WOUT + 1)/2;
-            int j = rowptr[out_channel];
-            __m256 c = _mm256_set1_ps(values[j]);
-            int off = colidx[j];
-
-            for (int h = hbegin; h < hend; ++h) {
-              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)));
-              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8));
-            }
-
-            int jbegin = rowptr[out_channel] + 1;
-            int jend = rowptr[out_channel + 1];
-
-            for (j = jbegin; j < jend; ++j) {
-              c = _mm256_set1_ps(values[j]);
-              off = colidx[j];
-
-              for (int h = hbegin; h < hend; ++h) {
-                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
-                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
-              }
-            }
-
-            for (int h = hbegin; h < hend; ++h) {
-              _mm256_storeu_ps(output + output_offset_ * g  + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
-              _mm256_storeu_ps(sum_temp, sum[h - hbegin][1]);
-              for (int w = 8; w < WOUT; ++w) {
-                output[output_offset_ * g + out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
-              }
-            }
-
-            // Lower half of images
-            hbegin = (WOUT + 1)/2; hend = WOUT;
-            j = rowptr[out_channel];
-            c = _mm256_set1_ps(values[j]);
-            off = colidx[j];
-
-            for (int h = hbegin; h < hend; ++h) {
-              sum[h - hbegin][0] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)));
-              sum[h - hbegin][1] = _mm256_mul_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8));
-            }
-
-            for (j = jbegin; j < jend; ++j) {
-              c = _mm256_set1_ps(values[j]);
-              off = colidx[j];
-
-              for (int h = hbegin; h < hend; ++h) {
-                sum[h - hbegin][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
-                sum[h - hbegin][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
-              }
-            }
-
-            for (int h = hbegin; h < hend; ++h) {
-              _mm256_storeu_ps(output + output_offset_ * g + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
-              _mm256_storeu_ps(sum_temp, sum[h - hbegin][1]);
-              for (int w = 8; w < WOUT; ++w) {
-                output[output_offset_ * g + out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
-              }
-            }
-          }
-        }
-        else if (height == 27 && width == 27 && pad_h == 2 && pad_w == 2 && stride_h == 1 && stride_w == 1 && kernel_w == 5 && kernel_h == 5) {
-          int WIDTH = 27;
-          int WOUT = 27;
-          int PAD = 2;
-
-          const float *bias = this->blobs_[1]->cpu_data();
-          const float *bias_multiplier = bias_multiplier_.cpu_data();
-
-          for (int out_channel = 0; out_channel < M; ++out_channel) {
-            __m256 sum[(WOUT + 3)/4][2]; // [7][2]
-
-            unsigned long long t = __rdtsc();
-
-            int out_channel_offset = out_channel%8;
-
-            // (0, 0) block
-            int hbegin = 0, hend = (WOUT + 4)/5;
-            int j;
-            __m256 c;
-            int off;
-
-            int jbegin = rowptr[out_channel];
-            int jend = rowptr[out_channel + 1];
-
-            __m256 bias_v = _mm256_set1_ps(bias[out_channel]);
-
-#undef MY_FMADD
-#define MY_FMADD(HBEGIN, WBEGIN) \
-            sum[0][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 0)*WOUT + WBEGIN)); \
-            sum[0][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 0)*WOUT + WBEGIN + 8)); \
-            sum[1][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 1)*WOUT + WBEGIN)); \
-            sum[1][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 1)*WOUT + WBEGIN + 8)); \
-            sum[2][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 2)*WOUT + WBEGIN)); \
-            sum[2][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 2)*WOUT + WBEGIN + 8)); \
-            sum[3][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 3)*WOUT + WBEGIN)); \
-            sum[3][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 3)*WOUT + WBEGIN + 8)); \
-            sum[4][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 4)*WOUT + WBEGIN)); \
-            sum[4][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 4)*WOUT + WBEGIN + 8)); \
-            sum[5][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 5)*WOUT + WBEGIN)); \
-            sum[5][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 5)*WOUT + WBEGIN + 8)); \
-            sum[6][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 6)*WOUT + WBEGIN)); \
-            sum[6][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 6)*WOUT + WBEGIN + 8)); \
- \
-            for (j = jbegin; j < jend; ++j) { \
-              c = _mm256_set1_ps(values[j]); \
-              off = colidx[j]; \
- \
-              sum[0][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 0)*(WIDTH + PAD) + WBEGIN), sum[0][0]); \
-              sum[0][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 0)*(WIDTH + PAD) + WBEGIN + 8), sum[0][1]); \
-              sum[1][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 1)*(WIDTH + PAD) + WBEGIN), sum[1][0]); \
-              sum[1][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 1)*(WIDTH + PAD) + WBEGIN + 8), sum[1][1]); \
-              sum[2][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 2)*(WIDTH + PAD) + WBEGIN), sum[2][0]); \
-              sum[2][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 2)*(WIDTH + PAD) + WBEGIN + 8), sum[2][1]); \
-              sum[3][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 3)*(WIDTH + PAD) + WBEGIN), sum[3][0]); \
-              sum[3][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 3)*(WIDTH + PAD) + WBEGIN + 8), sum[3][1]); \
-              sum[4][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 4)*(WIDTH + PAD) + WBEGIN), sum[4][0]); \
-              sum[4][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 4)*(WIDTH + PAD) + WBEGIN + 8), sum[4][1]); \
-              sum[5][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 5)*(WIDTH + PAD) + WBEGIN), sum[5][0]); \
-              sum[5][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 5)*(WIDTH + PAD) + WBEGIN + 8), sum[5][1]); \
-              sum[6][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 6)*(WIDTH + PAD) + WBEGIN), sum[6][0]); \
-              sum[6][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 6)*(WIDTH + PAD) + WBEGIN + 8), sum[6][1]); \
-            } \
- \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 0)*32 + WBEGIN, sum[0][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 0)*32 + WBEGIN + 8, sum[0][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 1)*32 + WBEGIN, sum[1][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 1)*32 + WBEGIN + 8, sum[1][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 2)*32 + WBEGIN, sum[2][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 2)*32 + WBEGIN + 8, sum[2][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 3)*32 + WBEGIN, sum[3][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 3)*32 + WBEGIN + 8, sum[3][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 4)*32 + WBEGIN, sum[4][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 4)*32 + WBEGIN + 8, sum[4][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 5)*32 + WBEGIN, sum[5][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 5)*32 + WBEGIN + 8, sum[5][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 6)*32 + WBEGIN, sum[6][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 6)*32 + WBEGIN + 8, sum[6][1]);
-
-            MY_FMADD(0, 0);
-            MY_FMADD(0, 16);
-
-            MY_FMADD(7, 0);
-            MY_FMADD(7, 16);
-
-            MY_FMADD(14, 0);
-            MY_FMADD(14, 16);
-
-#undef MY_FMADD
-#define MY_FMADD(HBEGIN, WBEGIN) \
-            sum[0][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 0)*WOUT + WBEGIN)); \
-            sum[0][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 0)*WOUT + WBEGIN + 8)); \
-            sum[1][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 1)*WOUT + WBEGIN)); \
-            sum[1][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 1)*WOUT + WBEGIN + 8)); \
-            sum[2][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 2)*WOUT + WBEGIN)); \
-            sum[2][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 2)*WOUT + WBEGIN + 8)); \
-            sum[3][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 3)*WOUT + WBEGIN)); \
-            sum[3][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 3)*WOUT + WBEGIN + 8)); \
-            sum[4][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 4)*WOUT + WBEGIN)); \
-            sum[4][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 4)*WOUT + WBEGIN + 8)); \
-            sum[5][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 5)*WOUT + WBEGIN)); \
-            sum[5][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 5)*WOUT + WBEGIN + 8)); \
- \
-            for (j = jbegin; j < jend; ++j) { \
-              c = _mm256_set1_ps(values[j]); \
-              off = colidx[j]; \
- \
-              sum[0][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 0)*(WIDTH + PAD) + WBEGIN), sum[0][0]); \
-              sum[0][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 0)*(WIDTH + PAD) + WBEGIN + 8), sum[0][1]); \
-              sum[1][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 1)*(WIDTH + PAD) + WBEGIN), sum[1][0]); \
-              sum[1][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 1)*(WIDTH + PAD) + WBEGIN + 8), sum[1][1]); \
-              sum[2][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 2)*(WIDTH + PAD) + WBEGIN), sum[2][0]); \
-              sum[2][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 2)*(WIDTH + PAD) + WBEGIN + 8), sum[2][1]); \
-              sum[3][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 3)*(WIDTH + PAD) + WBEGIN), sum[3][0]); \
-              sum[3][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 3)*(WIDTH + PAD) + WBEGIN + 8), sum[3][1]); \
-              sum[4][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 4)*(WIDTH + PAD) + WBEGIN), sum[4][0]); \
-              sum[4][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 4)*(WIDTH + PAD) + WBEGIN + 8), sum[4][1]); \
-              sum[5][0] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 5)*(WIDTH + PAD) + WBEGIN), sum[5][0]); \
-              sum[5][1] = _mm256_fmadd_ps(c, _mm256_loadu_ps(in_temp + off + (HBEGIN + 5)*(WIDTH + PAD) + WBEGIN + 8), sum[5][1]); \
-            } \
- \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 0)*32 + WBEGIN, sum[0][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 0)*32 + WBEGIN + 8, sum[0][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 1)*32 + WBEGIN, sum[1][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 1)*32 + WBEGIN + 8, sum[1][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 2)*32 + WBEGIN, sum[2][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 2)*32 + WBEGIN + 8, sum[2][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 3)*32 + WBEGIN, sum[3][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 3)*32 + WBEGIN + 8, sum[3][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 4)*32 + WBEGIN, sum[4][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 4)*32 + WBEGIN + 8, sum[4][1]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 5)*32 + WBEGIN, sum[5][0]); \
-            _mm256_store_ps(output + (out_channel_offset*WOUT + HBEGIN + 5)*32 + WBEGIN + 8, sum[5][1]);
-
-            MY_FMADD(21, 0);
-            MY_FMADD(21, 16);
-#undef MY_FMADD
-
-            if (0 == omp_get_thread_num()) conv_time += __rdtsc() - t;
-
-            if (out_channel%8 != 7) continue;
-
-            t = __rdtsc();
-
-            // transpose to vectorize pooling layer over multiple channels
-            for (int h = 0; h < WOUT; ++h) {
-              for (int w = 0; w < WOUT/8*8; w += 8) {
-                __m256 v0 = _mm256_load_ps(output + h*32 + w);
-                __m256 v1 = _mm256_load_ps(output + (WOUT + h)*32 + w);
-                __m256 v2 = _mm256_load_ps(output + (2*WOUT + h)*32 + w);
-                __m256 v3 = _mm256_load_ps(output + (3*WOUT + h)*32 + w);
-                __m256 v4 = _mm256_load_ps(output + (4*WOUT + h)*32 + w);
-                __m256 v5 = _mm256_load_ps(output + (5*WOUT + h)*32 + w);
-                __m256 v6 = _mm256_load_ps(output + (6*WOUT + h)*32 + w);
-                __m256 v7 = _mm256_load_ps(output + (7*WOUT + h)*32 + w);
-
-                transpose8_ps(v0, v1, v2, v3, v4, v5, v6, v7);
-
-                _mm256_store_ps(output + ((32 + h)*WOUT + w)*8, v0);
-                _mm256_store_ps(output + ((32 + h)*WOUT + (w + 1))*8, v1);
-                _mm256_store_ps(output + ((32 + h)*WOUT + (w + 2))*8, v2);
-                _mm256_store_ps(output + ((32 + h)*WOUT + (w + 3))*8, v3);
-                _mm256_store_ps(output + ((32 + h)*WOUT + (w + 4))*8, v4);
-                _mm256_store_ps(output + ((32 + h)*WOUT + (w + 5))*8, v5);
-                _mm256_store_ps(output + ((32 + h)*WOUT + (w + 6))*8, v6);
-                _mm256_store_ps(output + ((32 + h)*WOUT + (w + 7))*8, v7);
-              }
-              for (int w = WOUT/8*8; w < WOUT; ++w) {
-                for (int i = 0; i < 8; ++i) {
-                  output[((32 + h)*WOUT + w)*8 + i] = output[(i*WOUT + h)*32 + w];
-                }
-              }
-            }
-
-            if (0 == omp_get_thread_num()) transpose_time += __rdtsc() - t;
-            t = __rdtsc();
-
-            float *pool_top = ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(batch_idx);
-            int *mask = ((ConvolutionReLUPoolLRNLayer<float> *)this)->max_idx_.mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(batch_idx);
-
-            const int STRIDE_POOL = 2;
-            const int K_POOL = 3;
-            const int POOLED_WIDTH = (WOUT - K_POOL + STRIDE_POOL - 1) / STRIDE_POOL + 1; // (27 - 3 + 1)/2 + 1 = 13
-
-            const float *conv_top_data_cur = output + 8*WOUT*32;
-            float *pool_top_data_cur = pool_top + (M*g + out_channel - 7)*POOLED_WIDTH*POOLED_WIDTH;
-            int *mask_cur = mask + (M*g + out_channel - 7)*POOLED_WIDTH*POOLED_WIDTH;
-
-            __declspec(aligned(64)) float maximum[8];
-
-            __declspec(aligned(64)) int identity[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
-            __m256i identity_v = _mm256_load_si256((__m256i *)identity);
-
-            for (int ph = 0; ph < POOLED_WIDTH; ++ph) {
-              __declspec(aligned(64)) int mask[8];
-
-              int hstart = ph * STRIDE_POOL;
-              int hend = hstart + K_POOL;
-
-              for (int pw = 0; pw < POOLED_WIDTH; ++pw) {
-                int wstart = pw * STRIDE_POOL;
-                __m256 maximum_v = _mm256_setzero_ps(); // JSP: using 0 instead of -FLT_MAX does ReLU for us.
-                __m256 mask_v = _mm256_setzero_ps();
-                __m256 cmp_v, in_v;
-
-                int index = hstart * WOUT + wstart;
-                in_v = _mm256_load_ps(conv_top_data_cur + index*8);
-                cmp_v = _mm256_cmp_ps(in_v, maximum_v, _CMP_LE_OQ);
-                maximum_v =  _mm256_blendv_ps(in_v, maximum_v, cmp_v);
-                mask_v = _mm256_blendv_ps(
-                    _mm256_castsi256_ps(_mm256_add_epi32(_mm256_set1_epi32(index*8), identity_v)),
-                    mask_v,
-                    cmp_v);
-
-                index = hstart * WOUT + wstart + 1;
-                in_v = _mm256_load_ps(conv_top_data_cur + index*8);
-                cmp_v = _mm256_cmp_ps(in_v, maximum_v, _CMP_LE_OQ);
-                maximum_v =  _mm256_blendv_ps(in_v, maximum_v, cmp_v);
-                mask_v = _mm256_blendv_ps(
-                    _mm256_castsi256_ps(_mm256_add_epi32(_mm256_set1_epi32(index*8), identity_v)),
-                    mask_v,
-                    cmp_v);
-
-                index = hstart * WOUT + wstart + 2;
-                in_v = _mm256_load_ps(conv_top_data_cur + index*8);
-                cmp_v = _mm256_cmp_ps(in_v, maximum_v, _CMP_LE_OQ);
-                maximum_v =  _mm256_blendv_ps(in_v, maximum_v, cmp_v);
-                mask_v = _mm256_blendv_ps(
-                    _mm256_castsi256_ps(_mm256_add_epi32(_mm256_set1_epi32(index*8), identity_v)),
-                    mask_v,
-                    cmp_v);
-
-                index = (hstart + 1) * WOUT + wstart;
-                in_v = _mm256_load_ps(conv_top_data_cur + index*8);
-                cmp_v = _mm256_cmp_ps(in_v, maximum_v, _CMP_LE_OQ);
-                maximum_v =  _mm256_blendv_ps(in_v, maximum_v, cmp_v);
-                mask_v = _mm256_blendv_ps(
-                    _mm256_castsi256_ps(_mm256_add_epi32(_mm256_set1_epi32(index*8), identity_v)),
-                    mask_v,
-                    cmp_v);
-
-                index = (hstart + 1) * WOUT + wstart + 1;
-                in_v = _mm256_load_ps(conv_top_data_cur + index*8);
-                cmp_v = _mm256_cmp_ps(in_v, maximum_v, _CMP_LE_OQ);
-                maximum_v =  _mm256_blendv_ps(in_v, maximum_v, cmp_v);
-                mask_v = _mm256_blendv_ps(
-                    _mm256_castsi256_ps(_mm256_add_epi32(_mm256_set1_epi32(index*8), identity_v)),
-                    mask_v,
-                    cmp_v);
-
-                index = (hstart + 1) * WOUT + wstart + 2;
-                in_v = _mm256_load_ps(conv_top_data_cur + index*8);
-                cmp_v = _mm256_cmp_ps(in_v, maximum_v, _CMP_LE_OQ);
-                maximum_v =  _mm256_blendv_ps(in_v, maximum_v, cmp_v);
-                mask_v = _mm256_blendv_ps(
-                    _mm256_castsi256_ps(_mm256_add_epi32(_mm256_set1_epi32(index*8), identity_v)),
-                    mask_v,
-                    cmp_v);
-
-                index = (hstart + 2) * WOUT + wstart;
-                in_v = _mm256_load_ps(conv_top_data_cur + index*8);
-                cmp_v = _mm256_cmp_ps(in_v, maximum_v, _CMP_LE_OQ);
-                maximum_v =  _mm256_blendv_ps(in_v, maximum_v, cmp_v);
-                mask_v = _mm256_blendv_ps(
-                    _mm256_castsi256_ps(_mm256_add_epi32(_mm256_set1_epi32(index*8), identity_v)),
-                    mask_v,
-                    cmp_v);
-
-                index = (hstart + 2) * WOUT + wstart + 1;
-                in_v = _mm256_load_ps(conv_top_data_cur + index*8);
-                cmp_v = _mm256_cmp_ps(in_v, maximum_v, _CMP_LE_OQ);
-                maximum_v =  _mm256_blendv_ps(in_v, maximum_v, cmp_v);
-                mask_v = _mm256_blendv_ps(
-                    _mm256_castsi256_ps(_mm256_add_epi32(_mm256_set1_epi32(index*8), identity_v)),
-                    mask_v,
-                    cmp_v);
-
-                index = (hstart + 2) * WOUT + wstart + 2;
-                in_v = _mm256_load_ps(conv_top_data_cur + index*8);
-                cmp_v = _mm256_cmp_ps(in_v, maximum_v, _CMP_LE_OQ);
-                maximum_v =  _mm256_blendv_ps(in_v, maximum_v, cmp_v);
-                mask_v = _mm256_blendv_ps(
-                    _mm256_castsi256_ps(_mm256_add_epi32(_mm256_set1_epi32(index*8), identity_v)),
-                    mask_v,
-                    cmp_v);
-
-                _mm256_store_ps(maximum, maximum_v);
-                _mm256_store_ps((float *)mask, mask_v);
-
-                const int pool_index = ph * POOLED_WIDTH + pw;
-                for (int j = 0; j < 8; ++j) {
-                  pool_top_data_cur[pool_index + j*POOLED_WIDTH*POOLED_WIDTH] = maximum[j];
-                  mask_cur[pool_index + j*POOLED_WIDTH*POOLED_WIDTH] = mask[j];
-                }
-              }
-            }
-
-            if (0 == omp_get_thread_num()) pool_time += __rdtsc() - t;
-          } // for each out channel
-        }
-        else
-#endif
-        if (height == 227 && width == 227 && pad_h == 0 && pad_w == 0 && stride_h == 4 && stride_w == 4 && kernel_w == 11 && kernel_h == 11) {
-          int WIDTH = 227;
-          int STRIDE = 4;
-          int K = 11;
-          int WOUT = (WIDTH - K)/STRIDE + 1; // 55
-          const int JBLOCK = 128;
-          const int HBLOCK = 8;
-          const int WBLOCK = 9;
-
-          __declspec(aligned(64)) float sum[WOUT*WOUT];
-
-          for (int out_channel = 0; out_channel < M; ++out_channel) {
-            int jbegin = rowptr[out_channel];
-            int jend = std::min(jbegin + JBLOCK, rowptr[out_channel + 1]);
-
-            for (int hbegin = 0; hbegin < WOUT; hbegin += HBLOCK) {
-              int hend = std::min(hbegin + HBLOCK, WOUT);
-
-              for (int wbegin = 0; wbegin < WOUT; wbegin += WBLOCK) {
-                int wend = std::min(wbegin + WBLOCK, WOUT);
-
-                for (int k = 0; k < (hend - hbegin) * (wend - wbegin); ++k) {
-                  sum[k] = 0;
-                }
-
-                for (int j = jbegin; j < jend; ++j) {
-                  float c = values[j];
-                  int off = colidx[j];
-                  int k = 0;
-                  for (int h = hbegin; h < hend; ++h) {
-                    for (int w = wbegin; w < wend; ++w, ++k) {
-                      sum[k] += c*in_temp[off + (h*WIDTH + w)*STRIDE];
-                    }
-                  }
-                }
-
-                int k = 0;
-                for (int h = hbegin; h < hend; ++h) {
-                  for (int w = wbegin; w < wend; ++w, ++k) {
-                    output[output_offset_ * g + (out_channel*WOUT + h)*WOUT + w] = sum[k];
-                  }
-                }
-              }
-            }
-            jbegin += JBLOCK;
-
-            for ( ; jbegin < rowptr[out_channel + 1]; jbegin += JBLOCK) {
-              int jend = std::min(jbegin + JBLOCK, rowptr[out_channel + 1]);
-
-              for (int hbegin = 0; hbegin < WOUT; hbegin += HBLOCK) {
-                int hend = std::min(hbegin + HBLOCK, WOUT);
-
-                for (int wbegin = 0; wbegin < WOUT; wbegin += WBLOCK) {
-                  int wend = std::min(wbegin + WBLOCK, WOUT);
-
-                  for (int k = 0; k < (hend - hbegin) * (wend - wbegin); ++k) {
-                    sum[k] = 0;
-                  }
-
-                  for (int j = jbegin; j < jend; ++j) {
-                    float c = values[j];
-                    int off = colidx[j];
-                    int k = 0;
-                    for (int h = hbegin; h < hend; ++h) {
-                      for (int w = wbegin; w < wend; ++w, ++k) {
-                        sum[k] += c*in_temp[off + (h*WIDTH + w)*STRIDE];
-                      }
-                    }
-                  }
-
-                  int k = 0;
-                  for (int h = hbegin; h < hend; ++h) {
-                    for (int w = wbegin; w < wend; ++w, ++k) {
-                      output[output_offset_ * g + (out_channel*WOUT + h)*WOUT + w] += sum[k];
-                    }
-                  }
-                }
-              }
-            }
-
-//            for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
-//              float c = values[j];
-//              int off = colidx[j];
-//              for (int h = 0; h < WOUT/2; ++h) {
-//                for (int w = WOUT/2; w < WOUT; ++w) {
-//                  sum[h*WOUT + w] += c*in_temp[off + (h*WIDTH + w)*STRIDE];
-//                }
-//              }
-//            }
-//
-//            for (int h = 0; h < WOUT/2; ++h) {
-//              for (int w = WOUT/2; w < WOUT; ++w) {
-//                output[output_offset_ * g + (out_channel*WOUT + h)*WOUT + w] = sum[h*WOUT + w];
-//              }
-//            }
-//
-//            for (int h = WOUT/2; h < WOUT; ++h) {
-//              for (int w = 0; w < WOUT/2; ++w) {
-//                sum[h*WOUT + w] = 0;
-//              }
-//            }
-//
-//            for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
-//              float c = values[j];
-//              int off = colidx[j];
-//              for (int h = WOUT/2; h < WOUT; ++h) {
-//                for (int w = 0; w < WOUT/2; ++w) {
-//                  sum[h*WOUT + w] += c*in_temp[off + (h*WIDTH + w)*STRIDE];
-//                }
-//              }
-//            }
-//
-//            for (int h = WOUT/2; h < WOUT; ++h) {
-//              for (int w = 0; w < WOUT/2; ++w) {
-//                output[output_offset_ * g + (out_channel*WOUT + h)*WOUT + w] = sum[h*WOUT + w];
-//              }
-//            }
-//
-//            for (int h = WOUT/2; h < WOUT; ++h) {
-//              for (int w = WOUT/2; w < WOUT; ++w) {
-//                sum[h*WOUT + w] = 0;
-//              }
-//            }
-//
-//            for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
-//              float c = values[j];
-//              int off = colidx[j];
-//              for (int h = WOUT/2; h < WOUT; ++h) {
-//                for (int w = WOUT/2; w < WOUT; ++w) {
-//                  sum[h*WOUT + w] += c*in_temp[off + (h*WIDTH + w)*STRIDE];
-//                }
-//              }
-//            }
-//
-//            for (int h = WOUT/2; h < WOUT; ++h) {
-//              for (int w = WOUT/2; w < WOUT; ++w) {
-//                output[output_offset_ * g + (out_channel*WOUT + h)*WOUT + w] = sum[h*WOUT + w];
-//              }
-//            }
-          }
-        }
-        else
-        {
-          for (int output_row = 0; output_row < output_h; ++output_row) {
-            for (int output_col = 0; output_col < output_w; ++output_col) {
-
-              const float *in_temp2 = in_temp + output_row * stride_h * (width + pad_w) + output_col * stride_w;
-
-              for (int out_channel = 0; out_channel < M; ++out_channel) {
-                float sum = 0;
-
-                for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
-                  assert(in_temp2 + colidx[j] - input_padded < input_padded_len);
-                  sum += values[j]*in_temp2[colidx[j]];
-                }
-
-                output[output_offset_ * g + (out_channel*output_h + output_row)*output_w + output_col] = sum;
-              }
-            }
-          } // !__AVX2__
-				}
+        caffe_cpu_sconv<float>(
+            input_padded + conv_in_channels_/group_ * g * (height + pad_h) * (width + pad_w),
+            height, width,
+            pad_h, pad_w,
+            stride_h, stride_w,
+            dilation_h, dilation_w,
+            rowptr, colidx, values,
+            kernel_h, kernel_w,
+            NULL, NULL, NULL, NULL,
+            output + output_offset_ * g,
+            M);
 		  }
+
 		  break;
 	  }
 	  default:

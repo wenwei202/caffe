@@ -1,6 +1,14 @@
 #include <vector>
+#include <omp.h>
 
 #include "caffe/layers/conv_relu_pool_layer.hpp"
+
+extern unsigned long long conv_cycles_of_this_batch[1024*16];
+extern std::map<std::string, unsigned long long> total_conv_cycles;
+extern std::map<std::string, double> total_conv_flops;
+extern int total_files;
+
+double get_cpu_freq();
 
 namespace caffe {
 
@@ -152,6 +160,10 @@ void ConvolutionReLUPoolLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
     bias = this->blobs_[1]->cpu_data();
   }
 
+  for (int i = 0; i < omp_get_max_threads(); ++i) {
+    conv_cycles_of_this_batch[i*16] = 0;
+  }
+
   Dtype negative_slope = this->layer_param_.relu_param().negative_slope();
   assert(negative_slope == 0);
 
@@ -266,6 +278,45 @@ void ConvolutionReLUPoolLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
       }
     } // for (int n = 0; n < this->num_; ++n)
   } // for (int i = 0; i < bottom.size(); ++i)
+
+  int height = this->conv_input_shape_.cpu_data()[1];
+  int width = this->conv_input_shape_.cpu_data()[2];
+  int kernel_h = this->kernel_shape_.cpu_data()[0];
+  int kernel_w = this->kernel_shape_.cpu_data()[1];
+  int pad_h = this->pad_.cpu_data()[0];
+  int pad_w = this->pad_.cpu_data()[1];
+  int stride_h = this->stride_.cpu_data()[0];
+  int stride_w = this->stride_.cpu_data()[1];
+  int dilation_h = this->dilation_.cpu_data()[0];
+  int dilation_w = this->dilation_.cpu_data()[1];
+
+  const int output_h = (height + 2 * pad_h -
+      (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
+  const int output_w = (width + 2 * pad_w -
+      (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
+
+  double flops = (double)this->num_*this->conv_out_channels_*this->conv_in_channels_/this->group_*output_h*output_w*kernel_h*kernel_w*2;
+
+  unsigned long long max_conv_cycle = 0, sum_conv_cycle = 0;
+  for (int i = 0; i < omp_get_max_threads(); ++i) {
+    max_conv_cycle = std::max(max_conv_cycle, conv_cycles_of_this_batch[i*16]);
+    sum_conv_cycle += conv_cycles_of_this_batch[i*16];
+  }
+  std::string name(this->layer_param_.name());
+  LOG(INFO) <<
+      name <<
+      " K-cycles-per-file max " << max_conv_cycle/1000./this->num_ <<
+      " avg " << sum_conv_cycle/1000./omp_get_max_threads()/this->num_ <<
+      " mFlops-per-file " << flops/this->num_/1e6 <<
+      " GF/s " << flops/(max_conv_cycle/get_cpu_freq())/1e9;
+
+  if (total_conv_cycles.find(name) == total_conv_cycles.end()) {
+    total_conv_cycles[name] = 0;
+    total_conv_flops[name] = 0;
+  }
+  total_conv_cycles[name] += max_conv_cycle;
+  total_conv_flops[name] += flops;
+  total_files += this->num_;
 }
 
 template <typename Dtype>
