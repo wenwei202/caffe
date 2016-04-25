@@ -102,6 +102,8 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   bool bias_term_;
   bool is_1x1_;
   bool force_nd_im2col_;
+  int conv_out_channels_;
+  int conv_in_channels_;
 
  private:
   // wrap im2col/col2im so we don't have to remember the (long) argument lists
@@ -171,8 +173,6 @@ class BaseConvolutionLayer : public Layer<Dtype> {
 
   int num_kernels_im2col_;
   int num_kernels_col2im_;
-  int conv_out_channels_;
-  int conv_in_channels_;
   int conv_out_spatial_dim_;
   int kernel_dim_;
   int col_offset_;
