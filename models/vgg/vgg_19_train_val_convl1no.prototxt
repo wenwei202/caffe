@@ -1,4 +1,4 @@
-name: "VGG_ILSVRC_16_layers"
+name: "VGG_ILSVRC_19_layers"
 layer {
   name: "data"
   type: "Data"
@@ -37,7 +37,7 @@ layer {
   }
   data_param {
     source: "examples/imagenet/ilsvrc12_val_lmdb"
-    batch_size: 64
+    batch_size: 32
     backend: LMDB
   }
 }
@@ -47,11 +47,12 @@ layer {
   bottom: "data"
   top: "conv1_1"
   param {
-    lr_mult: 0
+    lr_mult: 1
+    decay_mult: 0
     regularization_type: "L2"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 64
@@ -71,10 +72,11 @@ layer {
   bottom: "conv1_1"
   top: "conv1_2"
   param {
-    lr_mult: 0
+    lr_mult: 1
+    regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 64
@@ -105,11 +107,11 @@ layer {
   bottom: "pool1"
   top: "conv2_1"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 128
@@ -129,11 +131,11 @@ layer {
   bottom: "conv2_1"
   top: "conv2_2"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 128
@@ -164,11 +166,11 @@ layer {
   bottom: "pool2"
   top: "conv3_1"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 256
@@ -188,11 +190,11 @@ layer {
   bottom: "conv3_1"
   top: "conv3_2"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 256
@@ -212,11 +214,11 @@ layer {
   bottom: "conv3_2"
   top: "conv3_3"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 256
@@ -231,9 +233,33 @@ layer {
   top: "conv3_3"
 }
 layer {
+  name: "conv3_4"
+  type: "Convolution"
+  bottom: "conv3_3"
+  top: "conv3_4"
+  param {
+    lr_mult: 1
+    regularization_type: "L1"
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 256
+    pad: 1
+    kernel_size: 3
+  }
+}
+layer {
+  name: "relu3_4"
+  type: "ReLU"
+  bottom: "conv3_4"
+  top: "conv3_4"
+}
+layer {
   name: "pool3"
   type: "Pooling"
-  bottom: "conv3_3"
+  bottom: "conv3_4"
   top: "pool3"
   pooling_param {
     pool: MAX
@@ -247,11 +273,11 @@ layer {
   bottom: "pool3"
   top: "conv4_1"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 512
@@ -271,11 +297,11 @@ layer {
   bottom: "conv4_1"
   top: "conv4_2"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 512
@@ -295,11 +321,11 @@ layer {
   bottom: "conv4_2"
   top: "conv4_3"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 512
@@ -314,9 +340,33 @@ layer {
   top: "conv4_3"
 }
 layer {
+  name: "conv4_4"
+  type: "Convolution"
+  bottom: "conv4_3"
+  top: "conv4_4"
+  param {
+    lr_mult: 1
+    regularization_type: "L1"
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 512
+    pad: 1
+    kernel_size: 3
+  }
+}
+layer {
+  name: "relu4_4"
+  type: "ReLU"
+  bottom: "conv4_4"
+  top: "conv4_4"
+}
+layer {
   name: "pool4"
   type: "Pooling"
-  bottom: "conv4_3"
+  bottom: "conv4_4"
   top: "pool4"
   pooling_param {
     pool: MAX
@@ -330,11 +380,11 @@ layer {
   bottom: "pool4"
   top: "conv5_1"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 512
@@ -354,11 +404,11 @@ layer {
   bottom: "conv5_1"
   top: "conv5_2"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 512
@@ -378,11 +428,11 @@ layer {
   bottom: "conv5_2"
   top: "conv5_3"
   param {
-    lr_mult: 0
+    lr_mult: 1
     regularization_type: "L1"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   convolution_param {
     num_output: 512
@@ -397,9 +447,33 @@ layer {
   top: "conv5_3"
 }
 layer {
+  name: "conv5_4"
+  type: "Convolution"
+  bottom: "conv5_3"
+  top: "conv5_4"
+  param {
+    lr_mult: 1
+    regularization_type: "L1"
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 512
+    pad: 1
+    kernel_size: 3
+  }
+}
+layer {
+  name: "relu5_4"
+  type: "ReLU"
+  bottom: "conv5_4"
+  top: "conv5_4"
+}
+layer {
   name: "pool5"
   type: "Pooling"
-  bottom: "conv5_3"
+  bottom: "conv5_4"
   top: "pool5"
   pooling_param {
     pool: MAX
@@ -413,12 +487,12 @@ layer {
   bottom: "pool5"
   top: "fc6"
   param {
-    lr_mult: 0
+    lr_mult: 1
     decay_mult: 0
     regularization_type: "L2"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   inner_product_param {
     num_output: 4096
@@ -445,12 +519,12 @@ layer {
   bottom: "fc6"
   top: "fc7"
   param {
-    lr_mult: 0
+    lr_mult: 1
     decay_mult: 0
     regularization_type: "L2"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   inner_product_param {
     num_output: 4096
@@ -477,12 +551,12 @@ layer {
   bottom: "fc7"
   top: "fc8"
   param {
-    lr_mult: 0
+    lr_mult: 1
     decay_mult: 0
     regularization_type: "L2"
   }
   param {
-    lr_mult: 0
+    lr_mult: 2
   }
   inner_product_param {
     num_output: 1000
