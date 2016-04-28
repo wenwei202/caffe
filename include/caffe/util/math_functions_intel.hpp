@@ -10,6 +10,10 @@
 #include "caffe/util/device_alternate.hpp"
 #include "caffe/util/mkl_alternate.hpp"
 
+#include "synk/barrier.hpp"
+
+extern synk::Barrier *barriers[256];
+
 namespace caffe {
 
 /**
@@ -45,13 +49,16 @@ void caffe_cpu_sconv(
     // weights
     const int *rowptr, const int *colidx, const Dtype *values,
     int kernel_h, int kernel_w,
+    const int **rowptr_blocked, const int **colidx_blocked, const Dtype **values_blocked,
+    int ncolblocks,
     // bias (for the case when bias is fused with convolution)
     const Dtype *bias, const Dtype *bias_multiplier,
     // pooling (for the case when pooling is fused with convolution)
     Dtype *pool_top, int *mask,
     // output features
     Dtype *output,
-    int out_channels);
+    int out_channels,
+    float *scratch);
 
 }  // namespace caffe
 

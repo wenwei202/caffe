@@ -2,6 +2,8 @@
 #include <omp.h>
 
 #include "caffe/layers/conv_relu_layer.hpp"
+#include "caffe/util/math_functions_intel.hpp"
+#include "caffe/util/conv.hpp"
 
 extern unsigned long long conv_cycles_of_this_batch[1024*16];
 extern std::map<std::string, unsigned long long> total_conv_cycles;
@@ -11,6 +13,8 @@ extern int total_files;
 double get_cpu_freq();
 
 namespace caffe {
+
+extern double padding_time;
 
 template <typename Dtype>
 void ConvolutionReLULayer<Dtype>::compute_output_shape() {
@@ -41,35 +45,73 @@ void ConvolutionReLULayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom
   if (this->bias_term_) {
     bias = this->blobs_[1]->cpu_data();
   }
+  double t = omp_get_wtime();
+  double t2 = 0, t3 = 0;
+  padding_time = 0;
   Dtype negative_slope = this->layer_param_.relu_param().negative_slope();
   for (int i = 0; i < bottom.size(); ++i) {
     const Dtype* bottom_data = bottom[i]->cpu_data();
     Dtype* top_data = top[i]->mutable_cpu_data();
-#pragma omp parallel for
-    for (int n = 0; n < this->num_; ++n) { // JSP: this->num_ is batch size
-      Dtype *top_current = top_data + n * this->top_dim_;
+#pragma omp parallel
+    {
+      int nthreads = omp_get_num_threads();
+      int tid = omp_get_thread_num();
 
-      this->forward_cpu_gemm(
-            bottom_data + n * this->bottom_dim_, weight, top_current, n);
-      if (this->bias_term_) {
-        // JSP: common path of AlexNet
-        this->forward_cpu_bias(top_current, bias);
-      }
+      int nthread_groups = nthreads;
+#ifdef __AVX512F__
+      nthread_groups = NTILES;
+#else
+//      nthread_groups /= 2; // 1 group per core in Xeon
+#endif
+      assert(nthreads%nthread_groups == 0);
+      int nthreads_per_group = nthreads/nthread_groups;
+      int gid = tid/nthreads_per_group;
 
-      if (negative_slope == 0) {
-         for (int j = 0; j < this->top_dim_; ++j) {
+      int n_per_group = (this->num_ + nthread_groups - 1)/nthread_groups;
+      int n_begin = std::min(n_per_group*gid, this->num_);
+      int n_end = std::min(n_begin + n_per_group, this->num_);
+
+      for (int n = n_begin; n < n_end; ++n) { // JSP: this->num_ is batch size
+        Dtype *top_current = top_data + n * this->top_dim_;
+
+        if (0 == tid) t2 -= omp_get_wtime();
+        this->forward_cpu_gemm(
+              bottom_data + n * this->bottom_dim_, weight, top_current, n);
+        if (0 == tid) t2 += omp_get_wtime();
+        if (this->bias_term_ &&
+            this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+          // JSP: common path of AlexNet
+          this->forward_cpu_bias(top_current, bias);
+        }
+
+        if (0 == tid) t3 -= omp_get_wtime();
+
+        int j_per_thread = (this->top_dim_ + nthreads_per_group - 1)/nthreads_per_group;
+        int tid_in_group = tid%nthreads_per_group;
+        int jbegin = std::min(j_per_thread*tid_in_group, this->top_dim_);
+        int jend = std::min(jbegin + j_per_thread, this->top_dim_);
+
+        if (nthread_groups != nthreads) barriers[gid]->wait(tid_in_group);
+
+        if (negative_slope == 0) {
+          for (int j = jbegin; j < jend; ++j) {
             top_current[j] = std::max(top_current[j], Dtype(0));
-         }
-      }
-      else {
-         for (int j = 0; j < this->top_dim_; ++j) {
+          }
+        }
+        else {
+          for (int j = jbegin; j < jend; ++j) {
             top_current[j] =
-                  std::max(top_current[j], Dtype(0)) +
-                  negative_slope * std::min(top_current[j], Dtype(0));
-         }
+                 std::max(top_current[j], Dtype(0)) +
+                 negative_slope * std::min(top_current[j], Dtype(0));
+          }
+        }
+
+        if (0 == tid) t3 += omp_get_wtime();
       }
     }
   }
+
+  LOG(INFO) << this->layer_param_.name() << " wall clock-time " << omp_get_wtime() - t << " padding-time " << padding_time << " relu-time " << t3;
 
   int height = this->conv_input_shape_.cpu_data()[1];
   int width = this->conv_input_shape_.cpu_data()[2];

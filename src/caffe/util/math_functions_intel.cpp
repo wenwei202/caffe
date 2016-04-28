@@ -14,8 +14,11 @@
 #include "caffe/common.hpp"
 #include "caffe/util/math_functions_intel.hpp"
 #include "caffe/layers/conv_relu_pool_lrn_layer.hpp"
+#include "caffe/util/conv.hpp"
 
 extern unsigned long long conv_cycles_of_this_batch[1024*16], transpose_cycle, pool_cycle;
+
+synk::Barrier *barriers[256];
 
 static const double DEFAULT_CPU_FREQ = 3.33e9;
 double get_cpu_freq()
@@ -51,7 +54,7 @@ namespace caffe {
  */
 static void dconv1(
     const float *weight, const float *input, float *output,
-    const float *bias, const float *bias_multiplier,
+    const float *bias,
     float *pool_top, int *mask)
 {
   int tid = omp_get_thread_num();
@@ -65,7 +68,10 @@ static void dconv1(
   const int WOUT_BLOCK = 55;
   const int KERNEL_SIZE_ALIGNED = 176;
 
-  for (int out_channel = 0; out_channel < M; out_channel += 8) {
+  int c_begin = 0;
+  int c_end = M/8;
+
+  for (int out_channel = c_begin*8; out_channel < c_end*8; out_channel += 8) {
 
     unsigned long long t = __rdtsc();
 
@@ -77,22 +83,14 @@ static void dconv1(
       int output_col;
       for (output_col = 0; output_col < 48; output_col += 8) {
 
-        sum_v[0] = _mm256_mul_ps(
-            bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 0]));
-        sum_v[1] = _mm256_mul_ps(
-            bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 1]));
-        sum_v[2] = _mm256_mul_ps(
-            bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 2]));
-        sum_v[3] = _mm256_mul_ps(
-            bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 3]));
-        sum_v[4] = _mm256_mul_ps(
-            bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 4]));
-        sum_v[5] = _mm256_mul_ps(
-            bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 5]));
-        sum_v[6] = _mm256_mul_ps(
-            bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 6]));
-        sum_v[7] = _mm256_mul_ps(
-            bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 7]));
+        sum_v[0] = bias_v;
+        sum_v[1] = bias_v;
+        sum_v[2] = bias_v;
+        sum_v[3] = bias_v;
+        sum_v[4] = bias_v;
+        sum_v[5] = bias_v;
+        sum_v[6] = bias_v;
+        sum_v[7] = bias_v;
 
         for (int in_channel = 0; in_channel < 3; ++in_channel) {
           const float *input_temp = input + (output_row * WIDTH + output_col) * STRIDE + in_channel * WIDTH * WIDTH;
@@ -155,20 +153,13 @@ static void dconv1(
         _mm256_store_ps(output + (output_row*WOUT + output_col + 7)*8, sum_v[7]);
       }
 
-      sum_v[0] = _mm256_mul_ps(
-          bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 0]));
-      sum_v[1] = _mm256_mul_ps(
-          bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 1]));
-      sum_v[2] = _mm256_mul_ps(
-          bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 2]));
-      sum_v[3] = _mm256_mul_ps(
-          bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 3]));
-      sum_v[4] = _mm256_mul_ps(
-          bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 4]));
-      sum_v[5] = _mm256_mul_ps(
-          bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 5]));
-      sum_v[6] = _mm256_mul_ps(
-          bias_v, _mm256_set1_ps(bias_multiplier[output_row*WOUT + output_col + 6]));
+      sum_v[0] = bias_v;
+      sum_v[1] = bias_v;
+      sum_v[2] = bias_v;
+      sum_v[3] = bias_v;
+      sum_v[4] = bias_v;
+      sum_v[5] = bias_v;
+      sum_v[6] = bias_v;
 
       for (int in_channel = 0; in_channel < 3; ++in_channel) {
         const float *input_temp = input + (output_row * WIDTH + output_col) * STRIDE + in_channel * WIDTH * WIDTH;
@@ -375,7 +366,7 @@ void caffe_cpu_dconv(
 
   // JSP: optimized path for first layer of AlexNet. Can be auto-generated later?
   if (height == 227 && width == 227 && pad_h == 0 && pad_w == 0 && stride_h == 4 && stride_w == 4 && kernel_w == 11 && kernel_h == 11 && dilation_h == 1 && dilation_w == 1 && in_channels == 3) {
-    dconv1(weight, input, output, bias, bias_multiplier, pool_top, mask);
+    dconv1(weight, input, output, bias, pool_top, mask);
   }
   else {
     for (int out_channel = 0; out_channel < out_channels; ++out_channel) {
@@ -454,22 +445,36 @@ static void sconv2_fused(
     // weights
     const int *rowptr, const int *colidx, const float *values,
     // bias (for the case when bias is fused with convolution)
-    const float *bias, const float *bias_multiplier,
+    const float *bias,
     // pooling (for the case when pooling is fused with convolution)
     float *pool_top, int *mask,
     // output features
     float *output, int out_channels)
 {
+  int nthreads = omp_get_num_threads();
   int tid = omp_get_thread_num();
 
   int WIDTH = 27;
   int WOUT = 27;
   int PAD = 2;
 
-  for (int out_channel = 0; out_channel < out_channels; ++out_channel) {
+  int nthread_groups = nthreads;
+#ifdef __AVX512F__
+//  nthread_groups = NTILES;
+#endif
+  assert(nthreads%nthread_groups == 0);
+  int nthreads_per_group = nthreads/nthread_groups;
+  int gid = tid/nthreads_per_group;
+  int tid_in_group = tid%nthreads_per_group;
+
+  int c_per_thread = (out_channels/8 + nthreads_per_group - 1)/nthreads_per_group;
+  int c_begin = std::min(c_per_thread*tid_in_group, out_channels/8);
+  int c_end = std::min(c_begin + c_per_thread, out_channels/8);
+
+  for (int out_channel = c_begin*8; out_channel < c_end*8; ++out_channel) {
     unsigned long long t = __rdtsc();
 
-    int out_channel_offset = out_channel%8;
+    int out_channel_offset = tid_in_group*8 + out_channel%8;
 
     int j;
     int jbegin = rowptr[out_channel];
@@ -477,157 +482,93 @@ static void sconv2_fused(
     int off;
 
 #ifdef __AVX512F__
-    __m512 sum[(WOUT + 3)/4];
+    __m512 sum[24];
     __m512 w_v;
     __m512 bias_v = _mm512_set1_ps(bias[out_channel]);
 
     // (0, 0) block
-    int hbegin = 0, hend = (WOUT + 3)/4;
+    int hbegin = 0, hend = 14;
+#pragma unroll(14)
     for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(bias_v, _mm512_loadu_ps(bias_multiplier + h*WOUT));
+      sum[h - hbegin] = bias_v;
     }
 
     for (j = jbegin; j < jend; ++j) {
       w_v = _mm512_set1_ps(values[j]);
       off = colidx[j];
 
+#pragma unroll(14)
       for (int h = hbegin; h < hend; ++h) {
         sum[h - hbegin] = _mm512_fmadd_ps(w_v, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
       }
     }
 
+#pragma unroll(14)
     for (int h = hbegin; h < hend; ++h) {
       _mm512_store_ps(output + (out_channel_offset*WOUT + h)*32, sum[h - hbegin]);
     }
 
     // (0, 1) block
+#pragma unroll(14)
     for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(bias_v, _mm512_loadu_ps(bias_multiplier + h*WOUT + 16));
+      sum[h - hbegin] = bias_v;
     }
 
     for (j = jbegin; j < jend; ++j) {
       w_v = _mm512_set1_ps(values[j]);
       off = colidx[j];
 
+#pragma unroll(14)
       for (int h = hbegin; h < hend; ++h) {
         sum[h - hbegin] = _mm512_fmadd_ps(w_v, _mm512_loadu_ps(input + off + h*(WIDTH + PAD) + 16), sum[h - hbegin]);
       }
     }
 
+#pragma unroll(14)
     for (int h = hbegin; h < hend; ++h) {
       _mm512_store_ps(output + (out_channel_offset*WOUT + h)*32 + 16, sum[h - hbegin]);
     }
 
     // (1, 0) block
-    hbegin = (WOUT + 3)/4; hend = (WOUT + 3)/4*2;
+    hbegin = 14; hend = 27;
 
+#pragma unroll(13)
     for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(bias_v, _mm512_loadu_ps(bias_multiplier + h*WOUT));
+      sum[h - hbegin] = bias_v;
     }
 
     for (j = jbegin; j < jend; ++j) {
       w_v = _mm512_set1_ps(values[j]);
       off = colidx[j];
 
+#pragma unroll(13)
       for (int h = hbegin; h < hend; ++h) {
         sum[h - hbegin] = _mm512_fmadd_ps(w_v, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
       }
     }
 
+#pragma unroll(13)
     for (int h = hbegin; h < hend; ++h) {
       _mm512_store_ps(output + (out_channel_offset*WOUT + h)*32, sum[h - hbegin]);
     }
 
     // (1, 1) block
+#pragma unroll(13)
     for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(bias_v, _mm512_loadu_ps(bias_multiplier + h*WOUT + 16));
+      sum[h - hbegin] = bias_v;
     }
 
     for (j = jbegin; j < jend; ++j) {
       w_v = _mm512_set1_ps(values[j]);
       off = colidx[j];
 
+#pragma unroll(13)
       for (int h = hbegin; h < hend; ++h) {
         sum[h - hbegin] = _mm512_fmadd_ps(w_v, _mm512_loadu_ps(input + off + h*(WIDTH + PAD) + 16), sum[h - hbegin]);
       }
     }
 
-    for (int h = hbegin; h < hend; ++h) {
-      _mm512_store_ps(output + (out_channel_offset*WOUT + h)*32 + 16, sum[h - hbegin]);
-    }
-
-    // (2, 0) block
-    hbegin = (WOUT + 3)/4*2; hend = (WOUT + 3)/4*3;
-
-    for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(bias_v, _mm512_loadu_ps(bias_multiplier + h*WOUT));
-    }
-
-    for (j = jbegin; j < jend; ++j) {
-      w_v = _mm512_set1_ps(values[j]);
-      off = colidx[j];
-
-      for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin] = _mm512_fmadd_ps(w_v, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
-      }
-    }
-
-    for (int h = hbegin; h < hend; ++h) {
-      _mm512_store_ps(output + (out_channel_offset*WOUT + h)*32, sum[h - hbegin]);
-    }
-
-    // (2, 1) block
-    for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(bias_v, _mm512_loadu_ps(bias_multiplier + h*WOUT + 16));
-    }
-
-    for (j = jbegin; j < jend; ++j) {
-      w_v = _mm512_set1_ps(values[j]);
-      off = colidx[j];
-
-      for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin] = _mm512_fmadd_ps(w_v, _mm512_loadu_ps(input + off + h*(WIDTH + PAD) + 16), sum[h - hbegin]);
-      }
-    }
-
-    for (int h = hbegin; h < hend; ++h) {
-      _mm512_store_ps(output + (out_channel_offset*WOUT + h)*32 + 16, sum[h - hbegin]);
-    }
-
-    // (3, 0) block
-    hbegin = (WOUT + 3)/4*3; hend = WOUT;
-
-    for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(bias_v, _mm512_loadu_ps(bias_multiplier + h*WOUT));
-    }
-
-    for (j = jbegin; j < jend; ++j) {
-      w_v = _mm512_set1_ps(values[j]);
-      off = colidx[j];
-
-      for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin] = _mm512_fmadd_ps(w_v, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
-      }
-    }
-
-    for (int h = hbegin; h < hend; ++h) {
-      _mm512_store_ps(output + (out_channel_offset*WOUT + h)*32, sum[h - hbegin]);
-    }
-
-    // (3, 1) block
-    for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(bias_v, _mm512_loadu_ps(bias_multiplier + h*WOUT + 16));
-    }
-
-    for (j = jbegin; j < jend; ++j) {
-      w_v = _mm512_set1_ps(values[j]);
-      off = colidx[j];
-
-      for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin] = _mm512_fmadd_ps(w_v, _mm512_loadu_ps(input + off + h*(WIDTH + PAD) + 16), sum[h - hbegin]);
-      }
-    }
-
+#pragma unroll(13)
     for (int h = hbegin; h < hend; ++h) {
       _mm512_store_ps(output + (out_channel_offset*WOUT + h)*32 + 16, sum[h - hbegin]);
     }
@@ -640,20 +581,20 @@ static void sconv2_fused(
 
 #undef MY_FMADD
 #define MY_FMADD(HBEGIN, WBEGIN) \
-    sum[0][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 0)*WOUT + WBEGIN)); \
-    sum[0][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 0)*WOUT + WBEGIN + 8)); \
-    sum[1][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 1)*WOUT + WBEGIN)); \
-    sum[1][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 1)*WOUT + WBEGIN + 8)); \
-    sum[2][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 2)*WOUT + WBEGIN)); \
-    sum[2][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 2)*WOUT + WBEGIN + 8)); \
-    sum[3][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 3)*WOUT + WBEGIN)); \
-    sum[3][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 3)*WOUT + WBEGIN + 8)); \
-    sum[4][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 4)*WOUT + WBEGIN)); \
-    sum[4][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 4)*WOUT + WBEGIN + 8)); \
-    sum[5][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 5)*WOUT + WBEGIN)); \
-    sum[5][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 5)*WOUT + WBEGIN + 8)); \
-    sum[6][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 6)*WOUT + WBEGIN)); \
-    sum[6][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 6)*WOUT + WBEGIN + 8)); \
+    sum[0][0] = bias_v; \
+    sum[0][1] = bias_v; \
+    sum[1][0] = bias_v; \
+    sum[1][1] = bias_v; \
+    sum[2][0] = bias_v; \
+    sum[2][1] = bias_v; \
+    sum[3][0] = bias_v; \
+    sum[3][1] = bias_v; \
+    sum[4][0] = bias_v; \
+    sum[4][1] = bias_v; \
+    sum[5][0] = bias_v; \
+    sum[5][1] = bias_v; \
+    sum[6][0] = bias_v; \
+    sum[6][1] = bias_v; \
 \
     for (j = jbegin; j < jend; ++j) { \
       w_v = _mm256_set1_ps(values[j]); \
@@ -702,18 +643,18 @@ static void sconv2_fused(
 
 #undef MY_FMADD_REMAINDER
 #define MY_FMADD_REMAINDER(HBEGIN, WBEGIN) \
-    sum[0][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 0)*WOUT + WBEGIN)); \
-    sum[0][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 0)*WOUT + WBEGIN + 8)); \
-    sum[1][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 1)*WOUT + WBEGIN)); \
-    sum[1][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 1)*WOUT + WBEGIN + 8)); \
-    sum[2][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 2)*WOUT + WBEGIN)); \
-    sum[2][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 2)*WOUT + WBEGIN + 8)); \
-    sum[3][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 3)*WOUT + WBEGIN)); \
-    sum[3][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 3)*WOUT + WBEGIN + 8)); \
-    sum[4][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 4)*WOUT + WBEGIN)); \
-    sum[4][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 4)*WOUT + WBEGIN + 8)); \
-    sum[5][0] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 5)*WOUT + WBEGIN)); \
-    sum[5][1] = _mm256_mul_ps(bias_v, _mm256_loadu_ps(bias_multiplier + (HBEGIN + 5)*WOUT + WBEGIN + 8)); \
+    sum[0][0] = bias_v; \
+    sum[0][1] = bias_v; \
+    sum[1][0] = bias_v; \
+    sum[1][1] = bias_v; \
+    sum[2][0] = bias_v; \
+    sum[2][1] = bias_v; \
+    sum[3][0] = bias_v; \
+    sum[3][1] = bias_v; \
+    sum[4][0] = bias_v; \
+    sum[4][1] = bias_v; \
+    sum[5][0] = bias_v; \
+    sum[5][1] = bias_v; \
 \
     for (j = jbegin; j < jend; ++j) { \
       w_v = _mm256_set1_ps(values[j]); \
@@ -757,32 +698,34 @@ static void sconv2_fused(
 
     t = __rdtsc();
 
+    int t_offset = 8*tid_in_group;
+
     // transpose to vectorize pooling layer over multiple channels
     for (int h = 0; h < WOUT; ++h) {
       for (int w = 0; w < WOUT/8*8; w += 8) {
-        __m256 v0 = _mm256_load_ps(output + h*32 + w);
-        __m256 v1 = _mm256_load_ps(output + (WOUT + h)*32 + w);
-        __m256 v2 = _mm256_load_ps(output + (2*WOUT + h)*32 + w);
-        __m256 v3 = _mm256_load_ps(output + (3*WOUT + h)*32 + w);
-        __m256 v4 = _mm256_load_ps(output + (4*WOUT + h)*32 + w);
-        __m256 v5 = _mm256_load_ps(output + (5*WOUT + h)*32 + w);
-        __m256 v6 = _mm256_load_ps(output + (6*WOUT + h)*32 + w);
-        __m256 v7 = _mm256_load_ps(output + (7*WOUT + h)*32 + w);
+        __m256 v0 = _mm256_load_ps(output + (t_offset*WOUT + h)*32 + w);
+        __m256 v1 = _mm256_load_ps(output + ((t_offset + 1)*WOUT + h)*32 + w);
+        __m256 v2 = _mm256_load_ps(output + ((t_offset + 2)*WOUT + h)*32 + w);
+        __m256 v3 = _mm256_load_ps(output + ((t_offset + 3)*WOUT + h)*32 + w);
+        __m256 v4 = _mm256_load_ps(output + ((t_offset + 4)*WOUT + h)*32 + w);
+        __m256 v5 = _mm256_load_ps(output + ((t_offset + 5)*WOUT + h)*32 + w);
+        __m256 v6 = _mm256_load_ps(output + ((t_offset + 6)*WOUT + h)*32 + w);
+        __m256 v7 = _mm256_load_ps(output + ((t_offset + 7)*WOUT + h)*32 + w);
 
         transpose8_ps(v0, v1, v2, v3, v4, v5, v6, v7);
 
-        _mm256_store_ps(output + ((32 + h)*WOUT + w)*8, v0);
-        _mm256_store_ps(output + ((32 + h)*WOUT + (w + 1))*8, v1);
-        _mm256_store_ps(output + ((32 + h)*WOUT + (w + 2))*8, v2);
-        _mm256_store_ps(output + ((32 + h)*WOUT + (w + 3))*8, v3);
-        _mm256_store_ps(output + ((32 + h)*WOUT + (w + 4))*8, v4);
-        _mm256_store_ps(output + ((32 + h)*WOUT + (w + 5))*8, v5);
-        _mm256_store_ps(output + ((32 + h)*WOUT + (w + 6))*8, v6);
-        _mm256_store_ps(output + ((32 + h)*WOUT + (w + 7))*8, v7);
+        _mm256_store_ps(output + (((nthreads_per_group + tid_in_group)*32 + h)*WOUT + w)*8, v0);
+        _mm256_store_ps(output + (((nthreads_per_group + tid_in_group)*32 + h)*WOUT + (w + 1))*8, v1);
+        _mm256_store_ps(output + (((nthreads_per_group + tid_in_group)*32 + h)*WOUT + (w + 2))*8, v2);
+        _mm256_store_ps(output + (((nthreads_per_group + tid_in_group)*32 + h)*WOUT + (w + 3))*8, v3);
+        _mm256_store_ps(output + (((nthreads_per_group + tid_in_group)*32 + h)*WOUT + (w + 4))*8, v4);
+        _mm256_store_ps(output + (((nthreads_per_group + tid_in_group)*32 + h)*WOUT + (w + 5))*8, v5);
+        _mm256_store_ps(output + (((nthreads_per_group + tid_in_group)*32 + h)*WOUT + (w + 6))*8, v6);
+        _mm256_store_ps(output + (((nthreads_per_group + tid_in_group)*32 + h)*WOUT + (w + 7))*8, v7);
       }
       for (int w = WOUT/8*8; w < WOUT; ++w) {
         for (int i = 0; i < 8; ++i) {
-          output[((32 + h)*WOUT + w)*8 + i] = output[(i*WOUT + h)*32 + w];
+          output[(((nthreads_per_group + tid_in_group)*32 + h)*WOUT + w)*8 + i] = output[((t_offset + i)*WOUT + h)*32 + w];
         }
       }
     }
@@ -794,7 +737,7 @@ static void sconv2_fused(
     const int K_POOL = 3;
     const int POOLED_WIDTH = (WOUT - K_POOL + STRIDE_POOL - 1) / STRIDE_POOL + 1; // (27 - 3 + 1)/2 + 1 = 13
 
-    const float *conv_top_data_cur = output + 8*WOUT*32;
+    const float *conv_top_data_cur = output + (nthreads_per_group + tid_in_group)*32*WOUT*8;
     float *pool_top_data_cur = pool_top + (out_channel - 7)*POOLED_WIDTH*POOLED_WIDTH;
     int *mask_cur = mask + (out_channel - 7)*POOLED_WIDTH*POOLED_WIDTH;
 
@@ -911,156 +854,6 @@ static void sconv2_fused(
   } // for each out channel
 }
 
-// JSP: AlexNet each group of conv3-5
-// Input: 256 x 13 x 13 => 1.3 KB per channel, 338 KB total
-// Output: 384 x 13 x 13 => 1.3 KB per channel, 507 KB total
-// Weight: 384 x 256 x 3 x 3 => 72B per channel pair, 18 KB per output channel, 27 KB per input channel, 6.8 MB total
-//         No matter what we do, there's no reuse on weight across different channels (only reuse is within a channel pair)
-// FLOPS: 2 x 384 x 256 x 13 x 13 x 3 x 3 = 299 MFLOPS
-
-/**
- * Direct sparse convolution optimized for 3-5 layers of AlexNet
- */
-static void sconv345(
-    // input features
-    const float *input,
-    // weights
-    const int *rowptr, const int *colidx, const float *values,
-    // output features
-    float *output,
-    int out_channels)
-{
-  unsigned long long t = __rdtsc();
-
-  int WIDTH = 13;
-  int WOUT = 13;
-  int PAD = 1;
-
-  __declspec(aligned(64)) float sum_temp[8];
-
-  for (int out_channel = 0; out_channel < out_channels; ++out_channel) {
-    if (rowptr[out_channel + 1] == rowptr[out_channel]) continue;
-
-#ifdef __AVX512F__
-    __m512 sum[(WOUT + 1)/2];
-
-    // Upper half of images
-    int hbegin = 0, hend = (WOUT + 1)/2;
-    int j = rowptr[out_channel];
-    __m512 c = _mm512_set1_ps(values[j]);
-    int off = colidx[j];
-
-    for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)));
-    }
-
-    int jbegin = rowptr[out_channel] + 1;
-    int jend = rowptr[out_channel + 1];
-
-    for (j = jbegin; j < jend; ++j) {
-      c = _mm512_set1_ps(values[j]);
-      off = colidx[j];
-
-      for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
-      }
-    }
-
-    for (int h = hbegin; h < hend; ++h) {
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + h)*WOUT, 0x1fff, sum[h - hbegin]);
-    }
-
-    // Lower half of images
-    hbegin = (WOUT + 1)/2; hend = WOUT;
-    j = rowptr[out_channel];
-    c = _mm512_set1_ps(values[j]);
-    off = colidx[j];
-
-    for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)));
-    }
-
-    for (j = jbegin; j < jend; ++j) {
-      c = _mm512_set1_ps(values[j]);
-      off = colidx[j];
-
-      for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
-      }
-    }
-
-    for (int h = hbegin; h < hend; ++h) {
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + h)*WOUT, 0x1fff, sum[h - hbegin]);
-    }
-#else
-    __m256 sum[(WOUT + 1)/2][2]; // [7][2]
-
-    // Upper half of images
-    int hbegin = 0, hend = (WOUT + 1)/2;
-    int j = rowptr[out_channel];
-    __m256 w_v = _mm256_set1_ps(values[j]);
-    int off = colidx[j];
-
-    for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin][0] = _mm256_mul_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)));
-      sum[h - hbegin][1] = _mm256_mul_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8));
-    }
-
-    int jbegin = rowptr[out_channel] + 1;
-    int jend = rowptr[out_channel + 1];
-
-    for (j = jbegin; j < jend; ++j) {
-      w_v = _mm256_set1_ps(values[j]);
-      off = colidx[j];
-
-      for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
-        sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
-      }
-    }
-
-    for (int h = hbegin; h < hend; ++h) {
-      _mm256_storeu_ps(output + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
-      _mm256_storeu_ps(sum_temp, sum[h - hbegin][1]);
-      for (int w = 8; w < WOUT; ++w) {
-        output[out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
-      }
-    }
-
-    // Lower half of images
-    hbegin = (WOUT + 1)/2; hend = WOUT;
-    j = rowptr[out_channel];
-    w_v = _mm256_set1_ps(values[j]);
-    off = colidx[j];
-
-    for (int h = hbegin; h < hend; ++h) {
-      sum[h - hbegin][0] = _mm256_mul_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)));
-      sum[h - hbegin][1] = _mm256_mul_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8));
-    }
-
-    for (j = jbegin; j < jend; ++j) {
-      w_v = _mm256_set1_ps(values[j]);
-      off = colidx[j];
-
-      for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
-        sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
-      }
-    }
-
-    for (int h = hbegin; h < hend; ++h) {
-      _mm256_storeu_ps(output + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
-      _mm256_storeu_ps(sum_temp, sum[h - hbegin][1]);
-      for (int w = 8; w < WOUT; ++w) {
-        output[out_channel*WOUT*WOUT + h*WOUT + w] = sum_temp[w - 8];
-      }
-    }
-#endif
-  }
-
-  conv_cycles_of_this_batch[omp_get_thread_num()*16] += __rdtsc() - t;
-}
-
 template<>
 void caffe_cpu_sconv(
     // input features
@@ -1072,13 +865,16 @@ void caffe_cpu_sconv(
     // weights
     const int *rowptr, const int *colidx, const float *values,
     int kernel_h, int kernel_w,
+    const int **rowptr_blocked, const int **colidx_blocked, const float **values_blocked,
+    int ncolblocks,
     // bias (for the case when bias is fused with convolution)
     const float *bias, const float *bias_multiplier,
     // pooling (for the case when pooling is fused with convolution)
     float *pool_top, int *mask,
     // output features
     float *output,
-    int out_channels)
+    int out_channels,
+    float *scratch)
 {
   const int output_h = (height + 2 * pad_h -
       (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
@@ -1118,15 +914,18 @@ void caffe_cpu_sconv(
       sconv2_fused(
         input,
         rowptr, colidx, values,
-        bias, bias_multiplier,
+        bias,
         pool_top, mask,
         output,
         out_channels);
     }
     else if (height == 13 && width == 13 && pad_h == 1 && pad_w == 1 && stride_h == 1 && stride_w == 1 && kernel_h == 3 && kernel_w == 3) {
       sconv345(
-          input, rowptr, colidx, values,
-          output, out_channels);
+          input,
+          rowptr, colidx, values,
+          rowptr_blocked, colidx_blocked, values_blocked, ncolblocks,
+          bias,
+          output, out_channels, scratch);
     }
     else
 #endif

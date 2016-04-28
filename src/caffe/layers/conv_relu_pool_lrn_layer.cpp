@@ -3,6 +3,7 @@
 #include <immintrin.h>
 
 #include "caffe/layers/conv_relu_pool_lrn_layer.hpp"
+#include "caffe/util/math_functions_intel.hpp"
 
 unsigned long long conv_cycles_of_this_batch[1024*16], transpose_cycle = 0, pool_cycle = 0;
 std::map<std::string, unsigned long long> total_conv_cycles;
@@ -298,7 +299,24 @@ void ConvolutionReLUPoolLRNLayer<float>::Forward_cpu(const vector<Blob<float>*>&
 
 #pragma omp parallel
     {
+      int nthreads = omp_get_num_threads();
       int tid = omp_get_thread_num();
+      int nthread_groups = nthreads;
+
+#ifdef __AVX512F__
+//      if (this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_DCONV) {
+//        nthread_groups = NTILES;
+//      }
+#endif
+
+      assert(nthreads%nthread_groups == 0);
+      int nthreads_per_group = nthreads/nthread_groups;
+      int gid = tid/nthreads_per_group;
+      int tid_in_group = tid%nthreads_per_group;
+
+      int n_per_group = (this->num_ + nthread_groups - 1)/nthread_groups;
+      int n_begin = std::min(n_per_group*gid, this->num_);
+      int n_end = std::min(n_begin + n_per_group, this->num_);
 
       float* padded_square_data = padded_square_ + tid * (this->num_output_ + size_ - 1) * width_;
       for (int j = 0; j < pre_pad_ * width_; ++j) {
@@ -310,8 +328,7 @@ void ConvolutionReLUPoolLRNLayer<float>::Forward_cpu(const vector<Blob<float>*>&
 
       float *scale_data = scale_temp_ + tid * this->num_output_ * pooled_height_ * pooled_width_;
 
-#pragma omp for
-      for (int n = 0; n < this->num_; ++n) { // JSP: this->num_ is batch size
+      for (int n = n_begin; n < n_end; ++n) { // JSP: this->num_ is batch size
         float *conv_top_data = conv_top + n * this->top_dim_;
 
         // Convolution
@@ -350,7 +367,16 @@ void ConvolutionReLUPoolLRNLayer<float>::Forward_cpu(const vector<Blob<float>*>&
           case PoolingParameter_PoolMethod_MAX:
             // The main loop
             int len = conv_top_[i]->offset(0, 1);
-            for (int c = 0; c < this->num_output_; ++c) {
+
+            int c_per_thread = (this->num_output_ + nthreads_per_group - 1)/nthreads_per_group;
+            int cbegin = std::min(c_per_thread*tid_in_group, this->num_output_);
+            int cend = std::min(cbegin + c_per_thread, this->num_output_);
+
+            if (nthread_groups != nthreads) {
+              barriers[gid]->wait(tid_in_group);
+            }
+
+            for (int c = cbegin; c < cend; ++c) {
               // compute offset
               float *conv_top_data_cur = conv_top_data + len*c;
               float *pool_top_data_cur = pool_top_data + pool_top_[0]->offset(0, 1)*c;
@@ -546,18 +572,24 @@ void ConvolutionReLUPoolLRNLayer<float>::Forward_cpu(const vector<Blob<float>*>&
 
         // pooled_height is 13 or 27
 
-        int temp_mask1[8] = { -1, -1, -1, -1, -1, 0, 0, 0, };
-        int temp_mask2[8] = { -1, -1, -1,  0,  0, 0, 0, 0, };
-        __m256i temp_mask_v;
-        if (pooled_height_ == 13) {
-          temp_mask_v = _mm256_load_si256((__m256i *)temp_mask1);
-        }
-        else {
-          assert(pooled_height_ == 27);
-          temp_mask_v = _mm256_load_si256((__m256i *)temp_mask2);
-        }
+//        __declspec(aligned(64)) int temp_mask1[8] = { -1, -1, -1, -1, -1, 0, 0, 0, };
+//        __declspec(aligned(64)) int temp_mask2[8] = { -1, -1, -1,  0,  0, 0, 0, 0, };
+//        __m256i temp_mask_v;
+//        if (pooled_height_ == 13) {
+//          temp_mask_v = _mm256_load_si256((__m256i *)temp_mask1);
+//        }
+//        else {
+//          assert(pooled_height_ == 27);
+//          temp_mask_v = _mm256_load_si256((__m256i *)temp_mask2);
+//        }
 
-        for (int i = 0; i < pooled_height_; ++i) {
+        int i_per_thread = (pooled_height_ + nthreads_per_group - 1)/nthreads_per_group;
+        int ibegin = std::min(i_per_thread*tid_in_group, pooled_height_);
+        int iend = std::min(ibegin + i_per_thread, pooled_height_);
+
+        if (nthread_groups != nthreads) barriers[gid]->wait(tid_in_group);
+
+        for (int i = ibegin; i < iend; ++i) {
           // compute the padded square
           for (int c = pre_pad_; c < this->num_output_ + pre_pad_; ++c) {
             for (int j = 0; j < pooled_width_; ++j) {
@@ -637,7 +669,15 @@ void ConvolutionReLUPoolLRNLayer<float>::Forward_cpu(const vector<Blob<float>*>&
 //          }
         }
 
-        for (int i = 0; i < this->num_output_ * pooled_height_ * pooled_width_; i += 8) {
+        i_per_thread = (this->num_output_ * pooled_height_ * pooled_width_ / 8 + nthreads_per_group - 1)/nthreads_per_group;
+        ibegin = std::min(i_per_thread*tid_in_group, this->num_output_ * pooled_height_ * pooled_width_ / 8);
+        iend = std::min(ibegin + i_per_thread, this->num_output_ * pooled_height_ * pooled_width_ / 8);
+
+        if (nthread_groups != nthreads) {
+          barriers[gid]->wait(tid_in_group);
+        }
+
+        for (int i = ibegin*8; i < iend*8; i += 8) {
           __m256 v = _mm256_pow_ps(_mm256_load_ps(scale_data + i), _mm256_set1_ps(-beta_));
           v = _mm256_mul_ps(v, _mm256_load_ps(pool_top + offset + i));
           _mm256_store_ps(top_data + offset + i, v);

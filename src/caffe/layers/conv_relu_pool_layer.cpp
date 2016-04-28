@@ -2,6 +2,8 @@
 #include <omp.h>
 
 #include "caffe/layers/conv_relu_pool_layer.hpp"
+#include "caffe/util/math_functions_intel.hpp"
+#include "caffe/util/conv.hpp"
 
 extern unsigned long long conv_cycles_of_this_batch[1024*16];
 extern std::map<std::string, unsigned long long> total_conv_cycles;
@@ -178,106 +180,143 @@ void ConvolutionReLUPoolLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
     mask = max_idx_.mutable_cpu_data();
   }
 
+  double t = omp_get_wtime();
+  double pool_time = 0;
+
   for (int i = 0; i < bottom.size(); ++i) {
     const Dtype* bottom_data = bottom[i]->cpu_data();
     Dtype* middle_data = middle_[i]->mutable_cpu_data();
-#pragma omp parallel for
-    for (int n = 0; n < this->num_; ++n) { // JSP: this->num_ is batch size
-      Dtype *middle_current = middle_data + n * this->top_dim_;
+#pragma omp parallel
+    {
+      int nthreads = omp_get_num_threads();
+      int tid = omp_get_thread_num();
 
-      // Convolution
-      this->forward_cpu_gemm(
-            bottom_data + n * this->bottom_dim_, weight, middle_current, n);
-      if (this->bias_term_) {
-        // JSP: common path of AlexNet
-        this->forward_cpu_bias(middle_current, bias);
-      }
+      int nthread_groups = nthreads;
+#ifdef __AVX512F__
+      nthread_groups = NTILES;
+#else
+//      nthread_groups /= 2; // 1 group per core in Xeon
+#endif
+      assert(nthreads%nthread_groups == 0);
+      int nthreads_per_group = nthreads/nthread_groups;
+      int gid = tid/nthreads_per_group;
 
-      // Pooling
-      const int top_count = top[0]->count();
-      // We'll output the mask to top[1] if it's of size >1.
+      int n_per_group = (this->num_ + nthread_groups - 1)/nthread_groups;
+      int n_begin = std::min(n_per_group*gid, this->num_);
+      int n_end = std::min(n_begin + n_per_group, this->num_);
 
-      using std::min;
-      using std::max;
+      for (int n = n_begin; n < n_end; ++n) { // JSP: this->num_ is batch size
+        Dtype *middle_current = middle_data + n * this->top_dim_;
 
-      switch (this->layer_param_.pooling_param().pool()) {
-      case PoolingParameter_PoolMethod_MAX:
-        // The main loop
-        int len = middle_[i]->offset(0, 1);
-        for (int c = 0; c < this->num_output_; ++c) {
-          // compute offset
-          Dtype *middle_data_cur = middle_data + len*(this->num_output_*n + c);
-          Dtype *top_data_cur = top_data + top[0]->offset(0, 1)*(this->num_output_*n + c);
+        // Convolution
+        this->forward_cpu_gemm(
+              bottom_data + n * this->bottom_dim_, weight, middle_current, n);
+        if (this->bias_term_ &&
+            this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+          // JSP: common path of AlexNet
+          this->forward_cpu_bias(middle_current, bias);
+        }
 
-          if (use_top_mask) {
-            Dtype *top_mask_cur = top_mask + top[0]->offset(0, 1)*(this->num_output_*n + c);
+        // Pooling
+        const int top_count = top[0]->count();
+        // We'll output the mask to top[1] if it's of size >1.
 
-            for (int ph = 0; ph < pooled_height_; ++ph) {
-              for (int pw = 0; pw < pooled_width_; ++pw) {
-                int hstart = ph * stride_h_ - pad_h_;
-                int wstart = pw * stride_w_ - pad_w_;
+        using std::min;
+        using std::max;
+
+        if (0 == tid) pool_time -= omp_get_wtime();
+
+        switch (this->layer_param_.pooling_param().pool()) {
+        case PoolingParameter_PoolMethod_MAX:
+          // The main loop
+          int len = middle_[i]->offset(0, 1);
+
+          int c_per_thread = (this->num_output_ + nthreads_per_group - 1)/nthreads_per_group;
+          int tid_in_group = tid%nthreads_per_group;
+          int cbegin = std::min(c_per_thread*tid_in_group, this->num_output_);
+          int cend = std::min(cbegin + c_per_thread, this->num_output_);
+
+          if (nthread_groups != nthreads) barriers[gid]->wait(tid_in_group);
+
+          for (int c = cbegin; c < cend; ++c) {
+            // compute offset
+            Dtype *middle_data_cur = middle_data + len*(this->num_output_*n + c);
+            Dtype *top_data_cur = top_data + top[0]->offset(0, 1)*(this->num_output_*n + c);
+
+            if (use_top_mask) {
+              Dtype *top_mask_cur = top_mask + top[0]->offset(0, 1)*(this->num_output_*n + c);
+
+              for (int ph = 0; ph < pooled_height_; ++ph) {
+                for (int pw = 0; pw < pooled_width_; ++pw) {
+                  int hstart = ph * stride_h_ - pad_h_;
+                  int wstart = pw * stride_w_ - pad_w_;
+                  int hend = min(hstart + kernel_h_, height_);
+                  int wend = min(wstart + kernel_w_, width_);
+                  hstart = max(hstart, 0);
+                  wstart = max(wstart, 0);
+                  Dtype maximum = 0;
+                  int mask = -1;
+                  for (int h = hstart; h < hend; ++h) {
+                    for (int w = wstart; w < wend; ++w) {
+                      const int index = h * width_ + w;
+                      if (middle_data_cur[index] > maximum) {
+                        maximum = middle_data_cur[index];
+                        mask = static_cast<Dtype>(index);
+                      }
+                    }
+                  }
+                  const int pool_index = ph * pooled_width_ + pw;
+                  top_data_cur[pool_index] = maximum;
+                  top_data_cur[pool_index] = mask;
+                }
+              }
+            }
+            else {
+              // JSP: common path for AlexNet (stride=2, kernel=3)
+              int *mask_cur = mask + top[0]->offset(0, 1)*(this->num_output_*n + c);
+
+              for (int ph = 0; ph < pooled_height_; ++ph) {
+                int hstart = max(ph * stride_h_ - pad_h_, 0);
                 int hend = min(hstart + kernel_h_, height_);
-                int wend = min(wstart + kernel_w_, width_);
-                hstart = max(hstart, 0);
-                wstart = max(wstart, 0);
-                Dtype maximum = 0;
-                int mask = -1;
-                for (int h = hstart; h < hend; ++h) {
-                  for (int w = wstart; w < wend; ++w) {
-                    const int index = h * width_ + w;
-                    if (middle_data_cur[index] > maximum) {
-                      maximum = middle_data_cur[index];
-                      mask = static_cast<Dtype>(index);
+
+                for (int pw = 0; pw < pooled_width_; ++pw) {
+                  int wstart = max(pw * stride_w_ - pad_w_, 0);
+                  int wend = min(wstart + kernel_w_, width_);
+                  Dtype maximum = 0; // JSP: using 0 instead of -FLT_MAX does ReLU for us.
+                  int mask = -1;
+                  for (int h = hstart; h < hend; ++h) {
+                    for (int w = wstart; w < wend; ++w) {
+                      const int index = h * width_ + w;
+                      if (middle_data_cur[index] > maximum) {
+                        maximum = middle_data_cur[index];
+                        mask = index;
+                      }
                     }
                   }
+                  const int pool_index = ph * pooled_width_ + pw;
+                  top_data_cur[pool_index] = maximum;
+                  mask_cur[pool_index] = mask;
                 }
-                const int pool_index = ph * pooled_width_ + pw;
-                top_data_cur[pool_index] = maximum;
-                top_data_cur[pool_index] = mask;
               }
-            }
-          }
-          else {
-            // JSP: common path for AlexNet (stride=2, kernel=3)
-            int *mask_cur = mask + top[0]->offset(0, 1)*(this->num_output_*n + c);
+            } // !use_top_mask
+          } // for each channel
+          break;
+        case PoolingParameter_PoolMethod_AVE:
+          NOT_IMPLEMENTED;
+          break;
+        case PoolingParameter_PoolMethod_STOCHASTIC:
+          NOT_IMPLEMENTED;
+          break;
+        default:
+          LOG(FATAL) << "Unknown pooling method.";
+        }
 
-            for (int ph = 0; ph < pooled_height_; ++ph) {
-              int hstart = max(ph * stride_h_ - pad_h_, 0);
-              int hend = min(hstart + kernel_h_, height_);
-
-              for (int pw = 0; pw < pooled_width_; ++pw) {
-                int wstart = max(pw * stride_w_ - pad_w_, 0);
-                int wend = min(wstart + kernel_w_, width_);
-                Dtype maximum = 0; // JSP: using 0 instead of -FLT_MAX does ReLU for us.
-                int mask = -1;
-                for (int h = hstart; h < hend; ++h) {
-                  for (int w = wstart; w < wend; ++w) {
-                    const int index = h * width_ + w;
-                    if (middle_data_cur[index] > maximum) {
-                      maximum = middle_data_cur[index];
-                      mask = index;
-                    }
-                  }
-                }
-                const int pool_index = ph * pooled_width_ + pw;
-                top_data_cur[pool_index] = maximum;
-                mask_cur[pool_index] = mask;
-              }
-            }
-          } // !use_top_mask
-        } // for each channel
-        break;
-      case PoolingParameter_PoolMethod_AVE:
-        NOT_IMPLEMENTED;
-        break;
-      case PoolingParameter_PoolMethod_STOCHASTIC:
-        NOT_IMPLEMENTED;
-        break;
-      default:
-        LOG(FATAL) << "Unknown pooling method.";
-      }
-    } // for (int n = 0; n < this->num_; ++n)
+        if (0 == tid) pool_time += omp_get_wtime();
+      } // for (int n = 0; n < this->num_; ++n)
+    } // omp parallel
   } // for (int i = 0; i < bottom.size(); ++i)
+
+  LOG(INFO) << this->layer_param_.name() << " wall clock-time " << omp_get_wtime() - t << " pool-time " << pool_time;
 
   int height = this->conv_input_shape_.cpu_data()[1];
   int width = this->conv_input_shape_.cpu_data()[2];

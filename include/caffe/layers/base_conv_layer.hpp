@@ -23,7 +23,7 @@ template <typename Dtype>
 class BaseConvolutionLayer : public Layer<Dtype> {
  public:
   explicit BaseConvolutionLayer(const LayerParameter& param)
-      : Layer<Dtype>(param), weight_interleaved_(NULL), input_padded_(NULL) {
+      : Layer<Dtype>(param), weight_interleaved_(NULL), input_padded_(NULL), output_scratch_(NULL) {
 	  //is_sparse_format_weights_ = false;
 	  is_concatenating_weights_features_ = false;
   }
@@ -204,7 +204,12 @@ class BaseConvolutionLayer : public Layer<Dtype> {
 //    Dtype *weight_aligned_, *weight_aligned2_;
     Dtype *weight_interleaved_; /**< JSP: interleave 8 output channels to vectorize over output channels */
     Dtype *input_padded_;
+    Dtype *output_scratch_;
     //Blob<Dtype> connectivity_mask_;//0.0 means the connection is off, 1.0 means ON
+
+    vector<int *> weight_rowptr_blocked_;
+    vector<int *> weight_colidx_blocked_;
+    vector<Dtype *> weight_values_blocked_;
 };
 
 }  // namespace caffe

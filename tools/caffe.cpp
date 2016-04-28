@@ -5,6 +5,7 @@ namespace bp = boost::python;
 
 #include <map>
 #include <string>
+#include <omp.h>
 
 extern unsigned long long conv_cycles_of_this_batch[1024*16];
 extern std::map<std::string, unsigned long long> total_conv_cycles;
@@ -17,14 +18,14 @@ double get_cpu_freq();
 #include <glog/logging.h>
 
 #include <cstring>
-#include <map>
-#include <string>
 #include <vector>
 #include <cuda_profiler_api.h>
 
 #include "boost/algorithm/string.hpp"
 #include "caffe/caffe.hpp"
 #include "caffe/util/signal_handler.h"
+#include "caffe/util/math_functions_intel.hpp"
+#include "caffe/util/conv.hpp"
 
 using caffe::Blob;
 using caffe::Caffe;
@@ -241,6 +242,32 @@ int test() {
   //openblas_set_num_threads(1);
   CHECK_GT(FLAGS_model.size(), 0) << "Need a model definition to score.";
   CHECK_GT(FLAGS_weights.size(), 0) << "Need model weights to score.";
+
+  int nthreads = omp_get_max_threads();
+  int nthread_groups = nthreads;
+#ifdef __AVX512F__
+  nthread_groups = NTILES;
+#else
+//  nthread_groups = nthreads/2;
+#endif
+
+  assert(nthreads%nthread_groups == 0);
+  int nthreads_per_group = nthreads/nthread_groups;
+  if (nthread_groups != nthreads) {
+    for (int i = 0; i < nthread_groups; ++i) {
+      barriers[i] = new synk::Barrier(1, nthreads_per_group);
+    }
+#pragma omp parallel
+    {
+      assert(omp_get_num_threads() == nthreads);
+
+      int tid = omp_get_thread_num();
+      int gid = tid/nthreads_per_group;
+      int tid_in_group = tid%nthreads_per_group;
+
+      barriers[gid]->init(tid_in_group);
+    }
+  }
 
   // Set device id and mode
   vector<int> gpus;
