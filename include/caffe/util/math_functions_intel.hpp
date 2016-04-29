@@ -41,7 +41,7 @@ void caffe_cpu_dconv(
 template <typename Dtype>
 void caffe_cpu_sconv(
     // input features
-    const Dtype *in_temp,
+    const Dtype *in_temp, int in_channels,
     int height, int width,
     int pad_h, int pad_w,
     int stride_h, int stride_w,
@@ -51,6 +51,7 @@ void caffe_cpu_sconv(
     int kernel_h, int kernel_w,
     const int **rowptr_blocked, const int **colidx_blocked, const Dtype **values_blocked,
     int ncolblocks,
+    const int *blockptr, const int *kidx, const float *values_colmajor,
     // bias (for the case when bias is fused with convolution)
     const Dtype *bias, const Dtype *bias_multiplier,
     // pooling (for the case when pooling is fused with convolution)

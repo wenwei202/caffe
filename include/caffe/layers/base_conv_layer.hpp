@@ -184,32 +184,36 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   Blob<Dtype> weight_buffer_; //store nonzero weights in the continuous memory
 
   //#define GPU_USE_CUSPARSE
-  #ifdef GPU_USE_CUSPARSE
+#ifdef GPU_USE_CUSPARSE
     Blob<Dtype> nonzero_elements_buffer_;
     Blob<int> nonzero_indices_buffer_;
     Blob<int> index_pointers_buffer_;
     Blob<int> nonzero_per_rowcol_buffer_;
-  #endif
+#endif
 
-    //Three blobs for sparse weight storage in CSC/CSR format
-    //bool is_sparse_format_weights_; //if use the sparse storage format of weights
-    Blob<Dtype> nz_weight_values_;//nonzero elements
-    Blob<int> nz_weight_indices_;//index of nonzero
-    Blob<int> nz_weight_index_pointers_;//pointer(index) of indices
-    bool is_concatenating_weights_features_; //if use concatenation scheme to compress dense weights and features together
-    Blob<int> dense_feature_map_mask_;//to skip all zero rows in col_buffer_
-    Blob<int> col_buf_mask_;
-    vector<int> left_columns_;//the number of left columns of weight matrix for each group
-    Blob<Dtype> squeezed_weight_buffer_;
+  //Three blobs for sparse weight storage in CSC/CSR format
+  //bool is_sparse_format_weights_; //if use the sparse storage format of weights
+  Blob<Dtype> nz_weight_values_;//nonzero elements
+  Blob<int> nz_weight_indices_;//index of nonzero
+  Blob<int> nz_weight_index_pointers_;//pointer(index) of indices
+  bool is_concatenating_weights_features_; //if use concatenation scheme to compress dense weights and features together
+  Blob<int> dense_feature_map_mask_;//to skip all zero rows in col_buffer_
+  Blob<int> col_buf_mask_;
+  vector<int> left_columns_;//the number of left columns of weight matrix for each group
+  Blob<Dtype> squeezed_weight_buffer_;
 //    Dtype *weight_aligned_, *weight_aligned2_;
-    Dtype *weight_interleaved_; /**< JSP: interleave 8 output channels to vectorize over output channels */
-    Dtype *input_padded_;
-    Dtype *output_scratch_;
-    //Blob<Dtype> connectivity_mask_;//0.0 means the connection is off, 1.0 means ON
+  Dtype *weight_interleaved_; /**< JSP: interleave 8 output channels to vectorize over output channels */
+  Dtype *input_padded_;
+  Dtype *output_scratch_;
+  //Blob<Dtype> connectivity_mask_;//0.0 means the connection is off, 1.0 means ON
 
-    vector<int *> weight_rowptr_blocked_;
-    vector<int *> weight_colidx_blocked_;
-    vector<Dtype *> weight_values_blocked_;
+  vector<int *> weight_rowptr_blocked_;
+  vector<int *> weight_colidx_blocked_;
+  vector<Dtype *> weight_values_blocked_;
+
+  vector<int *> weight_blockptr_colmajor_;
+  vector<int *> weight_kidx_colmajor_;
+  vector<Dtype *> weight_values_colmajor_;
 };
 
 }  // namespace caffe

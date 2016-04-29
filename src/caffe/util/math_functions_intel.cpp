@@ -857,7 +857,7 @@ static void sconv2_fused(
 template<>
 void caffe_cpu_sconv(
     // input features
-    const float *input,
+    const float *input, int in_channels,
     int height, int width,
     int pad_h, int pad_w,
     int stride_h, int stride_w,
@@ -867,6 +867,7 @@ void caffe_cpu_sconv(
     int kernel_h, int kernel_w,
     const int **rowptr_blocked, const int **colidx_blocked, const float **values_blocked,
     int ncolblocks,
+    const int *blockptr, const int *kidx, const float *values_colmajor,
     // bias (for the case when bias is fused with convolution)
     const float *bias, const float *bias_multiplier,
     // pooling (for the case when pooling is fused with convolution)
@@ -920,10 +921,15 @@ void caffe_cpu_sconv(
         out_channels);
     }
     else if (height == 13 && width == 13 && pad_h == 1 && pad_w == 1 && stride_h == 1 && stride_w == 1 && kernel_h == 3 && kernel_w == 3) {
-      sconv345(
-          input,
-          rowptr, colidx, values,
-          rowptr_blocked, colidx_blocked, values_blocked, ncolblocks,
+//      sconv345(
+//          input,
+//          rowptr, colidx, values,
+//          rowptr_blocked, colidx_blocked, values_blocked, ncolblocks,
+//          bias,
+//          output, out_channels, scratch);
+      sconv345_ver2(
+          input, in_channels,
+          blockptr, kidx, values_colmajor,
           bias,
           output, out_channels, scratch);
     }
