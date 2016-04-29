@@ -23,6 +23,7 @@ BaseConvolutionLayer<Dtype>::~BaseConvolutionLayer()
   free(weight_interleaved_);
   free(input_padded_);
   free(output_scratch_);
+  free(input_scratch_);
 
   for (int i = 0; i < weight_rowptr_blocked_.size(); ++i) {
     free(weight_rowptr_blocked_[i]);
@@ -315,6 +316,22 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 	      }
 
 	      posix_memalign((void **)&output_scratch_, 4096, sizeof(float)*OC_BLOCK*width*16*omp_get_max_threads());
+
+	      int stride_h = stride_.cpu_data()[0];
+	      int stride_w = stride_.cpu_data()[1];
+	      int dilation_h = dilation_.cpu_data()[0];
+	      int dilation_w = dilation_.cpu_data()[1];
+
+	      const int output_h = (height + 2 * pad_h -
+	          (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
+	      const int output_w = (width + 2 * pad_w -
+	          (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
+
+	      posix_memalign(
+	          (void **)&input_scratch_,
+	          4096,
+	          sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*kernel_h*kernel_w*((output_h*output_w + 15)/16*16));
+	      memset((void *)input_scratch_, 0, sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*kernel_h*kernel_w*((output_h*output_w + 15)/16*16));
 
 				break;
 			}
@@ -841,6 +858,11 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
 		  int dilation_h = dilation_.cpu_data()[0];
 		  int dilation_w = dilation_.cpu_data()[1];
 
+      const int output_h = (height + 2 * pad_h -
+          (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
+      const int output_w = (width + 2 * pad_w -
+          (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
+
 		  const int *rowptr = nz_weight_index_pointers_.cpu_data() + row_offset * g;
 		  const float *values = nz_weight_values_.cpu_data()+ weight_offset_ * g;
 		  const int *colidx = nz_weight_indices_.cpu_data()+ weight_offset_ * g;
@@ -864,6 +886,7 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
             (const float **)(&weight_values_blocked_[0] + g*ncolblock),
             ncolblock,
             NULL, NULL, NULL,
+            input_scratch_ + tid*COL_MAJOR_IC_BLOCK*kernel_w*kernel_h*((output_h*output_w + 15)/16*16),
             this->blobs_[1]->cpu_data(), bias_multiplier_.cpu_data(),
             ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g),
             ((ConvolutionReLUPoolLRNLayer<float> *)this)->max_idx_.mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g),
@@ -885,6 +908,7 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
             (const float **)(&weight_values_blocked_[0] + g*ncolblock),
             ncolblock,
             &weight_blockptr_colmajor_[g][0], &weight_kidx_colmajor_[g][0], &weight_values_colmajor_[g][0],
+            input_scratch_ + tid*COL_MAJOR_IC_BLOCK*kernel_w*kernel_h*((output_h*output_w + 15)/16*16),
             this->blobs_[1]->cpu_data(), bias_multiplier_.cpu_data(),
             NULL, NULL,
             output + output_offset_ * g,

@@ -23,7 +23,7 @@ template <typename Dtype>
 class BaseConvolutionLayer : public Layer<Dtype> {
  public:
   explicit BaseConvolutionLayer(const LayerParameter& param)
-      : Layer<Dtype>(param), weight_interleaved_(NULL), input_padded_(NULL), output_scratch_(NULL) {
+      : Layer<Dtype>(param), weight_interleaved_(NULL), input_padded_(NULL), output_scratch_(NULL), input_scratch_(NULL) {
 	  //is_sparse_format_weights_ = false;
 	  is_concatenating_weights_features_ = false;
   }
@@ -214,6 +214,7 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   vector<int *> weight_blockptr_colmajor_;
   vector<int *> weight_kidx_colmajor_;
   vector<Dtype *> weight_values_colmajor_;
+  Dtype *input_scratch_;
 };
 
 }  // namespace caffe

@@ -868,6 +868,7 @@ void caffe_cpu_sconv(
     const int **rowptr_blocked, const int **colidx_blocked, const float **values_blocked,
     int ncolblocks,
     const int *blockptr, const int *kidx, const float *values_colmajor,
+    float *input_scratch,
     // bias (for the case when bias is fused with convolution)
     const float *bias, const float *bias_multiplier,
     // pooling (for the case when pooling is fused with convolution)
@@ -875,7 +876,7 @@ void caffe_cpu_sconv(
     // output features
     float *output,
     int out_channels,
-    float *scratch)
+    float *output_scratch)
 {
   const int output_h = (height + 2 * pad_h -
       (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
@@ -931,7 +932,7 @@ void caffe_cpu_sconv(
           input, in_channels,
           blockptr, kidx, values_colmajor,
           bias,
-          output, out_channels, scratch);
+          output, out_channels, input_scratch);
     }
     else
 #endif
