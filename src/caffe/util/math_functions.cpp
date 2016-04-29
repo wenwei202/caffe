@@ -534,6 +534,15 @@ double caffe_cpu_asum<double>(const int n, const double* x) {
 }
 
 template <>
+int caffe_cpu_asum<int>(const int n, const int* x) {
+  int sum = 0;
+  for (int i=0;i<n;i++){
+	  sum += abs(x[i]);
+  }
+  return sum;
+}
+
+template <>
 void caffe_cpu_asum_along_col_row<float>(const int M, const int N, const float* X, float* y, bool dimen){
 	if(dimen){//along column
 		for(int i=0;i<N;i++){
@@ -695,6 +704,52 @@ void  caffe_cpu_del_zero_cols<float>(const int M, const int N, const float *x, f
 template
 void  caffe_cpu_del_zero_cols<double>(const int M, const int N, const double *x, double *y, int * left_cols, const int* mask);
 
+template <typename Dtype>
+void caffe_cpu_concatenate_rows_cols(const int M, const int N, const Dtype *x, Dtype *y, const int* col_mask, const int* row_mask){
+	int left_cols = 0;
+	for(int i=0;i<N;i++){
+		left_cols += !col_mask[i];
+	}
+
+	int cur_row = 0;
+	for(int row=0;row<M;row++){
+		if(!row_mask[row]){
+			int cur_col = 0;
+			for(int col=0;col<N;col++){
+				if(!col_mask[col]){
+					y[cur_row*left_cols+cur_col] = x[row*N+col];
+					cur_col++;
+				}
+			}
+			CHECK_EQ(cur_col,left_cols);
+			cur_row++;
+		}
+	}
+}
+template void caffe_cpu_concatenate_rows_cols<float>(const int M, const int N, const float *x, float *y, const int* col_mask, const int* row_mask);
+template void caffe_cpu_concatenate_rows_cols<double>(const int M, const int N, const double *x, double *y, const int* col_mask, const int* row_mask);
+
+template <typename Dtype>
+void caffe_cpu_dispatch_rows(const int M, const int N, Dtype *x, const int* row_mask){
+	int total_nonzero_rows = 0;
+	for(int row=0; row<M; row++){
+		total_nonzero_rows += !row_mask[row];
+	}
+
+	int src_row = total_nonzero_rows-1;
+	for(int row=M-1; row>=0; row--){
+		if(!row_mask[row]){//nonzero rows
+			CHECK_GE(src_row,0);
+			CHECK_LE(src_row,row);
+			if(src_row!=row) caffe_copy(N,x+src_row*N,x+row*N);
+			src_row--;
+		}else{//set to zeros
+			caffe_set(N,(Dtype)0.0,x+row*N);
+		}
+	}
+}
+template void caffe_cpu_dispatch_rows<float>(const int M, const int N, float *x, const int* row_mask);
+template void caffe_cpu_dispatch_rows<double>(const int M, const int N, double *x, const int* row_mask);
 
 template <typename Dtype>
 void caffe_cpu_block_group_lasso(const int n, const int c,

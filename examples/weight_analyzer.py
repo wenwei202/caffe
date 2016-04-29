@@ -9,23 +9,32 @@ import caffeparser
 # --prototxt models/bvlc_reference_caffenet/deploy.prototxt --origimodel models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel --tunedmodel /home/wew57/github/caffe/models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_120000.caffemodel
 # --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_0.9912.caffemodel --tunedmodel examples/mnist/
 # --prototxt examples/cifar10/cifar10_full.prototxt --origimodel examples/cifar10/cifar10_full_iter_300000_0.8212.caffemodel --tunedmodel examples/cifar10/cifar10_full_grouplasso_iter_60000.caffemodel
-def show_filters(net,layername ,filt_min ,filt_max,rgb=False):
+def show_filters(net,layername ,filt_min ,filt_max):
+    rgb = False
     weights = net.params[layername][0].data
     if len(weights.shape) < 3:
         return
     chan_num = weights.shape[1]
     filter_num = weights.shape[0]
     #display_region_size = ceil(sqrt(filter_num))
+    rgb = (chan_num==3)
     plt.figure()
-    for c in range(min(20,chan_num)):
-        #if sum(abs(weights[:,c,:,:]))>0:
-            #print "{}-th channel is usefull".format(c)
-            for n in range(filter_num):
-                #plt.subplot((int)(display_region_size),(int)(display_region_size),n+1)
-                plt.subplot(chan_num,filter_num, filter_num*c + n + 1)
-                #if sum(abs(weights[n,c]))>0:
-                plt.imshow(weights[n,c],vmin=filt_min,vmax=filt_max,cmap=plt.get_cmap('Greys'),interpolation='none')
-                plt.tick_params(which='both',labelbottom='off',labelleft='off',bottom='off',top='off',left='off',right='off')
+    if rgb:
+        for n in range(filter_num):
+            plt.subplot(1, filter_num,  n + 1)
+            img = (weights[n, :].transpose((1,2,0)) - filt_min)/(filt_max-filt_min)
+            plt.imshow(img,  interpolation='none')
+            plt.tick_params(which='both', labelbottom='off', labelleft='off', bottom='off', top='off', left='off', right='off')
+    else:
+        for c in range(min(20,chan_num)):
+            #if sum(abs(weights[:,c,:,:]))>0:
+                #print "{}-th channel is usefull".format(c)
+                for n in range(filter_num):
+                    #plt.subplot((int)(display_region_size),(int)(display_region_size),n+1)
+                    plt.subplot(chan_num,filter_num, filter_num*c + n + 1)
+                    #if sum(abs(weights[n,c]))>0:
+                    plt.imshow(weights[n,c],vmin=filt_min,vmax=filt_max,cmap=plt.get_cmap('Greys'),interpolation='none')
+                    plt.tick_params(which='both',labelbottom='off',labelleft='off',bottom='off',top='off',left='off',right='off')
 
 def show_filter_pca(net,layername):
     weights = net.params[layername][0].data
@@ -109,15 +118,15 @@ if __name__ == "__main__":
     #show_filter_pca(tuned_net, 'conv2')
 
     weight_scope = get_max_weight(orig_net, tuned_net, 'conv1')
-    #show_filters(orig_net,'conv1',-weight_scope, weight_scope)
-    #show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
-    show_filter_shapes(orig_net, 'conv1')
-    show_filter_shapes(tuned_net, 'conv1')
+    show_filters(orig_net,'conv1',-weight_scope, weight_scope)
+    show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
+    #show_filter_shapes(orig_net, 'conv1')
+    #show_filter_shapes(tuned_net, 'conv1')
 
 
-    #weight_scope = get_max_weight(orig_net, tuned_net, 'conv2')
-    #show_filters(orig_net, 'conv2', -weight_scope, weight_scope)
-    #show_filters(tuned_net, 'conv2', -weight_scope, weight_scope)
+    weight_scope = get_max_weight(orig_net, tuned_net, 'conv2')
+    show_filters(orig_net, 'conv2', -weight_scope, weight_scope)
+    show_filters(tuned_net, 'conv2', -weight_scope, weight_scope)
     #show_filter_shapes(orig_net, 'conv2')
     #show_filter_shapes(tuned_net, 'conv2')
 

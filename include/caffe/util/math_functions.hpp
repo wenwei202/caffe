@@ -202,6 +202,14 @@ Dtype caffe_cpu_group_sparsity(const int M, const int N, const Dtype *X, bool di
 template <typename Dtype>
 void caffe_cpu_del_zero_cols(const int M, const int N, const Dtype *x, Dtype *y, int * left_cols, const int* mask);
 
+//remove all zero rows and columns, and concatenate remaining ones together
+template <typename Dtype>
+void caffe_cpu_concatenate_rows_cols(const int M, const int N, const Dtype *x, Dtype *y, const int* col_mask, const int* row_mask);
+
+//dispatch dense rows in x to scattered rows in itself according to row_mask, assuming x is MxN dimension
+template <typename Dtype>
+void caffe_cpu_dispatch_rows(const int M, const int N, Dtype *x, const int* row_mask);
+
 //get sqrt sum of weights within blocks and copy them at each position
 template <typename Dtype>
 void caffe_cpu_block_group_lasso(const int n, const int c,
