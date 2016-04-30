@@ -23,7 +23,7 @@ static const int OC_BLOCK = 8;
 static const int COL_BLOCK = 32;
 
 static const int COL_MAJOR_IC_BLOCK = 4;
-static const int COL_MAJOR_OC_BLOCK = 64;
+//static const int COL_MAJOR_OC_BLOCK = 64;
 
 extern synk::Barrier *barriers[256];
 
@@ -3216,11 +3216,18 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
 
 #if 1 // def __AVX512F__
 
+#ifdef COL_MAJOR_OC_BLOCK
   int oc_block_per_thread = (out_channels/COL_MAJOR_OC_BLOCK + nthreads_per_group - 1)/nthreads_per_group;
   int oc_block_begin = std::min(oc_block_per_thread*tid_in_group, out_channels/COL_MAJOR_OC_BLOCK);
   int oc_block_end = std::min(oc_block_begin + oc_block_per_thread, out_channels/COL_MAJOR_OC_BLOCK);
 
   for (int oc_block = oc_block_begin; oc_block < oc_block_end; ++oc_block) {
+#else
+    int oc_per_thread = (out_channels + nthreads_per_group - 1)/nthreads_per_group;
+    int oc_begin = std::min(oc_per_thread*tid_in_group, out_channels);
+    int oc_end = std::min(oc_begin + oc_per_thread, out_channels);
+#endif
+
     int ic_per_thread = (COL_MAJOR_IC_BLOCK + nthreads_per_group - 1)/nthreads_per_group;
     int ic_begin = std::min(ic_per_thread*tid_in_group, COL_MAJOR_IC_BLOCK);
     int ic_end = std::min(ic_begin + ic_per_thread, COL_MAJOR_IC_BLOCK);
@@ -3260,7 +3267,11 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
 
     __m512 sum0, sum1, sum2, sum3, sum4, sum5, sum6, sum7, sum8, sum9, sum10;
 
+#ifdef COL_MAJOR_OC_BLOCK
     for (int oc = oc_block*COL_MAJOR_OC_BLOCK; oc < (oc_block + 1)*COL_MAJOR_OC_BLOCK; ++oc) {
+#else
+    for (int oc = oc_begin; oc < oc_end; ++oc) {
+#endif
       __m512 bias_v = _mm512_set1_ps(bias[oc]);
 
       sum0 = bias_v;
@@ -3342,7 +3353,11 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
 
       if (nthread_groups != nthreads) barriers[gid]->wait(tid_in_group);
 
+#ifdef COL_MAJOR_OC_BLOCK
       for (int oc = oc_block*COL_MAJOR_OC_BLOCK; oc < (oc_block + 1)*COL_MAJOR_OC_BLOCK; ++oc) {
+#else
+      for (int oc = oc_begin; oc < oc_end; ++oc) {
+#endif
         sum0 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 0*16);
         sum1 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 1*16);
         sum2 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 2*16);
@@ -3385,7 +3400,9 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
         _mm512_mask_storeu_ps(output + oc*WOUT*WOUT + 10*16, 0x01ff, sum10);
       } // for each oc
     } // for each ic block
+#ifdef COL_MAJOR_OC_BLOCK
   } // for each oc block
+#endif
 #else
   for (int oc = 0; oc < out_channels; ++oc) {
 
