@@ -161,6 +161,7 @@ char *ptr = (char *)mmap(NULL, real_size, PROT_READ | PROT_WRITE,
 MAP_PRIVATE | MAP_ANONYMOUS |
 MAP_POPULATE | MAP_HUGETLB, -1, 0);
 if (ptr == MAP_FAILED) {
+  fprintf(stderr, "mmap failed\n");
 // The mmap() call failed. Try to malloc instead
 posix_memalign((void **)&ptr, 4096, real_size);
 if (ptr == NULL) return NULL;

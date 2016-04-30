@@ -42,67 +42,6 @@ using namespace std;
 namespace synk
 {
 
-static Barrier *instance = NULL;
-
-void Barrier::initializeInstance(int numCores, int numThreadsPerCore)
-{
-    if (!instance)
-    {
-        if (omp_in_parallel())
-        {
-#pragma omp barrier
-#pragma omp master
-            instance = new Barrier(numCores, numThreadsPerCore);
-#pragma omp barrier
-            instance->init(omp_get_thread_num());
-        }
-        else
-        {
-            instance = new Barrier(numCores, numThreadsPerCore);
-#pragma omp parallel
-            {
-                instance->init(omp_get_thread_num());
-            }
-        }
-    }
-}
-
-Barrier *Barrier::getInstance()
-{
-    if (!instance)
-    {
-        int threadsPerCore =
-#ifdef __MIC__
-            4;
-#else
-            1;
-#endif
-
-        if (omp_in_parallel())
-        {
-#pragma omp barrier
-#pragma omp master
-            instance = new Barrier(omp_get_num_threads()/threadsPerCore, threadsPerCore);
-#pragma omp barrier
-            instance->init(omp_get_thread_num());
-        }
-        else
-        {
-            instance = new Barrier(omp_get_max_threads()/threadsPerCore, threadsPerCore);
-#pragma omp parallel
-            {
-                instance->init(omp_get_thread_num());
-            }
-        }
-    }
-    return instance;
-}
-
-void Barrier::deleteInstance()
-{
-    delete instance;
-}
-
 /* constructor */
 Barrier::Barrier(int numCores_, int numThreadsPerCore_)
         : Synk(numCores_, numThreadsPerCore_)

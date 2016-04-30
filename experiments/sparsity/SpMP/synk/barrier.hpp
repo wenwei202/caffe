@@ -56,19 +56,11 @@ class Barrier : public Synk {
 public:
     ~Barrier();
 
-    // If you want to construct the singleton with options other than
-    // the default one, call this function before ANY invocation of
-    // getInstance
-    static void initializeInstance(int numCores, int numThreadsPerCore);
-    static Barrier *getInstance();
-    static void deleteInstance();
-
     void init(int tid);
     void wait(int tid);
 
-protected:
     Barrier(int numCores, int numThreadsPerCore);
-      /* not public to be used as a singleton */
+protected:
 
     CoreBarrier **cores;
     CoreBarrier **threadCores;
