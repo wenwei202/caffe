@@ -235,6 +235,17 @@ void caffe_gpu_sparse_mmcsr(const int M, const int N, const int K,
     const int nnz, const Dtype* B_nonzero_buf, const int* B_idx_pointer_buf, const int* B_nonzero_idx_buf,
     const Dtype beta,Dtype* C);
 
+// sparse matrix A *  dense matrix B
+// A is stored in CSR format
+// transpose_C is required for temporary storage because of the column-major order of cusparse
+template <typename Dtype>
+void caffe_gpu_sparse_csrmm(const int M, const int N, const int K,
+    const Dtype alpha,
+    const int nnz, const Dtype* A_nonzero_buf, const int* A_idx_pointer_buf, const int* A_nonzero_idx_buf,
+    const Dtype* B,
+    const Dtype beta,
+    Dtype* C, Dtype *transpose_C);
+
 // dense matrix A to sparse matrix A in CSR format
 template <typename Dtype>
 void caffe_gpu_sparse_dense2csr(const int M, const int N,

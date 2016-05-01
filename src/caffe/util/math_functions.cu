@@ -55,7 +55,7 @@ void caffe_gpu_sparse_mmcsr<float>(const int M, const int N, const int K,
 	//NON-BLOCKING NON-BLOCKING NON-BLOCKING
 	CUSPARSE_CHECK(cusparseScsrmm(Caffe::cusparse_handle(),CUSPARSE_OPERATION_TRANSPOSE,
 			//N,M,K,nnz, &alpha,
-			K,M,N,nnz, &alpha,
+			K,M,N,nnz, &alpha,//dimensions K,M,N refer to the ones before op(A)
 			Caffe::cusparse_matdescr(), B_nonzero_buf, B_idx_pointer_buf, B_nonzero_idx_buf,
 			A,K,&beta,C,N
 			));
@@ -72,6 +72,43 @@ void caffe_gpu_sparse_mmcsr<double>(const int M, const int N, const int K,
 				Caffe::cusparse_matdescr(), B_nonzero_buf, B_idx_pointer_buf, B_nonzero_idx_buf,
 				A,K,&beta,C,N
 				));
+}
+
+template <>
+void caffe_gpu_sparse_csrmm<float>(const int M, const int N, const int K,
+    const float alpha,
+    const int nnz, const float* A_nonzero_buf, const int* A_idx_pointer_buf, const int* A_nonzero_idx_buf,
+    const float* B,
+    const float beta,
+    float* C,float *transpose_C){
+	CUSPARSE_CHECK(cusparseScsrmm2(Caffe::cusparse_handle(),CUSPARSE_OPERATION_NON_TRANSPOSE,CUSPARSE_OPERATION_TRANSPOSE,
+				M,N,K,nnz, &alpha,
+				Caffe::cusparse_matdescr(), A_nonzero_buf, A_idx_pointer_buf, A_nonzero_idx_buf,
+				B,N,&beta,transpose_C,M
+				));
+	//transpose C
+	const float one = 1;
+	const float zero = 0;
+	CUBLAS_CHECK(cublasSgeam(Caffe::cublas_handle(),CUBLAS_OP_T, CUBLAS_OP_T,
+			N,M,&one,transpose_C,M,&zero,transpose_C,M,C,N));
+}
+template <>
+void caffe_gpu_sparse_csrmm<double>(const int M, const int N, const int K,
+    const double alpha,
+    const int nnz, const double* A_nonzero_buf, const int* A_idx_pointer_buf, const int* A_nonzero_idx_buf,
+    const double* B,
+    const double beta,
+    double* C,double *transpose_C){
+	CUSPARSE_CHECK(cusparseDcsrmm2(Caffe::cusparse_handle(),CUSPARSE_OPERATION_NON_TRANSPOSE,CUSPARSE_OPERATION_TRANSPOSE,
+				M,N,K,nnz, &alpha,
+				Caffe::cusparse_matdescr(), A_nonzero_buf, A_idx_pointer_buf, A_nonzero_idx_buf,
+				B,N,&beta,transpose_C,M
+				));
+	//transpose C
+	const double one = 1;
+	const double zero = 0;
+	CUBLAS_CHECK(cublasDgeam(Caffe::cublas_handle(),CUBLAS_OP_T, CUBLAS_OP_T,
+			N,M,&one,transpose_C,M,&zero,transpose_C,M,C,N));
 }
 
 template <>
