@@ -20,8 +20,8 @@ plt.rcParams['image.cmap'] = 'gray'
 caffe_root = './'
 
 #imagenet_val_path  = '/home/wew57/cuda-workspace/SCNN_MAKEFILE_PRJ/caffe/examples/imagenet/ilsvrc12_val_lmdb'
-imagenet_val_path  = '/home/public/imagenet/ilsvrc12_val_lmdb'
-#imagenet_val_path  = 'examples/images/ilsvrc12_train_lmdb'
+#imagenet_val_path  = '/home/public/imagenet/ilsvrc12_val_lmdb'
+imagenet_val_path  = 'examples/imagenet/ilsvrc12_val_lmdb'
 
 import os
 #if not os.path.isfile(caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel'):
@@ -30,7 +30,7 @@ import os
 #    os.system("./scripts/download_model_binary.py ./models/bvlc_reference_caffenet")
 
 # GPU mode
-caffe.set_device(2)
+caffe.set_device(0)
 caffe.set_mode_gpu()
 
 #caffe.set_mode_cpu()
@@ -55,13 +55,17 @@ caffe.set_mode_gpu()
 #                caffe_root + 'models/eilab_reference_sparsenet/sparsenet_train_iter_10000_l1.caffemodel',
 #                caffe.TEST)
 
-net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
-              caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
-             caffe.TEST)
-#
 #net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
-#              caffe_root + 'models/bvlc_reference_caffenet/0.001_0.0003_0.0_0.0_0.0_Fri_Apr__8_13-24-15_EDT_2016/caffenet_train_iter_160000_0.57278_0.001_0.0003_0.0_0.0_0.0.caffemodel',
+#              caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
 #             caffe.TEST)
+#
+net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy_csrmm.prototxt',
+              #caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_iter_220000_0.57908_0.001_0.0005_0.0001_0.0_0.0.caffemodel',
+                #caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_160000_0.54214_1.0e-3.caffemodel',
+                #caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_iter_220000_0.54814[0.001_0.00015_0.0_0.0_0.0].caffemodel',
+                #caffe_root + 'models/bvlc_reference_caffenet/caffenet_0.57368.caffemodel',
+                caffe_root + 'models/bvlc_reference_caffenet/caffenet_train_iter_160000_0.553119_0.54214.caffemodel',
+             caffe.TEST)
 
 #net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
 #net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy_conv_mode.prototxt',

@@ -6,8 +6,8 @@ import os
 import matplotlib.pyplot as plt
 import argparse
 import caffeparser
-# --prototxt models/bvlc_reference_caffenet/deploy.prototxt --origimodel models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel --tunedmodel /home/wew57/github/caffe/models/bvlc_reference_caffenet/caffenet_train_grouplasso_iter_120000.caffemodel
-# --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_iter_10000.caffemodel --tunedmodel examples/mnist/lenet_grouplasso_iter_10000.caffemodel
+# --prototxt models/bvlc_reference_caffenet/deploy.prototxt --origimodel models/bvlc_reference_caffenet/caffenet_0.57368.caffemodel --tunedmodel models/bvlc_reference_caffenet/
+# --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_0.9912.caffemodel --tunedmodel examples/mnist/lenet_grouplasso_iter_10000.caffemodel
 # --prototxt examples/cifar10/cifar10_full.prototxt --origimodel examples/cifar10/cifar10_full_iter_300000_0.8212.caffemodel --tunedmodel examples/cifar10/cifar10_full_grouplasso_iter_60000.caffemodel
 def show_filters(net,layername):
     weights = net.params[layername][0].data

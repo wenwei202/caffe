@@ -27,8 +27,8 @@ val_path  = 'examples/cifar10/cifar10_test_lmdb'
 
 caffe.set_mode_cpu()
 
-net = caffe.Net(caffe_root + 'examples/cifar10/cifar10_full.prototxt',
-              caffe_root + 'examples/cifar10/cifar10_full_iter_300000_0.8212.caffemodel',
+net = caffe.Net(caffe_root + 'examples/cifar10/cifar10_full_ccnmm.prototxt',
+              caffe_root + 'examples/cifar10/0.001_0.0_0.0_0.0_0.001_Thu_Apr__7_14-51-10_EDT_2016/cifar10_full_iter_200000.caffemodel',
               caffe.TEST)
 
 # set net to batch size

@@ -60,20 +60,18 @@ layer {
   top: "conv1"
   param {
     lr_mult: 1
-    decay_mult: 1.0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
+    decay_mult: 0
+    kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
     block_group_lasso {
       xdimen: 121
       ydimen: 1
-      block_decay_mult: 3.5
+      block_decay_mult: 3.667
     }
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 96
@@ -124,20 +122,18 @@ layer {
   top: "conv2"
   param {
     lr_mult: 1
-    decay_mult: 1.0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
+    decay_mult: 0
+    kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
     block_group_lasso {
       xdimen: 25
       ydimen: 1
-      block_decay_mult: 1.5
+      block_decay_mult: 1.667
     }
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 256
@@ -189,9 +185,9 @@ layer {
   top: "conv3"
   param {
     lr_mult: 1
-    decay_mult: 1
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
+    decay_mult: 0
+    kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
     block_group_lasso {
       xdimen: 9
       ydimen: 1
@@ -201,8 +197,6 @@ layer {
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 384
@@ -231,9 +225,9 @@ layer {
   top: "conv4"
   param {
     lr_mult: 1
-    decay_mult: 1
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
+    decay_mult: 0
+    kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
     block_group_lasso {
       xdimen: 9
       ydimen: 1
@@ -243,8 +237,6 @@ layer {
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 384
@@ -274,9 +266,9 @@ layer {
   top: "conv5"
   param {
     lr_mult: 1
-    decay_mult: 1
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
+    decay_mult: 0
+    kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
     block_group_lasso {
       xdimen: 9
       ydimen: 1
@@ -286,8 +278,6 @@ layer {
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 256
@@ -329,14 +319,10 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 1.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 4096
@@ -373,14 +359,10 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 1.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 4096
@@ -417,14 +399,10 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 0.0
   }
   param {
     lr_mult: 2
     decay_mult: 0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 1000

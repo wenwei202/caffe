@@ -61,7 +61,7 @@ layer {
   connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
-    decay_mult: 1.0
+    decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -117,7 +117,7 @@ layer {
   connectivity_mode: DISCONNECTED_ELTWISE
   param {
     lr_mult: 1
-    decay_mult: 1.0
+    decay_mult: 1
   }
   param {
     lr_mult: 2

@@ -27,9 +27,13 @@ val_path  = 'examples/mnist/mnist_test_lmdb/'
 
 caffe.set_mode_cpu()
 
-net = caffe.Net(caffe_root + 'examples/mnist/mlp_deploy.prototxt',
-              caffe_root + 'examples/mnist/mlp_500_300_0.9857.caffemodel',
-              caffe.TEST)
+#net = caffe.Net(caffe_root + 'examples/mnist/mlp_deploy.prototxt',
+#              caffe_root + 'examples/mnist/mlp_500_300_iter_30000_0.9857_0.9866.caffemodel',
+#              caffe.TEST)
+
+net = caffe.Net(caffe_root + 'examples/mnist/lenet.prototxt',
+                caffe_root + 'examples/mnist/lenet_iter_20000_0.9915_0.9909.caffemodel',
+                caffe.TEST)
 
 # set net to batch size
 height = 28
