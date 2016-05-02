@@ -711,6 +711,13 @@ template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::forward_gpu_gemm(const Dtype* input,
     const Dtype* weights, Dtype* output, bool skip_im2col) {
   const Dtype* col_buff = input;
+  if(this->layer_param_.convolution_param().conv_mode() == ConvolutionParameter_ConvMode_LOWERED_CCNMM){
+	  Blob<Dtype> input_buf;
+	  input_buf.Reshape(1,conv_in_channels_,conv_input_shape_.cpu_data()[1], conv_input_shape_.cpu_data()[2]);
+	  caffe_copy(input_buf.count(), input, input_buf.mutable_cpu_data());
+	  conv_im2col_cpu(input_buf.cpu_data(), col_buffer_.mutable_cpu_data(), col_buf_mask_.mutable_cpu_data());
+	  col_buff = col_buffer_.gpu_data();
+  }else
   if (!is_1x1_) {
     if (!skip_im2col) {
       conv_im2col_gpu(input, col_buffer_.mutable_gpu_data());
@@ -719,6 +726,9 @@ void BaseConvolutionLayer<Dtype>::forward_gpu_gemm(const Dtype* input,
   }
   Timer timer;
   timer.Start();
+  int col_buf_offset_sum = 0;
+  int output_offset_sum = 0;
+  int weight_offset_sum = 0;
   for (int g = 0; g < group_; ++g) {
 	  switch(this->layer_param_.convolution_param().conv_mode()){
 			case caffe::ConvolutionParameter_ConvMode_LOWERED_CSRMM :{
@@ -758,14 +768,37 @@ void BaseConvolutionLayer<Dtype>::forward_gpu_gemm(const Dtype* input,
 						(Dtype)0.,
 						output + output_offset_ * g,
 						transposed_output_buffer_.mutable_gpu_data());
-				//LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Compressed Row Storage Timing)";
+				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Compressed Row Storage Timing)";
 				break;
 			}
 			case caffe::ConvolutionParameter_ConvMode_LOWERED_CCNMM :{
-				timer.Start();
-				NOT_IMPLEMENTED;
-				//LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Concatenation Timing)";
-				break;
+				  timer.Start();
+				  //LOG(INFO)<<"Computing ConvolutionParameter_ConvMode_LOWERED_CCNMM";
+				  int left_cols = left_columns_[g];
+				  int left_rows = left_rows_[g];
+				  timer.Start();
+//				  caffe_cpu_cblas_gemm(left_rows, conv_out_spatial_dim_, left_cols,
+//						  (Dtype)1., squeezed_weight_buffer_.cpu_data() + weight_offset_sum,
+//						  left_cols , col_buff + col_buf_offset_sum,
+//						conv_out_spatial_dim_, (Dtype)0., output + output_offset_sum, conv_out_spatial_dim_);
+				  caffe_gpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans,
+						  left_rows, conv_out_spatial_dim_, left_cols,
+						 (Dtype)1., squeezed_weight_buffer_.gpu_data() + weight_offset_sum,
+						 col_buff + col_buf_offset_sum,
+						 (Dtype)0., output + output_offset_sum);
+				  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Concatenation Timing)";
+				  col_buf_offset_sum += left_cols * conv_out_spatial_dim_;
+				  output_offset_sum += left_rows * conv_out_spatial_dim_;
+				  weight_offset_sum += left_rows*left_cols;
+				  //dispatch output feature maps using CPU function
+				  if(group_-1 == g){
+					  Blob<Dtype> output_buf;
+					  output_buf.Reshape(1,1,conv_out_channels_, conv_out_spatial_dim_);
+					  caffe_copy(output_buf.count(), output, output_buf.mutable_cpu_data());
+					  caffe_cpu_dispatch_rows(conv_out_channels_,conv_out_spatial_dim_,output_buf.mutable_cpu_data(),row_buf_mask_.cpu_data());
+					  caffe_copy(output_buf.count(), output_buf.cpu_data(), output);
+				  }
+				  break;
 			}
 			default:{
 				timer.Start();
@@ -773,7 +806,7 @@ void BaseConvolutionLayer<Dtype>::forward_gpu_gemm(const Dtype* input,
 					group_, conv_out_spatial_dim_, kernel_dim_,
 						 (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
 						 (Dtype)0., output + output_offset_ * g);
-				//LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Dense Scheme Timing)";
+				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Dense Scheme Timing)";
 				break;
 			}
 	  }
