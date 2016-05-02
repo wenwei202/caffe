@@ -151,7 +151,8 @@ int main(int argc, const char *argv[])
     blockptr_colmajor[i + 1] += blockptr_colmajor[i];
   }
 
-  const int SCRATCH_SIZE_PER_IC = (WOUT*WOUT + 15)/16*16;
+  const int SCRATCH_SIZE_PER_IC = WOUT*16;
+
   for (int out_channel = 0; out_channel < NOUT; ++out_channel) {
     for (int j = A->rowptr[out_channel]; j < A->rowptr[out_channel + 1]; ++j) {
       int c = A->colidx[j];
@@ -166,7 +167,7 @@ int main(int argc, const char *argv[])
 
       int blockid = in_channel/COL_MAJOR_IC_BLOCK*NOUT + out_channel;
       int offset = blockptr_colmajor[blockid];
-      kidx_colmajor[offset] = ((in_channel%COL_MAJOR_IC_BLOCK*K + kernel_row)*K + kernel_col)*SCRATCH_SIZE_PER_IC;
+      kidx_colmajor[offset] = ((in_channel%COL_MAJOR_IC_BLOCK*K + kernel_col)*(WOUT + PAD) + kernel_row)*16;
       values_colmajor[offset] = values[j];
       ++blockptr_colmajor[blockid];
     }
@@ -207,6 +208,14 @@ int main(int argc, const char *argv[])
 
   float *input_scratch = (float *)_mm_malloc(sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*K*K*SCRATCH_SIZE_PER_IC, 4096);
   memset((void *)input_scratch, 0, sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*K*K*SCRATCH_SIZE_PER_IC);
+
+  float *output_colmajor_scratch;
+#ifdef COL_MAJOR_OC_BLOCK
+  posix_memalign((void **)&output_colmajor_scratch, 4096, sizeof(float)*omp_get_max_threads()*COL_MAJOR_OC_BLOCK*SCRATCH_SIZE_PER_IC);
+#else
+  posix_memalign((void **)&output_colmajor_scratch, 4096, sizeof(float)*omp_get_max_threads()*NOUT*SCRATCH_SIZE_PER_IC);
+#endif
+  memset((void *)output_colmajor_scratch, 0, sizeof(float)*omp_get_max_threads()*NOUT*SCRATCH_SIZE_PER_IC);
 
   double t = omp_get_wtime();
   unsigned long long times[omp_get_max_threads()*16];
@@ -259,7 +268,10 @@ int main(int argc, const char *argv[])
         SimSetAddressRoiName(values_colmajor, "values");
 
         SimAddAddressRoi(input_scratch, sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*K*K*SCRATCH_SIZE_PER_IC);
-        SimSetAddressRoiName(input_scratch, "scratch");
+        SimSetAddressRoiName(input_scratch, "input_scratch");
+
+        SimAddAddressRoi(output_colmajor_scratch, sizeof(float)*omp_get_max_threads()*NOUT*SCRATCH_SIZE_PER_IC);
+        SimSetAddressRoiName(output_colmajor_scratch, "output_scratch");
 
         SimAddAddressRoi(bias, sizeof(float)*NOUT);
         SimSetAddressRoiName(bias, "bias");
@@ -282,11 +294,13 @@ int main(int argc, const char *argv[])
 
       for (int i = i_begin; i < i_end; ++i) {
         sconv345_ver2(
-            input + i*NIN*(WIDTH + PAD)*(WIDTH + PAD), NIN,
+            input + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
+            input + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
+            NIN,
             blockptr_colmajor, kidx_colmajor, values_colmajor,
             bias,
             output + i*NOUT*WOUT*WOUT, NOUT,
-            input_scratch);
+            input_scratch, output_colmajor_scratch);
 //        sconv345(
 //            (j%2 == 0 ? input : output) + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
 //            A->rowptr, A->colidx, values,

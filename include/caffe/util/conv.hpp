@@ -13,16 +13,16 @@
 
 #ifdef __AVX512F__
 #ifdef SNIPER
-static const int NTILES = 2; // 1 tile
+static const int NTILES = 1; // 1 tile
 #else
-static const int NTILES = 64; // FIXME - hardcoded for 68c KNL
+static const int NTILES = 32; // FIXME - hardcoded for 68c KNL
 #endif
 #endif
 
 static const int OC_BLOCK = 8;
 static const int COL_BLOCK = 32;
 
-static const int COL_MAJOR_IC_BLOCK = 4;
+static const int COL_MAJOR_IC_BLOCK = 8;
 //static const int COL_MAJOR_OC_BLOCK = 64;
 
 extern synk::Barrier *barriers[256];
@@ -3180,13 +3180,13 @@ extern unsigned long long conv_cycles_of_this_batch[1024*16], transpose_cycle, p
 
 static /*inline */ void __attribute__((noinline)) sconv345_ver2(
     // input features
-    const float *input, int in_channels,
+    const float *input_padded, const float *input, int in_channels,
     // weights
     const int *blockptr, const int *kidx, const float *values,
     // bias (for the case when bias is fused with convolution)
     const float *bias,
     // output features
-    float *output, int out_channels, float *input_scratch_global) // scratch: 6 KB per ic
+    float *output, int out_channels, float *input_scratch_global, float *output_colmajor_scratch)
 {
   unsigned long long t = __rdtsc();
 
@@ -3198,80 +3198,145 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
   const int PAD = 1;
   const int K = 3;
 
-  int nthread_groups = nthreads;
+  int num_of_oc_groups = nthreads;
+  int num_of_ic_groups = nthreads;
 #ifdef __AVX512F__
-  nthread_groups = NTILES;
+  num_of_oc_groups = NTILES;
+#ifdef SNIPER
+  if (NTILES == 1) {
+    num_of_ic_groups = 2;
+  }
+  else {
+    num_of_ic_groups = NTILES;
+  }
+#else
+  if (NTILES == 32) {
+    num_of_ic_groups = 64;
+  }
+  else {
+    num_of_ic_groups = NTILES;
+  }
+#endif
 #else
 //  nthread_groups /= 2; // 1 group per core in Xeon
 #endif
-  assert(nthreads%nthread_groups == 0);
-  int nthreads_per_group = nthreads/nthread_groups;
-  int gid = tid/nthreads_per_group;
-  int tid_in_group = tid%nthreads_per_group;
+  assert(nthreads%num_of_oc_groups == 0);
+  int nthreads_per_oc_group = nthreads/num_of_oc_groups;
+  int oc_gid = tid/nthreads_per_oc_group;
+  int tid_in_oc_group = tid%nthreads_per_oc_group;
+  
+  assert(nthreads%num_of_ic_groups == 0);
+  int nthreads_per_ic_group = nthreads/num_of_ic_groups;
+  int ic_gid = tid/nthreads_per_ic_group;
+  int tid_in_ic_group = tid%nthreads_per_ic_group;
 
-  static const int SCRATCH_SIZE_PER_IC = (WOUT*WOUT + 15)/16*16; // 176
-  float *input_scratch = input_scratch_global + gid*COL_MAJOR_IC_BLOCK*K*K*SCRATCH_SIZE_PER_IC;
+  static const int SCRATCH_SIZE_PER_IC = WOUT*16; // 208
+  float *input_scratch = input_scratch_global + ic_gid*COL_MAJOR_IC_BLOCK*K*(WIDTH + PAD)*16; // 2.5KB per ic
+
+#ifdef COL_MAJOR_OC_BLOCK
+  float *output_scratch = output_colmajor_scratch + tid*COL_MAJOR_OC_BLOCK*SCRATCH_SIZE_PER_IC;
+#else
+  float *output_scratch = output_colmajor_scratch + oc_gid*out_channels*SCRATCH_SIZE_PER_IC;
+#endif
 
   float sum[WOUT][WOUT];
 
 #if 1 // def __AVX512F__
 
 #ifdef COL_MAJOR_OC_BLOCK
-  int oc_block_per_thread = (out_channels/COL_MAJOR_OC_BLOCK + nthreads_per_group - 1)/nthreads_per_group;
-  int oc_block_begin = std::min(oc_block_per_thread*tid_in_group, out_channels/COL_MAJOR_OC_BLOCK);
+  int oc_block_per_thread = (out_channels/COL_MAJOR_OC_BLOCK + nthreads_per_oc_group - 1)/nthreads_per_oc_group;
+  int oc_block_begin = std::min(oc_block_per_thread*tid_in_oc_group, out_channels/COL_MAJOR_OC_BLOCK);
   int oc_block_end = std::min(oc_block_begin + oc_block_per_thread, out_channels/COL_MAJOR_OC_BLOCK);
 
   for (int oc_block = oc_block_begin; oc_block < oc_block_end; ++oc_block) {
 #else
-    int oc_per_thread = (out_channels + nthreads_per_group - 1)/nthreads_per_group;
-    int oc_begin = std::min(oc_per_thread*tid_in_group, out_channels);
+    int oc_per_thread = (out_channels + nthreads_per_oc_group - 1)/nthreads_per_oc_group;
+    int oc_begin = std::min(oc_per_thread*tid_in_oc_group, out_channels);
     int oc_end = std::min(oc_begin + oc_per_thread, out_channels);
 #endif
 
-    int ic_per_thread = (COL_MAJOR_IC_BLOCK + nthreads_per_group - 1)/nthreads_per_group;
-    int ic_begin = std::min(ic_per_thread*tid_in_group, COL_MAJOR_IC_BLOCK);
+    int ic_per_thread = (COL_MAJOR_IC_BLOCK + nthreads_per_ic_group - 1)/nthreads_per_ic_group;
+    int ic_begin = std::min(ic_per_thread*tid_in_ic_group, COL_MAJOR_IC_BLOCK);
     int ic_end = std::min(ic_begin + ic_per_thread, COL_MAJOR_IC_BLOCK);
 
+    int ic_block = 0;
+
     for (int ic = ic_begin; ic < ic_end; ++ic) {
-      __m512 v = _mm512_loadu_ps(input + (ic*(WIDTH + PAD) + 1)*(WIDTH + PAD));
-      _mm512_mask_storeu_ps(input_scratch + ic*K*K*SCRATCH_SIZE_PER_IC + 1*WOUT, 0x1fff, v);
-      _mm512_mask_compressstoreu_ps(input_scratch + (ic*K*K + 1)*SCRATCH_SIZE_PER_IC + 1*WOUT, 0x3ffe, v);
-      _mm512_mask_compressstoreu_ps(input_scratch + (ic*K*K + 2)*SCRATCH_SIZE_PER_IC + 1*WOUT, 0x7ffc, v);
-      _mm512_mask_storeu_ps(input_scratch + (ic*K + 1)*K*SCRATCH_SIZE_PER_IC + 0*WOUT, 0x1fff, v);
-      _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 1)*SCRATCH_SIZE_PER_IC + 0*WOUT, 0x3ffe, v);
-      _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 2)*SCRATCH_SIZE_PER_IC + 0*WOUT, 0x7ffc, v);
+#ifdef COPY_INPUT_TO_SCRATCH_STEP
+#undef COPY_INPUT_TO_SCRATCH_STEP
+#endif
+#define COPY_INPUT_TO_SCRATCH_STEP(h) \
+      v = _mm512_loadu_ps(input + ((ic + ic_block*COL_MAJOR_IC_BLOCK)*WIDTH + h)*WIDTH); \
+      _mm512_mask_storeu_ps(input_scratch + (ic*K*(WIDTH + PAD) + h + 1)*16 + 1, 0x0fff, v); \
+      _mm512_mask_store_ps(input_scratch + ((ic*K + 1)*(WIDTH + PAD) + h + 1)*16, 0x1fff, v); \
+      _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*(WIDTH + PAD) + h + 1)*16, 0x1ffe, v);
 
-      for (int h = 2; h < WOUT; ++h) {
-        v = _mm512_loadu_ps(input + (ic*(WIDTH + PAD) + h)*(WIDTH + PAD));
-        _mm512_mask_storeu_ps(input_scratch + ic*K*K*SCRATCH_SIZE_PER_IC + h*WOUT, 0x1fff, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + (ic*K*K + 1)*SCRATCH_SIZE_PER_IC + h*WOUT, 0x3ffe, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + (ic*K*K + 2)*SCRATCH_SIZE_PER_IC + h*WOUT, 0x7ffc, v);
-        _mm512_mask_storeu_ps(input_scratch + (ic*K + 1)*K*SCRATCH_SIZE_PER_IC + (h - 1)*WOUT, 0x1fff, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 1)*SCRATCH_SIZE_PER_IC + (h - 1)*WOUT, 0x3ffe, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 2)*SCRATCH_SIZE_PER_IC + (h - 1)*WOUT, 0x7ffc, v);
-        _mm512_mask_storeu_ps(input_scratch + (ic*K + 2)*K*SCRATCH_SIZE_PER_IC + (h - 2)*WOUT, 0x1fff, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*K + 1)*SCRATCH_SIZE_PER_IC + (h - 2)*WOUT, 0x3ffe, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*K + 2)*SCRATCH_SIZE_PER_IC + (h - 2)*WOUT, 0x7ffc, v);
-      }
+#define INPUT_CHANNEL_PREFETCH_DISTANCE (1)
 
-      v = _mm512_loadu_ps(input + (ic*(WIDTH + PAD) + WOUT)*(WIDTH + PAD));
-      _mm512_mask_storeu_ps(input_scratch + (ic*K + 1)*K*SCRATCH_SIZE_PER_IC + (WOUT - 1)*WOUT, 0x1fff, v);
-      _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 1)*SCRATCH_SIZE_PER_IC + (WOUT - 1)*WOUT, 0x3ffe, v);
-      _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 2)*SCRATCH_SIZE_PER_IC + (WOUT - 1)*WOUT, 0x7ffc, v);
-      _mm512_mask_storeu_ps(input_scratch + (ic*K + 2)*K*SCRATCH_SIZE_PER_IC + (WOUT - 2)*WOUT, 0x1fff, v);
-      _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*K + 1)*SCRATCH_SIZE_PER_IC + (WOUT - 2)*WOUT, 0x3ffe, v);
-      _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*K + 2)*SCRATCH_SIZE_PER_IC + (WOUT - 2)*WOUT, 0x7ffc, v);
+#ifdef COPY_INPUT_TO_SCRATCH
+#undef COPY_INPUT_TO_SCRATCH
+#endif
+#define COPY_INPUT_TO_SCRATCH \
+      __m512 v; \
+      COPY_INPUT_TO_SCRATCH_STEP(0); \
+      COPY_INPUT_TO_SCRATCH_STEP(1); \
+      COPY_INPUT_TO_SCRATCH_STEP(2); \
+      COPY_INPUT_TO_SCRATCH_STEP(3); \
+      COPY_INPUT_TO_SCRATCH_STEP(4); \
+      COPY_INPUT_TO_SCRATCH_STEP(5); \
+      COPY_INPUT_TO_SCRATCH_STEP(6); \
+      COPY_INPUT_TO_SCRATCH_STEP(7); \
+      COPY_INPUT_TO_SCRATCH_STEP(8); \
+      COPY_INPUT_TO_SCRATCH_STEP(9); \
+      COPY_INPUT_TO_SCRATCH_STEP(10); \
+      COPY_INPUT_TO_SCRATCH_STEP(11); \
+      COPY_INPUT_TO_SCRATCH_STEP(12); \
+      /* prefetch next input channel block */ \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*0), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*1), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*2), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*3), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*4), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*5), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*6), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*7), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*8), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*9), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*10), _MM_HINT_T1);
+
+      COPY_INPUT_TO_SCRATCH;
     }
 
-    if (nthread_groups != nthreads) barriers[gid]->wait(tid_in_group);
+    if (num_of_oc_groups != nthreads) barriers[oc_gid]->wait(tid_in_oc_group);
 
-    __m512 sum0, sum1, sum2, sum3, sum4, sum5, sum6, sum7, sum8, sum9, sum10;
+    __m512 sum0, sum1, sum2, sum3, sum4, sum5, sum6, sum7, sum8, sum9, sum10, sum11, sum12;
 
 #ifdef COL_MAJOR_OC_BLOCK
+    int oc_offset = oc_block*COL_MAJOR_OC_BLOCK;
     for (int oc = oc_block*COL_MAJOR_OC_BLOCK; oc < (oc_block + 1)*COL_MAJOR_OC_BLOCK; ++oc) {
 #else
+    int oc_offset = 0;
     for (int oc = oc_begin; oc < oc_end; ++oc) {
 #endif
+#define OC_PREFETCH_DISTANCE (1)
+
+#define PREFETCH_OUTPUT_SCRATCH \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 0*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 1*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 2*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 3*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 4*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 5*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 6*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 7*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 8*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 9*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 10*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 11*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 12*16), _MM_HINT_T0);
+
+      PREFETCH_OUTPUT_SCRATCH;
+
       __m512 bias_v = _mm512_set1_ps(bias[oc]);
 
       sum0 = bias_v;
@@ -3285,121 +3350,214 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
       sum8 = bias_v;
       sum9 = bias_v;
       sum10 = bias_v;
+      sum11 = bias_v;
+      sum12 = bias_v;
 
-      for (int b = blockptr[oc]; b < blockptr[oc + 1]; ++b) {
-        int off = kidx[b];
-        __m512 c = _mm512_set1_ps(values[b]);
-
-        sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 0*16), sum0);
-        sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 1*16), sum1);
-        sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 2*16), sum2);
-        sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 3*16), sum3);
-        sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 4*16), sum4);
-        sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 5*16), sum5);
-        sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 6*16), sum6);
-        sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 7*16), sum7);
-        sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 8*16), sum8);
-        sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 9*16), sum9);
-        sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 10*16), sum10);
+#ifdef MY_FMADD
+#undef MY_FMADD
+#endif
+//#define MY_FMADD \
+      int b_begin = blockptr[ic_block*out_channels + oc]; \
+      int b_end = blockptr[ic_block*out_channels + oc + 1]; \
+      int b_end2 = b_begin + (b_end - b_begin)/4*4; \
+      for (int b = b_begin; b < b_end2; b += 4) { \
+        int off = kidx[b]; \
+        __m512 c = _mm512_set1_ps(values[b]); \
+ \
+        sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 0*16), sum0); \
+        sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 1*16), sum1); \
+        sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 2*16), sum2); \
+        sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 3*16), sum3); \
+        sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 4*16), sum4); \
+        sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 5*16), sum5); \
+        sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 6*16), sum6); \
+        sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 7*16), sum7); \
+        sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 8*16), sum8); \
+        sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 9*16), sum9); \
+        sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 10*16), sum10); \
+        sum11 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 11*16), sum11); \
+        sum12 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 12*16), sum12); \
+        \
+        off = kidx[b + 1]; \
+        c = _mm512_set1_ps(values[b + 1]); \
+        \
+        sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 0*16), sum0); \
+        sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 1*16), sum1); \
+        sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 2*16), sum2); \
+        sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 3*16), sum3); \
+        sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 4*16), sum4); \
+        sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 5*16), sum5); \
+        sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 6*16), sum6); \
+        sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 7*16), sum7); \
+        sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 8*16), sum8); \
+        sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 9*16), sum9); \
+        sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 10*16), sum10); \
+        sum11 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 11*16), sum11); \
+        sum12 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 12*16), sum12); \
+        \
+        off = kidx[b + 2]; \
+        c = _mm512_set1_ps(values[b + 2]); \
+        \
+        sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 0*16), sum0); \
+        sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 1*16), sum1); \
+        sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 2*16), sum2); \
+        sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 3*16), sum3); \
+        sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 4*16), sum4); \
+        sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 5*16), sum5); \
+        sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 6*16), sum6); \
+        sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 7*16), sum7); \
+        sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 8*16), sum8); \
+        sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 9*16), sum9); \
+        sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 10*16), sum10); \
+        sum11 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 11*16), sum11); \
+        sum12 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 12*16), sum12); \
+        \
+        off = kidx[b + 3]; \
+        c = _mm512_set1_ps(values[b + 3]); \
+        \
+        sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 0*16), sum0); \
+        sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 1*16), sum1); \
+        sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 2*16), sum2); \
+        sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 3*16), sum3); \
+        sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 4*16), sum4); \
+        sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 5*16), sum5); \
+        sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 6*16), sum6); \
+        sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 7*16), sum7); \
+        sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 8*16), sum8); \
+        sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 9*16), sum9); \
+        sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 10*16), sum10); \
+        sum11 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 11*16), sum11); \
+        sum12 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 12*16), sum12); \
+      }
+#define MY_FMADD \
+      int b_begin = blockptr[ic_block*out_channels + oc]; \
+      int b_end = blockptr[ic_block*out_channels + oc + 1]; \
+      for (int b = b_begin; b < b_end; ++b) { \
+        int off = kidx[b]; \
+        __m512 c = _mm512_set1_ps(values[b]); \
+ \
+        sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 0*16), sum0); \
+        sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 1*16), sum1); \
+        sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 2*16), sum2); \
+        sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 3*16), sum3); \
+        sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 4*16), sum4); \
+        sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 5*16), sum5); \
+        sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 6*16), sum6); \
+        sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 7*16), sum7); \
+        sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 8*16), sum8); \
+        sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 9*16), sum9); \
+        sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 10*16), sum10); \
+        sum11 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 11*16), sum11); \
+        sum12 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 12*16), sum12); \
       }
 
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 0*16, sum0);
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 1*16, sum1);
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 2*16, sum2);
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 3*16, sum3);
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 4*16, sum4);
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 5*16, sum5);
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 6*16, sum6);
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 7*16, sum7);
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 8*16, sum8);
-      _mm512_storeu_ps(output + oc*WOUT*WOUT + 9*16, sum9);
-      _mm512_mask_storeu_ps(output + oc*WOUT*WOUT + 10*16, 0x01ff, sum10);
+      MY_FMADD;
+
+#ifdef STORE_OUTPUT_SCRATCH
+#undef STORE_OUTPUT_SCRATCH
+#endif
+#define STORE_OUTPUT_SCRATCH \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 0*16, sum0); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 1*16, sum1); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 2*16, sum2); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 3*16, sum3); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 4*16, sum4); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 5*16, sum5); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 6*16, sum6); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 7*16, sum7); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 8*16, sum8); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 9*16, sum9); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 10*16, sum10); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 11*16, sum11); \
+      _mm512_store_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 12*16, sum12);
+
+      STORE_OUTPUT_SCRATCH;
     }
 
-    for (int ic_block = 1; ic_block < in_channels/COL_MAJOR_IC_BLOCK; ++ic_block) {
+    for (int ic_block = 1; ic_block < in_channels/COL_MAJOR_IC_BLOCK - 1; ++ic_block) {
 
-      if (nthread_groups != nthreads) barriers[gid]->wait(tid_in_group);
+      if (num_of_oc_groups != nthreads) barriers[oc_gid]->wait(tid_in_oc_group);
 
       for (int ic = ic_begin; ic < ic_end; ++ic) {
-        __m512 v = _mm512_loadu_ps(input + ((ic + ic_block*COL_MAJOR_IC_BLOCK)*(WIDTH + PAD) + 1)*(WIDTH + PAD));
-        _mm512_mask_storeu_ps(input_scratch + ic*K*K*SCRATCH_SIZE_PER_IC + 1*WOUT, 0x1fff, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + (ic*K*K + 1)*SCRATCH_SIZE_PER_IC + 1*WOUT, 0x3ffe, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + (ic*K*K + 2)*SCRATCH_SIZE_PER_IC + 1*WOUT, 0x7ffc, v);
-        _mm512_mask_storeu_ps(input_scratch + (ic*K + 1)*K*SCRATCH_SIZE_PER_IC + 0*WOUT, 0x1fff, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 1)*SCRATCH_SIZE_PER_IC + 0*WOUT, 0x3ffe, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 2)*SCRATCH_SIZE_PER_IC + 0*WOUT, 0x7ffc, v);
-
-        for (int h = 2; h < WOUT; ++h) {
-          v = _mm512_loadu_ps(input + ((ic + ic_block*COL_MAJOR_IC_BLOCK)*(WIDTH + PAD) + h)*(WIDTH + PAD));
-          _mm512_mask_storeu_ps(input_scratch + ic*K*K*SCRATCH_SIZE_PER_IC + h*WOUT, 0x1fff, v);
-          _mm512_mask_compressstoreu_ps(input_scratch + (ic*K*K + 1)*SCRATCH_SIZE_PER_IC + h*WOUT, 0x3ffe, v);
-          _mm512_mask_compressstoreu_ps(input_scratch + (ic*K*K + 2)*SCRATCH_SIZE_PER_IC + h*WOUT, 0x7ffc, v);
-          _mm512_mask_storeu_ps(input_scratch + (ic*K + 1)*K*SCRATCH_SIZE_PER_IC + (h - 1)*WOUT, 0x1fff, v);
-          _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 1)*SCRATCH_SIZE_PER_IC + (h - 1)*WOUT, 0x3ffe, v);
-          _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 2)*SCRATCH_SIZE_PER_IC + (h - 1)*WOUT, 0x7ffc, v);
-          _mm512_mask_storeu_ps(input_scratch + (ic*K + 2)*K*SCRATCH_SIZE_PER_IC + (h - 2)*WOUT, 0x1fff, v);
-          _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*K + 1)*SCRATCH_SIZE_PER_IC + (h - 2)*WOUT, 0x3ffe, v);
-          _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*K + 2)*SCRATCH_SIZE_PER_IC + (h - 2)*WOUT, 0x7ffc, v);
-        }
-
-        v = _mm512_loadu_ps(input + ((ic + ic_block*COL_MAJOR_IC_BLOCK)*(WIDTH + PAD) + WOUT)*(WIDTH + PAD));
-        _mm512_mask_storeu_ps(input_scratch + (ic*K + 1)*K*SCRATCH_SIZE_PER_IC + (WOUT - 1)*WOUT, 0x1fff, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 1)*SCRATCH_SIZE_PER_IC + (WOUT - 1)*WOUT, 0x3ffe, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 1)*K + 2)*SCRATCH_SIZE_PER_IC + (WOUT - 1)*WOUT, 0x7ffc, v);
-        _mm512_mask_storeu_ps(input_scratch + (ic*K + 2)*K*SCRATCH_SIZE_PER_IC + (WOUT - 2)*WOUT, 0x1fff, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*K + 1)*SCRATCH_SIZE_PER_IC + (WOUT - 2)*WOUT, 0x3ffe, v);
-        _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*K + 2)*SCRATCH_SIZE_PER_IC + (WOUT - 2)*WOUT, 0x7ffc, v);
+        COPY_INPUT_TO_SCRATCH;
       }
 
-      if (nthread_groups != nthreads) barriers[gid]->wait(tid_in_group);
+      if (num_of_oc_groups != nthreads) barriers[oc_gid]->wait(tid_in_oc_group);
 
 #ifdef COL_MAJOR_OC_BLOCK
+      int oc_offset = oc_block*COL_MAJOR_OC_BLOCK;
       for (int oc = oc_block*COL_MAJOR_OC_BLOCK; oc < (oc_block + 1)*COL_MAJOR_OC_BLOCK; ++oc) {
 #else
+      int oc_offset = 0;
       for (int oc = oc_begin; oc < oc_end; ++oc) {
 #endif
-        sum0 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 0*16);
-        sum1 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 1*16);
-        sum2 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 2*16);
-        sum3 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 3*16);
-        sum4 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 4*16);
-        sum5 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 5*16);
-        sum6 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 6*16);
-        sum7 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 7*16);
-        sum8 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 8*16);
-        sum9 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 9*16);
-        sum10 = _mm512_loadu_ps(output + oc*WOUT*WOUT + 10*16);
 
-        for (int b = blockptr[ic_block*out_channels + oc]; b < blockptr[ic_block*out_channels + oc + 1]; ++b) {
-          int off = kidx[b];
-          __m512 c = _mm512_set1_ps(values[b]);
+#ifdef LOAD_OUTPUT_SCRATCH
+#undef LOAD_OUTPUT_SCRATCH
+#endif
+#define LOAD_OUTPUT_SCRATCH \
+        sum0 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 0*16); \
+        sum1 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 1*16); \
+        sum2 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 2*16); \
+        sum3 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 3*16); \
+        sum4 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 4*16); \
+        sum5 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 5*16); \
+        sum6 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 6*16); \
+        sum7 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 7*16); \
+        sum8 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 8*16); \
+        sum9 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 9*16); \
+        sum10 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 10*16); \
+        sum11 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 11*16); \
+        sum12 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 12*16);
 
-          sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 0*16), sum0);
-          sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 1*16), sum1);
-          sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 2*16), sum2);
-          sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 3*16), sum3);
-          sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 4*16), sum4);
-          sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 5*16), sum5);
-          sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 6*16), sum6);
-          sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 7*16), sum7);
-          sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 8*16), sum8);
-          sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 9*16), sum9);
-          sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input_scratch + off + 10*16), sum10);
-        }
-
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 0*16, sum0);
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 1*16, sum1);
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 2*16, sum2);
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 3*16, sum3);
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 4*16, sum4);
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 5*16, sum5);
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 6*16, sum6);
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 7*16, sum7);
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 8*16, sum8);
-        _mm512_storeu_ps(output + oc*WOUT*WOUT + 9*16, sum9);
-        _mm512_mask_storeu_ps(output + oc*WOUT*WOUT + 10*16, 0x01ff, sum10);
+        LOAD_OUTPUT_SCRATCH;
+        PREFETCH_OUTPUT_SCRATCH;
+        MY_FMADD;
+        STORE_OUTPUT_SCRATCH;
+#undef STORE_OUTPUT_SCRATCH
       } // for each oc
     } // for each ic block
+
+    ic_block = in_channels/COL_MAJOR_IC_BLOCK - 1;
+    if (num_of_oc_groups != nthreads) barriers[oc_gid]->wait(tid_in_oc_group);
+
+    for (int ic = ic_begin; ic < ic_end; ++ic) {
+      COPY_INPUT_TO_SCRATCH;
+#undef COPY_INPUT_TO_SCRATCH
+    }
+
+    if (num_of_oc_groups != nthreads) barriers[oc_gid]->wait(tid_in_oc_group);
+
+#ifdef COL_MAJOR_OC_BLOCK
+    oc_offset = oc_block*COL_MAJOR_OC_BLOCK;
+    for (int oc = oc_block*COL_MAJOR_OC_BLOCK; oc < (oc_block + 1)*COL_MAJOR_OC_BLOCK; ++oc) {
+#else
+    oc_offset = 0;
+    for (int oc = oc_begin; oc < oc_end; ++oc) {
+#endif
+
+      LOAD_OUTPUT_SCRATCH;
+#undef LOAD_OUTPUT_SCRATCH
+      PREFETCH_OUTPUT_SCRATCH;
+#undef PREFETCH_OUTPUT_SCRATCH
+
+      MY_FMADD;
+#undef MY_FMADD
+
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 0)*WOUT, 0x1fff, sum0);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 1)*WOUT, 0x1fff, sum1);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 2)*WOUT, 0x1fff, sum2);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 3)*WOUT, 0x1fff, sum3);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 4)*WOUT, 0x1fff, sum4);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 5)*WOUT, 0x1fff, sum5);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 6)*WOUT, 0x1fff, sum6);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 7)*WOUT, 0x1fff, sum7);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 8)*WOUT, 0x1fff, sum8);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 9)*WOUT, 0x1fff, sum9);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 10)*WOUT, 0x1fff, sum10);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 11)*WOUT, 0x1fff, sum11);
+      _mm512_mask_storeu_ps(output + (oc*WOUT + 12)*WOUT, 0x1fff, sum12);
+    } // for each oc
 #ifdef COL_MAJOR_OC_BLOCK
   } // for each oc block
 #endif
@@ -3416,7 +3574,7 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
       for (int h = 0; h < WOUT; ++h) {
         for (int w = 0; w < WOUT; ++w) {
           int k = kidx[b]/176%K + kidx[b]/176/K*(WIDTH + PAD); // /176%K + kidx[b]/176/K*(WIDTH + PAD);
-          sum[h][w] += values[b]*input[k + h*(WIDTH + PAD) + w];
+          sum[h][w] += values[b]*input_padded[k + h*(WIDTH + PAD) + w];
         }
       }
     }
@@ -3440,7 +3598,7 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
         for (int h = 0; h < WOUT; ++h) {
           for (int w = 0; w < WOUT; ++w) {
             int k = kidx[b]/176%K + kidx[b]/176/K*(WIDTH + PAD); // /176%K + kidx[b]/176/K*(WIDTH + PAD);
-            sum[h][w] += values[b]*input[k + (ic*(WIDTH + PAD) + h)*(WIDTH + PAD) + w];
+            sum[h][w] += values[b]*input_padded[k + (ic*(WIDTH + PAD) + h)*(WIDTH + PAD) + w];
           }
         }
       }

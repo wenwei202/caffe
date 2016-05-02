@@ -857,7 +857,7 @@ static void sconv2_fused(
 template<>
 void caffe_cpu_sconv(
     // input features
-    const float *input, int in_channels,
+    const float *input_padded, const float *input, int in_channels,
     int height, int width,
     int pad_h, int pad_w,
     int stride_h, int stride_w,
@@ -868,7 +868,7 @@ void caffe_cpu_sconv(
     const int **rowptr_blocked, const int **colidx_blocked, const float **values_blocked,
     int ncolblocks,
     const int *blockptr, const int *kidx, const float *values_colmajor,
-    float *input_scratch,
+    float *input_scratch, float *output_colmajor_scratch,
     // bias (for the case when bias is fused with convolution)
     const float *bias, const float *bias_multiplier,
     // pooling (for the case when pooling is fused with convolution)
@@ -902,7 +902,7 @@ void caffe_cpu_sconv(
             int input_row = kernel_row * dilation_h + output_row * stride_h;
             int input_col = kernel_col * dilation_w + output_col * stride_w;
 
-            sum += values[j]*input[(in_channel * (height + pad_h) + input_row) * (width + pad_w) + input_col];
+            sum += values[j]*input_padded[(in_channel * (height + pad_h) + input_row) * (width + pad_w) + input_col];
           }
 
           output[(out_channel * output_h + output_row) * output_w + output_col] = sum;
@@ -914,7 +914,7 @@ void caffe_cpu_sconv(
 #if 1 //defined(__AVX2__) && defined(__INTEL_COMPILER)
     if (height == 27 && width == 27 && pad_h == 2 && pad_w == 2 && stride_h == 1 && stride_w == 1 && kernel_w == 5 && kernel_h == 5) {
       sconv2_fused(
-        input,
+        input_padded,
         rowptr, colidx, values,
         bias,
         pool_top, mask,
@@ -929,10 +929,10 @@ void caffe_cpu_sconv(
 //          bias,
 //          output, out_channels, scratch);
       sconv345_ver2(
-          input, in_channels,
+          input_padded, input, in_channels,
           blockptr, kidx, values_colmajor,
           bias,
-          output, out_channels, input_scratch);
+          output, out_channels, input_scratch, output_colmajor_scratch);
     }
     else
 #endif
@@ -967,7 +967,7 @@ void caffe_cpu_sconv(
               int k = 0;
               for (int h = hbegin; h < hend; ++h) {
                 for (int w = wbegin; w < wend; ++w, ++k) {
-                  sum[k] += c*input[off + (h*WIDTH + w)*STRIDE];
+                  sum[k] += c*input_padded[off + (h*WIDTH + w)*STRIDE];
                 }
               }
             }
@@ -1001,7 +1001,7 @@ void caffe_cpu_sconv(
                 int k = 0;
                 for (int h = hbegin; h < hend; ++h) {
                   for (int w = wbegin; w < wend; ++w, ++k) {
-                    sum[k] += c*input[off + (h*WIDTH + w)*STRIDE];
+                    sum[k] += c*input_padded[off + (h*WIDTH + w)*STRIDE];
                   }
                 }
               }
@@ -1084,7 +1084,7 @@ void caffe_cpu_sconv(
       for (int output_row = 0; output_row < output_h; ++output_row) {
         for (int output_col = 0; output_col < output_w; ++output_col) {
 
-          const float *in = input + output_row * stride_h * (width + pad_w) + output_col * stride_w;
+          const float *in = input_padded + output_row * stride_h * (width + pad_w) + output_col * stride_w;
 
           for (int out_channel = 0; out_channel < out_channels; ++out_channel) {
             float sum = 0;
