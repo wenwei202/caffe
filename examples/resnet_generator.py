@@ -74,6 +74,15 @@ def add_BN_layer(net_msg,name,bottom):
     scalelayer.type = 'Scale'
     scalelayer.bottom._values.append(batchnormlayer.name)
     scalelayer.top._values.append(name)
+
+    lr_param = caffe_pb2.ParamSpec()
+    lr_param.lr_mult = 1
+    scalelayer.param._values.append(lr_param)
+    lr_param = caffe_pb2.ParamSpec()
+    lr_param.lr_mult = 2
+    lr_param.decay_mult = 0
+    scalelayer.param._values.append(lr_param)
+
     scalelayer.scale_param.bias_term = True
     scalelayer.scale_param.filler.type = 'msra'
 
