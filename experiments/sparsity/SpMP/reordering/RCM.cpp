@@ -323,7 +323,8 @@ int bfs_(
   }
 
   while (true) {
-    synk::Barrier::getInstance()->wait(tid);
+#pragma omp barrier
+    //synk::Barrier::getInstance()->wait(tid);
 #pragma omp master
     {
       for (int t = 0; t < nthreads; ++t) {
@@ -341,7 +342,8 @@ int bfs_(
       }
       if (OUTPUT_VISITED) *numOfVisited += qTailPrefixSum[nthreads];
     }
-    synk::Barrier::getInstance()->wait(tid);
+#pragma omp barrier
+    //synk::Barrier::getInstance()->wait(tid);
 
     if (qTailPrefixSum[nthreads] == 0 || numLevels == -1) break;
 
@@ -392,7 +394,8 @@ int bfs_(
         q[1 - numLevels%2] + tid*A->m,
         sizeof(int)*(qTailPrefixSum[tid + 1] - qTailPrefixSum[tid]));
     }
-    synk::Barrier::getInstance()->wait(tid);
+#pragma omp barrier
+    //synk::Barrier::getInstance()->wait(tid);
 
     int *tailPtr = q[numLevels%2] + tid*A->m;
     int *rowptr = rowptrs + tid*A->m;

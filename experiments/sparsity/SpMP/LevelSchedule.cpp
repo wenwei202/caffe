@@ -207,11 +207,11 @@ void findLevels_(
   int qTailPrefixSum[NUM_MAX_THREADS] = { 0 };
   volatile int endSynchronized[1] = { 0 };
 
-#ifdef LOADIMBA
+/*#ifdef LOADIMBA
   synk::LoadImba *bar = synk::LoadImba::getInstance();
 #else
   synk::Barrier *bar = synk::Barrier::getInstance();
-#endif
+#endif*/
 
 #pragma omp parallel
   {
@@ -230,18 +230,21 @@ void findLevels_(
     if (prevIterSerial) {
       if (0 == tid) {
         if (qTail[0] == 0) {
-          bar->wait(tid); // wake up other threads
+#pragma omp barrier
+          //bar->wait(tid); // wake up other threads
           break;
         }
 #define THRESH 64
         currIterSerial = qTail[0] < THRESH*2;
         if (!currIterSerial) {
           *endSynchronized = begin;
-          bar->wait(tid); // wake up other threads
+#pragma omp barrier
+          //bar->wait(tid); // wake up other threads
           end = begin + qTail[0];
 
           qTailPrefixSum[1] = qTail[0];
-          bar->wait(tid);
+#pragma omp barrier
+          //bar->wait(tid);
         }
         else {
           end = begin + qTail[0];
@@ -254,12 +257,14 @@ void findLevels_(
         end = begin + qTail[0];
         qTailPrefixSum[tid + 1] = qTail[0];
         nnzPrefixSum[tid + 1] = nnzPrefixSum[1];
-        bar->wait(tid);
+#pragma omp barrier
+        //bar->wait(tid);
       }
     }
     else {
       tTemp = __rdtsc();
-      bar->wait(tid);
+#pragma omp barrier
+      //bar->wait(tid);
       if (0 == tid) tt2 += __rdtsc() - tTemp;
 
       tTemp = __rdtsc();
@@ -313,7 +318,8 @@ void findLevels_(
 
     if (currIterSerial) {
       if (!prevIterSerial) {
-        bar->wait(tid);
+#pragma omp barrier
+        //bar->wait(tid);
       }
 
       if (0 == tid) {
@@ -349,7 +355,8 @@ void findLevels_(
       }
       else {
         assert(!prevIterSerial);
-        bar->wait(tid); // waiting for the master thread
+#pragma omp barrier
+        //bar->wait(tid); // waiting for the master thread
         if (qTail[0] == 0) break;
       }
     }
@@ -396,7 +403,8 @@ void findLevels_(
       if (0 == tid) tt4 += __rdtsc() - tTemp;
 
       tTemp = __rdtsc();
-      bar->wait(tid);
+#pragma omp barrier
+      //bar->wait(tid);
       if (0 == tid) tt5 += __rdtsc() - tTemp;
 
       tTemp = __rdtsc();
