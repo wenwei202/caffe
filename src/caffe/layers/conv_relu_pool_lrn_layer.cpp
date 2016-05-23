@@ -359,8 +359,11 @@ void ConvolutionReLUPoolLRNLayer<float>::Forward_cpu(const vector<Blob<float>*>&
 
         if (0 == tid) pool_time -= omp_get_wtime();
 
+#if defined(__AVX2__) || defined(__AVX512__)
         if (this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_DCONV &&
-            this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+            this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV)
+#endif
+        {
           // pooling is fused with direct convolution
 
           switch (this->layer_param_.pooling_param().pool()) {
@@ -677,11 +680,22 @@ void ConvolutionReLUPoolLRNLayer<float>::Forward_cpu(const vector<Blob<float>*>&
           barriers[gid]->wait(tid_in_group);
         }
 
+#ifdef __AVX2__
         for (int i = ibegin*8; i < iend*8; i += 8) {
           __m256 v = _mm256_pow_ps(_mm256_load_ps(scale_data + i), _mm256_set1_ps(-beta_));
           v = _mm256_mul_ps(v, _mm256_load_ps(pool_top + offset + i));
           _mm256_store_ps(top_data + offset + i, v);
         }
+#else
+        for (int i = ibegin*8; i < iend*8; i += 8) {
+          __m128 v = _mm_pow_ps(_mm_load_ps(scale_data + i), _mm_set1_ps(-beta_));
+          v = _mm_mul_ps(v, _mm_load_ps(pool_top + offset + i));
+          _mm_store_ps(top_data + offset + i, v);
+          v = _mm_pow_ps(_mm_load_ps(scale_data + i + 4), _mm_set1_ps(-beta_));
+          v = _mm_mul_ps(v, _mm_load_ps(pool_top + offset + i + 4));
+          _mm_store_ps(top_data + offset + i + 4, v);
+        }
+#endif
 
         if (0 == tid) lrn_time += omp_get_wtime();
       } // for (int n = 0; n < this->num_; ++n)

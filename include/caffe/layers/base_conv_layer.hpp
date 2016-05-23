@@ -22,11 +22,7 @@ namespace caffe {
 template <typename Dtype>
 class BaseConvolutionLayer : public Layer<Dtype> {
  public:
-  explicit BaseConvolutionLayer(const LayerParameter& param)
-      : Layer<Dtype>(param), weight_interleaved_(NULL), input_padded_(NULL), output_scratch_(NULL), input_scratch_(NULL), output_colmajor_scratch_(NULL) {
-	  //is_sparse_format_weights_ = false;
-	  is_concatenating_weights_features_ = false;
-  }
+  explicit BaseConvolutionLayer(const LayerParameter& param);
   virtual ~BaseConvolutionLayer();
   virtual void WeightAlign();
   virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
@@ -105,7 +101,7 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   int conv_out_channels_;
   int conv_in_channels_;
 
- private:
+ protected:
   // wrap im2col/col2im so we don't have to remember the (long) argument lists
   inline void conv_im2col_cpu(const Dtype* data, Dtype* col_buff,int* all_zero_mask = NULL) {
     if (!force_nd_im2col_ && num_spatial_axes_ == 2) {
@@ -193,9 +189,9 @@ class BaseConvolutionLayer : public Layer<Dtype> {
 
   //Three blobs for sparse weight storage in CSC/CSR format
   //bool is_sparse_format_weights_; //if use the sparse storage format of weights
-  Blob<Dtype> nz_weight_values_;//nonzero elements
-  Blob<int> nz_weight_indices_;//index of nonzero
-  Blob<int> nz_weight_index_pointers_;//pointer(index) of indices
+//  Blob<Dtype> nz_weight_values_;//nonzero elements
+//  Blob<int> nz_weight_indices_;//index of nonzero
+//  Blob<int> nz_weight_index_pointers_;//pointer(index) of indices
   bool is_concatenating_weights_features_; //if use concatenation scheme to compress dense weights and features together
   Blob<int> dense_feature_map_mask_;//to skip all zero rows in col_buffer_
   Blob<int> col_buf_mask_;
@@ -205,17 +201,32 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   Dtype *weight_interleaved_; /**< JSP: interleave 8 output channels to vectorize over output channels */
   Dtype *input_padded_;
   Dtype *output_scratch_;
-  Dtype *output_colmajor_scratch_;
+//  Dtype *output_colmajor_scratch_;
+  Dtype *input_interleaved_;
+//  Dtype *output_interleaved_;
+  Dtype *input_aligned_;
   //Blob<Dtype> connectivity_mask_;//0.0 means the connection is off, 1.0 means ON
+
+  vector<int *> weight_rowptr_;
+  vector<int *> weight_colidx_;
+  vector<Dtype *> weight_values_;
 
   vector<int *> weight_rowptr_blocked_;
   vector<int *> weight_colidx_blocked_;
   vector<Dtype *> weight_values_blocked_;
 
-  vector<int *> weight_blockptr_colmajor_;
-  vector<int *> weight_kidx_colmajor_;
-  vector<Dtype *> weight_values_colmajor_;
-  Dtype *input_scratch_;
+//  vector<int *> weight_blockptr_colmajor_;
+//  vector<int *> weight_kidx_colmajor_;
+//  vector<Dtype *> weight_values_colmajor_;
+//  Dtype *input_scratch_;
+
+//  vector<int *> weight_rowptr_interleaved_;
+//  vector<int *> weight_colidx_interleaved_;
+//  vector<Dtype *> weight_values_interleaved_;
+
+  vector<int *> weight_rowptr_split_;
+  vector<int *> weight_colidx_split_;
+  vector<Dtype *> weight_values_split_;
 };
 
 }  // namespace caffe

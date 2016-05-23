@@ -11,6 +11,7 @@
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/math_functions_intel.hpp"
 #include "caffe/layers/conv_relu_pool_lrn_layer.hpp"
+#include "caffe/layers/conv_relu_pool_layer.hpp"
 #include "caffe/util/conv.hpp"
 #include "CSR.hpp"
 #include "reordering/BFSBipartite.hpp"
@@ -18,13 +19,22 @@
 namespace caffe {
 
 template <typename Dtype>
+BaseConvolutionLayer<Dtype>::BaseConvolutionLayer(const LayerParameter& param)
+    : Layer<Dtype>(param),
+      /*weight_interleaved_(NULL), */input_padded_(NULL), output_scratch_(NULL)
+      /*, input_scratch_(NULL), output_colmajor_scratch_(NULL)*/ {
+  //is_sparse_format_weights_ = false;
+  is_concatenating_weights_features_ = false;
+}
+
+template <typename Dtype>
 BaseConvolutionLayer<Dtype>::~BaseConvolutionLayer()
 {
-  free(weight_interleaved_);
+//  free(weight_interleaved_);
   free(input_padded_);
   free(output_scratch_);
-  free(input_scratch_);
-  free(output_colmajor_scratch_);
+//  free(input_scratch_);
+//  free(output_colmajor_scratch_);
 
   for (int i = 0; i < weight_rowptr_blocked_.size(); ++i) {
     free(weight_rowptr_blocked_[i]);
@@ -32,20 +42,69 @@ BaseConvolutionLayer<Dtype>::~BaseConvolutionLayer()
     free(weight_values_blocked_[i]);
   }
 
-  for (int i = 0; i < weight_blockptr_colmajor_.size(); ++i) {
-    free(weight_blockptr_colmajor_[i]);
-    free(weight_kidx_colmajor_[i]);
-    free(weight_values_colmajor_[i]);
+  for (int i = 0; i < weight_rowptr_.size(); ++i) {
+    free(weight_rowptr_[i]);
+    free(weight_colidx_[i]);
+    free(weight_values_[i]);
   }
+
+//  for (int i = 0; i < weight_blockptr_colmajor_.size(); ++i) {
+//    free(weight_blockptr_colmajor_[i]);
+//    free(weight_kidx_colmajor_[i]);
+//    free(weight_values_colmajor_[i]);
+//  }
+
+//  for (int i = 0; i < weight_colidx_interleaved_.size(); ++i) {
+//    free(weight_rowptr_interleaved_[i]);
+//    free(weight_colidx_interleaved_[i]);
+//    free(weight_values_interleaved_[i]);
+//  }
 }
 
-template <typename Dtype>
-void BaseConvolutionLayer<Dtype>::WeightAlign(){
+bool barrier_initialized = false;
+
+template <>
+void BaseConvolutionLayer<double>::WeightAlign(){
+  NOT_IMPLEMENTED;
+}
+
+template <>
+void BaseConvolutionLayer<float>::WeightAlign(){
+
+  if (!barrier_initialized) {
+    int nthreads = omp_get_max_threads();
+    int nthread_groups = nthreads;
+#ifdef __AVX512F__
+    nthread_groups = NTILES;
+#else
+  //  nthread_groups = nthreads/2;
+#endif
+
+    assert(nthreads%nthread_groups == 0);
+    int nthreads_per_group = nthreads/nthread_groups;
+    if (nthread_groups != nthreads) {
+      for (int i = 0; i < nthread_groups; ++i) {
+        barriers[i] = new synk::Barrier(1, nthreads_per_group);
+      }
+#pragma omp parallel
+      {
+        assert(omp_get_num_threads() == nthreads);
+
+        int tid = omp_get_thread_num();
+        int gid = tid/nthreads_per_group;
+        int tid_in_group = tid%nthreads_per_group;
+
+        barriers[gid]->init(tid_in_group);
+      }
+    }
+    barrier_initialized = true;
+  }
+
 	CHECK_EQ(this->blobs_[0]->num_axes(),4);//caffe now supports any dimension
 	//is_sparse_format_weights_ = false;
 	const LayerParameter& layerparam = this->layer_param();
 	LOG(INFO)<<"layer\t"<<layerparam.name()<<"\t"<<"has sparsity of "<< this->blobs_[0]->GetSparsity();
-	this->blobs_[0]->WriteToNistMMIO(layerparam.name()+".weight");
+//	this->blobs_[0]->WriteToNistMMIO(layerparam.name()+".weight");
 
 	ConvolutionParameter conv_param = this->layer_param_.convolution_param();
 	const int M = this->blobs_[0]->shape(0)/group_;
@@ -54,16 +113,30 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 	const int row_offset = this->blobs_[0]->shape(0)/group_ + 1;
 	int masked_col_num = 0;
 	int left_cols = 0;
-	Dtype group_sparsity = 0;
+	float group_sparsity = 0;
 	switch(conv_param.conv_mode()){
 		case caffe::ConvolutionParameter_ConvMode_LOWERED_CSRMM:
 			LOG(INFO)<<"ConvolutionParameter_ConvMode_LOWERED_CSRMM";
+
+      weight_rowptr_.resize(group_);
+      weight_colidx_.resize(group_);
+      weight_values_.resize(group_);
+
 			for (int g = 0; g < group_; ++g) {
+        int nnz = 0;
+        for (int i = 0; i < M*N; ++i) {
+          if (this->blobs_[0]->cpu_data()[i] != 0) ++nnz;
+        }
+
+        posix_memalign((void **)&weight_rowptr_[g], 4096, sizeof(int)*(M + 1));
+        posix_memalign((void **)&weight_colidx_[g], 4096, sizeof(int)*nnz);
+        posix_memalign((void **)&weight_values_[g], 4096, sizeof(float)*nnz);
+
 				caffe_cpu_sparse_dense2csr(M, N,
 						this->blobs_[0]->mutable_cpu_data() + weight_offset * g,
-						nz_weight_values_.mutable_cpu_data()+ weight_offset * g,
-						nz_weight_indices_.mutable_cpu_data()+ weight_offset * g,
-						nz_weight_index_pointers_.mutable_cpu_data() + row_offset * g);
+						weight_values_[g],
+						weight_colidx_[g],
+						weight_rowptr_[g]);
 			}
 			break;
 		case caffe::ConvolutionParameter_ConvMode_LOWERED_CCNMM:
@@ -80,8 +153,8 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 					masked_col_num++;
 				}
 			}
-			group_sparsity = (Dtype)masked_col_num/(Dtype)col_buf_mask_.count();
-			LOG(INFO) << Layer<Dtype>::layer_param().name() << " column sparsity: " << group_sparsity;
+			group_sparsity = (float)masked_col_num/(float)col_buf_mask_.count();
+			LOG(INFO) << Layer<float>::layer_param().name() << " column sparsity: " << group_sparsity;
 			is_concatenating_weights_features_ = true;
 
 			// compress weight matrix
@@ -107,23 +180,50 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
         int kernel_h = kernel_shape_.cpu_data()[0];
         int kernel_w = kernel_shape_.cpu_data()[1];
 
-        int ncolblocks = conv_in_channels_/COL_BLOCK;
+        int col_block_size = COL_BLOCK;
+        if (conv_in_channels_ == 1024) {
+          // Overfeat conv5
+          col_block_size = 128;
+        }
+        int ncolblocks = conv_in_channels_/col_block_size;
+        LOG(INFO) << "ncolblocks " << ncolblocks;
         weight_rowptr_blocked_.resize(ncolblocks);
         weight_colidx_blocked_.resize(ncolblocks);
         weight_values_blocked_.resize(ncolblocks);
         std::vector<int> nnzs_of_col_blocks(ncolblocks, 0);
 
-        weight_blockptr_colmajor_.resize(group_);
-        weight_kidx_colmajor_.resize(group_);
-        weight_values_colmajor_.resize(group_);
+        weight_rowptr_.resize(group_);
+        weight_colidx_.resize(group_);
+        weight_values_.resize(group_);
+
+//        weight_blockptr_colmajor_.resize(group_);
+//        weight_kidx_colmajor_.resize(group_);
+//        weight_values_colmajor_.resize(group_);
+
+        weight_rowptr_split_.resize(group_);
+        weight_colidx_split_.resize(group_);
+        weight_values_split_.resize(group_);
+
+//        weight_rowptr_interleaved_.resize(ncolblocks);
+//        weight_colidx_interleaved_.resize(ncolblocks);
+//        weight_values_interleaved_.resize(ncolblocks);
 
 				for (int g = 0; g < group_; ++g) {
+				  int nnz = 0;
+				  for (int i = 0; i < M*N; ++i) {
+				    if (this->blobs_[0]->cpu_data()[weight_offset*g + i] != 0) ++nnz;
+				  }
+
+	        posix_memalign((void **)&weight_rowptr_[g], 4096, sizeof(int)*(M + 1));
+	        posix_memalign((void **)&weight_colidx_[g], 4096, sizeof(int)*nnz);
+	        posix_memalign((void **)&weight_values_[g], 4096, sizeof(float)*nnz);
+
 					// first create a CSR matrix as for LOWERED_CSRMM
 					caffe_cpu_sparse_dense2csr(M, N,
 							this->blobs_[0]->mutable_cpu_data() + weight_offset * g,
-							nz_weight_values_.mutable_cpu_data()+ weight_offset * g,
-							nz_weight_indices_.mutable_cpu_data()+ weight_offset * g,
-							nz_weight_index_pointers_.mutable_cpu_data() + row_offset * g);
+	            weight_values_[g],
+	            weight_colidx_[g],
+	            weight_rowptr_[g]);
 
 					// declare variables for sparsity statistics
 					vector<vector<int> > nnz_per_channel_pair(M);
@@ -135,58 +235,80 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 					int num_of_non_zero_kernels = 0;
           int num_of_non_zero_out_channels = 0;
 
-					const int *rowptr = nz_weight_index_pointers_.cpu_data() + row_offset * g;
-          int nnz = rowptr[M];
-          posix_memalign((void **)&weight_blockptr_colmajor_[g], 4096, sizeof(int)*(conv_in_channels_/group_/COL_MAJOR_IC_BLOCK*M + 1));
-          memset(weight_blockptr_colmajor_[g], 0, sizeof(int)*(conv_in_channels_/group_/COL_MAJOR_IC_BLOCK*M + 1));
-          posix_memalign((void **)&weight_kidx_colmajor_[g], 4096, sizeof(int)*nnz);
-          posix_memalign((void **)&weight_values_colmajor_[g], 4096, sizeof(Dtype)*nnz);
+					const int *rowptr = weight_rowptr_[g];
+          assert(nnz == rowptr[M]);
+//          posix_memalign((void **)&weight_blockptr_colmajor_[g], 4096, sizeof(int)*(conv_in_channels_/group_*M + 1));
+//          memset(weight_blockptr_colmajor_[g], 0, sizeof(int)*(conv_in_channels_/group_*M + 1));
+//          posix_memalign((void **)&weight_kidx_colmajor_[g], 4096, sizeof(int)*nnz);
+//          posix_memalign((void **)&weight_values_colmajor_[g], 4096, sizeof(float)*nnz);
+          int VLEN = 16;
+
+          posix_memalign((void **)&weight_rowptr_split_[g], 4096, sizeof(int)*(ncolblocks*M*kernel_w + 1));
+          memset(weight_rowptr_split_[g], 0, sizeof(int)*(ncolblocks*M*kernel_w + 1));
+          posix_memalign((void **)&weight_colidx_split_[g], 4096, sizeof(int)*nnz);
+          posix_memalign((void **)&weight_values_split_[g], 4096, sizeof(float)*nnz);
+
+//          posix_memalign((void **)&weight_rowptr_interleaved[g], 4096, sizeof(int)*(M + 1));
+//          memcpy(weight_rowptr_interleaved[g], rowptr, sizeof(int)*(M + 1));
+//          posix_memalign((void **)&weight_colidx_interleaved_[g], 4096, sizeof(int)*nnz);
+//          posix_memalign((void **)&weight_values_interleaved[g], 4096, sizeof(float)*nnz);
+//          memcpy(weight_values_interleaved[g], rowptr, sizeof(int)*(M + 1));
+
+          int col_major_ic_block = get_col_major_ic_block(nnz, M, conv_in_channels_/group_);
+          assert(conv_in_channels_/group_%col_major_ic_block == 0);
+          LOG(INFO) << "col_major_ic_block = " << col_major_ic_block;
 
 					// transform the indices for direct convolution
-					int *colidx = nz_weight_indices_.mutable_cpu_data() + weight_offset*g;
-					for (int out_channel = 0; out_channel < M; ++out_channel) {
-						for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
+					int *colidx = weight_colidx_[g];
+					for (int oc = 0; oc < M; ++oc) {
+						for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
 							int col = colidx[j];
 
 							int kernel_col = col%kernel_w;
 							int kernel_row = (col/kernel_w)%kernel_h;
-							int in_channel = col/(kernel_w*kernel_h);
-							assert(in_channel < conv_in_channels_/group_);
+							int ic = col/(kernel_w*kernel_h);
+							assert(ic < conv_in_channels_/group_);
 
-							colidx[j] = (in_channel*(height + pad_h) + kernel_row)*(width + pad_w) + kernel_col;
+							colidx[j] = (ic*(height + pad_h) + kernel_row)*(width + pad_w) + kernel_col;
 
-							int bcol = in_channel/COL_BLOCK + ncolblocks/group_*g;
-							nnzs_of_col_blocks[bcol]++;
+							int bcol = ic/col_block_size + ncolblocks/group_*g;
+							++nnzs_of_col_blocks[bcol];
 
-							int bcol_colmajor = in_channel/COL_MAJOR_IC_BLOCK;
-							++weight_blockptr_colmajor_[g][bcol_colmajor*M + out_channel + 1];
+							++weight_rowptr_split_[g][(ic/col_block_size*M + oc)*kernel_w + (kernel_w - 1 - kernel_col) + 1];
 
-							++nnz_per_channel_pair[out_channel][in_channel];
+//							int bcol_colmajor = ic/col_major_ic_block;
+//							++weight_blockptr_colmajor_[g][bcol_colmajor*M + oc + 1];
+
+							++nnz_per_channel_pair[oc][ic];
               ++nnz_per_oc_fiber[col];
 						}
-            if (rowptr[out_channel + 1] > rowptr[out_channel]) {
+            if (rowptr[oc + 1] > rowptr[oc]) {
               num_of_non_zero_out_channels++;
             }
 
 						for (int in_channel = 0; in_channel < conv_in_channels_; ++in_channel) {
-							if (nnz_per_channel_pair[out_channel][in_channel] != 0) {
+							if (nnz_per_channel_pair[oc][in_channel] != 0) {
 								++num_of_non_zero_kernels;
 							}
 						}
 					}
 
-					for (int i = 1; i < conv_in_channels_/group_/COL_MAJOR_IC_BLOCK*M; ++i) {
-					  weight_blockptr_colmajor_[g][i + 1] += weight_blockptr_colmajor_[g][i];
+//					for (int i = 1; i < conv_in_channels_/group_/col_major_ic_block*M; ++i) {
+//					  weight_blockptr_colmajor_[g][i + 1] += weight_blockptr_colmajor_[g][i];
+//					}
+//					assert(weight_blockptr_colmajor_[g][conv_in_channels_/group_/col_major_ic_block*M] == nnz);
+					for (int i = 1; i < ncolblocks*M*kernel_w; ++i) {
+					  weight_rowptr_split_[g][i + 1] += weight_rowptr_split_[g][i];
 					}
-					assert(weight_blockptr_colmajor_[g][conv_in_channels_/group_/COL_MAJOR_IC_BLOCK*M] == nnz);
+					assert(weight_rowptr_split_[g][ncolblocks*M*kernel_w] == nnz);
 
-          for (int out_channel = 0; out_channel < M; ++out_channel) {
-            int nnz_of_oc = 0;
-            for (int i = 0; i < conv_in_channels_/group_/COL_MAJOR_IC_BLOCK; ++i) {
-              nnz_of_oc += weight_blockptr_colmajor_[g][i*M + out_channel + 1] - weight_blockptr_colmajor_[g][i*M + out_channel];
-            }
-            assert(nnz_of_oc == rowptr[out_channel + 1] - rowptr[out_channel]);
-          }
+//          for (int out_channel = 0; out_channel < M; ++out_channel) {
+//            int nnz_of_oc = 0;
+//            for (int i = 0; i < conv_in_channels_/group_/col_major_ic_block; ++i) {
+//              nnz_of_oc += weight_blockptr_colmajor_[g][i*M + out_channel + 1] - weight_blockptr_colmajor_[g][i*M + out_channel];
+//            }
+//            assert(nnz_of_oc == rowptr[out_channel + 1] - rowptr[out_channel]);
+//          }
 
           int num_of_non_zero_oc_fibers = 0;
           for (int i = 0 ; i < N; ++i) {
@@ -211,6 +333,7 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 					LOG(INFO) << "oc-mode fiber sparsity " << 1 - (double)num_of_non_zero_oc_fibers/N;
 					LOG(INFO) << "oc-mode slice sparsity " << 1 - (double)num_of_non_zero_out_channels/M;
 					LOG(INFO) << "k-mode fiber sparsity " << 1 - (double)num_of_non_zero_kernels/(M*(conv_in_channels_/group_));
+					LOG(INFO) << "nnz = " << nnz;
 
 					SpMP::CSR A(M, conv_in_channels_/group_, num_of_non_zero_kernels);
 					nnz = 0;
@@ -248,7 +371,8 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 				for (int i = 0; i < ncolblocks; ++i) {
 				  posix_memalign((void **)&weight_rowptr_blocked_[i], 4096, sizeof(int)*(M + 1));
 				  posix_memalign((void **)&weight_colidx_blocked_[i], 4096, sizeof(int)*nnzs_of_col_blocks[i]);
-				  posix_memalign((void **)&weight_values_blocked_[i], 4096, sizeof(Dtype)*nnzs_of_col_blocks[i]);
+				  posix_memalign((void **)&weight_values_blocked_[i], 4096, sizeof(float)*nnzs_of_col_blocks[i]);
+//				  posix_memalign((void **)&weight_colidx_interleaved_[i], 4096, sizeof(int)*nnzs_of_col_blocks[i]);
 				  nnzs_of_col_blocks[i] = 0;
 				  weight_rowptr_blocked_[i][0] = 0;
 				}
@@ -265,84 +389,100 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 
         const int SCRATCH_SIZE_PER_IC = output_h*16;
 
+        int max_col_major_ic_block = 0;
 				for (int g = 0; g < group_; ++g) {
-          const int *rowptr = nz_weight_index_pointers_.cpu_data() + row_offset * g;
-          int *colidx = nz_weight_indices_.mutable_cpu_data() + weight_offset * g;
-          Dtype *values = nz_weight_values_.mutable_cpu_data() + weight_offset * g;
+          const int *rowptr = weight_rowptr_[g];
+          int *colidx = weight_colidx_[g];
+          float *values = weight_values_[g];
 
-				  for (int out_channel = 0; out_channel < M; ++out_channel) {
-				    for (int j = rowptr[out_channel]; j < rowptr[out_channel + 1]; ++j) {
+          int nnz = rowptr[M];
+          int col_major_ic_block = get_col_major_ic_block(nnz, M, conv_in_channels_/group_);
+          max_col_major_ic_block = std::max(max_col_major_ic_block, col_major_ic_block);
+
+				  for (int oc = 0; oc < M; ++oc) {
+				    for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
               int c = colidx[j];
 
               int kernel_col = c%(width + pad_w);
               int kernel_row = c/(width + pad_w)%(height + pad_h);
-              int in_channel = c/(width + pad_w)/(height + pad_h);
-              int bcol = in_channel/COL_BLOCK + ncolblocks/group_*g;
+              int ic = c/(width + pad_w)/(height + pad_h);
+              int bcol = ic/col_block_size + ncolblocks/group_*g;
 
               weight_colidx_blocked_[bcol][nnzs_of_col_blocks[bcol]] = c;
               weight_values_blocked_[bcol][nnzs_of_col_blocks[bcol]] = values[j];
+              const int VLEN = 16;
+//              weight_colidx_interleaved_[bcol][nnzs_of_col_blocks[bcol]] = c*VLEN;
               nnzs_of_col_blocks[bcol]++;
 
-              int blockid = in_channel/COL_MAJOR_IC_BLOCK*M + out_channel;
-              int offset = weight_blockptr_colmajor_[g][blockid];
-              weight_kidx_colmajor_[g][offset] =
-                  ((in_channel%COL_MAJOR_IC_BLOCK*kernel_w + kernel_col)*(height + pad_h) + kernel_row)*16;
-              weight_values_colmajor_[g][offset] = values[j];
-              ++weight_blockptr_colmajor_[g][blockid];
+              int splitid = (ic/col_block_size*M + oc)*kernel_w + (kernel_w - 1 - kernel_col);
+              weight_colidx_split_[g][weight_rowptr_split_[g][splitid]] =
+                  (ic*(height + pad_h) + kernel_row)*16;
+              weight_values_split_[g][weight_rowptr_split_[g][splitid]] = values[j];
+              ++weight_rowptr_split_[g][splitid];
+
+//              int blockid = ic/col_major_ic_block*M + oc;
+//              int offset = weight_blockptr_colmajor_[g][blockid];
+//              weight_kidx_colmajor_[g][offset] =
+//                  ((ic%col_major_ic_block*kernel_w + kernel_col)*(height + pad_h) + kernel_row)*16;
+//              weight_values_colmajor_[g][offset] = values[j];
+//              ++weight_blockptr_colmajor_[g][blockid];
 				    }
 
 				    for (int i = ncolblocks/group_*g; i < ncolblocks/group_*(g + 1); ++i) {
-				      weight_rowptr_blocked_[i][out_channel + 1] = nnzs_of_col_blocks[i];
+				      weight_rowptr_blocked_[i][oc + 1] = nnzs_of_col_blocks[i];
 				    }
 				  }
 
-          for (int i = conv_in_channels_/group_/COL_MAJOR_IC_BLOCK*M - 1; i > 0; --i) {
-            weight_blockptr_colmajor_[g][i] = weight_blockptr_colmajor_[g][i - 1];
+//          for (int i = conv_in_channels_/group_/col_major_ic_block*M - 1; i > 0; --i) {
+//            weight_blockptr_colmajor_[g][i] = weight_blockptr_colmajor_[g][i - 1];
+//          }
+//          weight_blockptr_colmajor_[g][0] = 0;
+          for (int i = ncolblocks*M*kernel_w - 1; i > 0; --i) {
+            weight_rowptr_split_[g][i] = weight_rowptr_split_[g][i - 1];
           }
-          weight_blockptr_colmajor_[g][0] = 0;
-          for (int out_channel = 0; out_channel < M; ++out_channel) {
-            int nnz_of_oc = 0;
-            for (int i = 0; i < conv_in_channels_/group_/COL_MAJOR_IC_BLOCK; ++i) {
-              nnz_of_oc += weight_blockptr_colmajor_[g][i*M + out_channel + 1] - weight_blockptr_colmajor_[g][i*M + out_channel];
-            }
-            assert(nnz_of_oc == rowptr[out_channel + 1] - rowptr[out_channel]);
-          }
+          weight_rowptr_split_[g][0] = 0;
+//          for (int out_channel = 0; out_channel < M; ++out_channel) {
+//            int nnz_of_oc = 0;
+//            for (int i = 0; i < conv_in_channels_/group_/col_major_ic_block; ++i) {
+//              nnz_of_oc += weight_blockptr_colmajor_[g][i*M + out_channel + 1] - weight_blockptr_colmajor_[g][i*M + out_channel];
+//            }
+//            assert(nnz_of_oc == rowptr[out_channel + 1] - rowptr[out_channel]);
+//          }
 				} // for each group
 
-				int input_padded_len = conv_in_channels_ * (height + pad_h) * (width + pad_w) + pad_h * (width + 2 * pad_w);
-				posix_memalign((void **)&input_padded_, 4096, sizeof(float)*omp_get_max_threads()*input_padded_len);
 
-	      for (int i = 0; i < omp_get_max_threads(); ++i) {
-	        Dtype *input_padded = input_padded_ + input_padded_len*omp_get_thread_num();
-          for (int in_channel = 0; in_channel < conv_in_channels_; ++in_channel) {
-            memset(
-                input_padded + in_channel * (height + pad_h) * (width + pad_w),
-                0, sizeof(float) * pad_h * (width + pad_w));
-            for (int input_row = 0; input_row < height; ++input_row) {
-              memset(
-                  input_padded + (in_channel * (height + pad_h) + input_row + pad_h) * (width + pad_w),
-                  0, sizeof(float) * pad_w);
-            }
-          }
-          memset(
-              input_padded + conv_in_channels_ * (height + pad_h) * (width + pad_w),
-              0,
-              sizeof(float) * pad_h * (width + 2 * pad_w));
-	      }
 
 	      posix_memalign((void **)&output_scratch_, 4096, sizeof(float)*OC_BLOCK*width*16*omp_get_max_threads());
 
-	      posix_memalign(
-	          (void **)&input_scratch_,
-	          4096,
-	          sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*kernel_h*kernel_w*SCRATCH_SIZE_PER_IC);
-	      memset((void *)input_scratch_, 0, sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*kernel_h*kernel_w*SCRATCH_SIZE_PER_IC);
+//	      posix_memalign(
+//	          (void **)&input_scratch_,
+//	          4096,
+//	          sizeof(float)*omp_get_max_threads()*max_col_major_ic_block*kernel_h*kernel_w*SCRATCH_SIZE_PER_IC);
+//	      memset(input_scratch_, 0, sizeof(float)*omp_get_max_threads()*max_col_major_ic_block*kernel_h*kernel_w*SCRATCH_SIZE_PER_IC);
 
-#ifdef COL_MAJOR_OC_BLOCK
-	      posix_memalign((void **)&output_colmajor_scratch_, 4096, sizeof(float)*omp_get_max_threads()*COL_MAJOR_OC_BLOCK*SCRATCH_SIZE_PER_IC);
-#else
-	      posix_memalign((void **)&output_colmajor_scratch_, 4096, sizeof(float)*omp_get_max_threads()*M*SCRATCH_SIZE_PER_IC);
+//#ifdef COL_MAJOR_OC_BLOCK
+//	      posix_memalign((void **)&output_colmajor_scratch_, 4096, sizeof(float)*omp_get_max_threads()*COL_MAJOR_OC_BLOCK*SCRATCH_SIZE_PER_IC);
+//#else
+//	      posix_memalign((void **)&output_colmajor_scratch_, 4096, sizeof(float)*omp_get_max_threads()*M*SCRATCH_SIZE_PER_IC);
+//#endif
+
+//	      posix_memalign((void **)&input_interleaved_, 4096, sizeof(float)*this->num_*conv_in_channels_*(height + pad_h)*(width + pad_w));
+//	      memset(input_interleaved_, 0, sizeof(float)*this->num_*conv_in_channels_*(height + pad_h)*(width + pad_w));
+//	      posix_memalign((void **)&output_interleaved_, 4096, sizeof(float)*this->num_*conv_out_channels_*output_h*output_w);
+
+#ifdef __AVX512F__
+	      if (height == 13 || height == 12) {
+          int input_aligned_len = conv_in_channels_ * (height + pad_h)*16 + pad_h*16;
+          posix_memalign((void **)&input_aligned_, 4096, sizeof(float)*omp_get_max_threads()*input_aligned_len);
+          memset(input_aligned_, 0, sizeof(float)*omp_get_max_threads()*input_aligned_len);
+	      }
+//	      else
 #endif
+	      {
+	        int input_padded_len = conv_in_channels_ * (height + pad_h) * (width + pad_w) + pad_h * (width + 2 * pad_w);
+	        posix_memalign((void **)&input_padded_, 4096, sizeof(float)*omp_get_max_threads()*input_padded_len);
+	        memset(input_padded_, 4096, sizeof(float)*omp_get_max_threads()*input_padded_len);
+	      }
 
 				break;
 			}
@@ -355,14 +495,14 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 //        posix_memalign(
 //            (void **)&weight_aligned_,
 //            1024,
-//            sizeof(Dtype) * M * conv_in_channels_ * kernel_size_aligned);
+//            sizeof(float) * M * conv_in_channels_ * kernel_size_aligned);
 //        for (int g = 0; g < group_; ++g) {
 //          for (int out_channel = 0; out_channel < M; ++out_channel) {
 //            for (int in_channel = 0; in_channel < conv_in_channels_/group_; ++in_channel) {
 //              memcpy(
 //                  weight_aligned_ + ((g*M + out_channel)*(conv_in_channels_/group_) + in_channel)*kernel_size_aligned,
 //                  this->blobs_[0]->cpu_data() + weight_offset*g + (out_channel*(conv_in_channels_/group_) + in_channel)*kernel_h*kernel_w,
-//                  sizeof(Dtype)*kernel_h*kernel_w);
+//                  sizeof(float)*kernel_h*kernel_w);
 //            }
 //          }
 //        }
@@ -372,7 +512,7 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 //        posix_memalign(
 //            (void **)&weight_aligned2_,
 //            1024,
-//            sizeof(Dtype) * M * conv_in_channels_ * kernel_size_aligned2);
+//            sizeof(float) * M * conv_in_channels_ * kernel_size_aligned2);
 //        for (int g = 0; g < group_; ++g) {
 //          for (int out_channel = 0; out_channel < M; ++out_channel) {
 //            for (int in_channel = 0; in_channel < conv_in_channels_/group_; ++in_channel) {
@@ -380,11 +520,11 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 //                memcpy(
 //                    weight_aligned2_ + ((g*M + out_channel)*(conv_in_channels_/group_) + in_channel)*kernel_size_aligned2 + h*kernel_w_aligned,
 //                    this->blobs_[0]->cpu_data() + weight_offset*g + ((out_channel*(conv_in_channels_/group_) + in_channel)*kernel_h + h)*kernel_w,
-//                    sizeof(Dtype)*kernel_w);
+//                    sizeof(float)*kernel_w);
 //                memset(
 //                    weight_aligned2_ + ((g*M + out_channel)*(conv_in_channels_/group_) + in_channel)*kernel_size_aligned2 + h*kernel_w_aligned + kernel_w,
 //                    0,
-//                    sizeof(Dtype)*(kernel_w_aligned - kernel_w));
+//                    sizeof(float)*(kernel_w_aligned - kernel_w));
 //              }
 //            }
 //          }
@@ -394,7 +534,7 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
         posix_memalign(
             (void **)&weight_interleaved_,
             4096,
-            sizeof(Dtype) * M * conv_in_channels_ * kernel_h * kernel_w);
+            sizeof(float) * M * conv_in_channels_ * kernel_h * kernel_w);
         for (int g = 0; g < group_; ++g) {
           for (int out_channel_begin = 0; out_channel_begin < M; out_channel_begin += 8) {
             for (int in_channel = 0; in_channel < conv_in_channels_/group_; ++in_channel) {
@@ -417,10 +557,10 @@ void BaseConvolutionLayer<Dtype>::WeightAlign(){
 	//disconnect connections
 	if( layerparam.connectivity_mode() == caffe::LayerParameter_ConnectivityMode_DISCONNECTED_ELTWISE ){
 		LOG(INFO)<<"all zero weights of "<<layerparam.name()<<" are frozen";
-		this->blobs_[0]->Disconnect(Blob<Dtype>::ELTWISE);
+		this->blobs_[0]->Disconnect(Blob<float>::ELTWISE);
 	}else if(layerparam.connectivity_mode() == caffe::LayerParameter_ConnectivityMode_DISCONNECTED_GRPWISE){
 		LOG(INFO)<<"weights lying in all-zero groups of "<<layerparam.name()<<" are frozen";
-		this->blobs_[0]->Disconnect(Blob<Dtype>::GRPWISE, group_);
+		this->blobs_[0]->Disconnect(Blob<float>::GRPWISE, group_);
 	}
 
 }
@@ -669,9 +809,9 @@ void BaseConvolutionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
 	  index_pointers_buffer_.Reshape(1,1,1,col_buffer_.shape(1)+1);
 	  nonzero_per_rowcol_buffer_.Reshape(1,1,1,col_buffer_.shape(1));
 #endif
-	  nz_weight_values_.Reshape(1, 1, 1, this->blobs_[0]->count());//nonzero elements
-	  nz_weight_indices_.Reshape(1,1,1,nz_weight_values_.count());//index of nonzero
-	  nz_weight_index_pointers_.Reshape(1,1,1,this->blobs_[0]->shape(0)+group_);//pointer(index) of indices
+//	  nz_weight_values_.Reshape(1, 1, 1, this->blobs_[0]->count());//nonzero elements
+//	  nz_weight_indices_.Reshape(1,1,1,nz_weight_values_.count());//index of nonzero
+//	  nz_weight_index_pointers_.Reshape(1,1,1,this->blobs_[0]->shape(0)+group_);//pointer(index) of indices
   }
 
   bottom_dim_ = bottom[0]->count(channel_axis_);
@@ -715,7 +855,7 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
   int gid = tid/nthreads_per_group;
   int tid_in_group = tid%nthreads_per_group;
 
-  float *input_padded;
+  float *input_padded, *input_aligned;
   int input_padded_len;
   if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
     // JSP: pad boundaries with zeros to avoid checking boundary conditions
@@ -726,6 +866,7 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
 	  int pad_w = pad_.cpu_data()[1];
 
 	  input_padded_len = conv_in_channels_ * (height + pad_h) * (width + pad_w) + pad_h * (width + 2 * pad_w);
+	  int input_aligned_len = conv_in_channels_ * (height + pad_h) * 16 + pad_h * 16;
 	  if (pad_h == 0 && pad_w == 0) {
 	    input_padded = (float *)input;
 	  }
@@ -733,19 +874,36 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
 	    if (tid == 0) padding_time -= omp_get_wtime();
 
 	    input_padded = input_padded_ + input_padded_len*gid;
+	    input_aligned = input_aligned_ + input_aligned_len*gid;
 
 	    int c_per_thread = (conv_in_channels_ + nthreads_per_group - 1)/nthreads_per_group;
 	    int cbegin = std::min(c_per_thread*tid_in_group, conv_in_channels_);
 	    int cend = std::min(cbegin + c_per_thread, conv_in_channels_);
 
-      for (int in_channel = cbegin; in_channel < cend; ++in_channel) {
-        for (int input_row = 0; input_row < height; ++input_row) {
-          memcpy(
-              input_padded + (in_channel * (height + pad_h) + input_row + pad_h) * (width + pad_w) + pad_w,
-              input + (in_channel * height + input_row) * width,
-              sizeof(float) * width);
+#ifdef __AVX512F__
+      if (height == 13 || height == 12) {
+        for (int in_channel = cbegin; in_channel < cend; ++in_channel) {
+          for (int input_row = 0; input_row < height; ++input_row) {
+            memcpy(
+                input_aligned + (in_channel * (height + pad_h) + input_row + pad_h) * 16 + pad_w,
+                input + (in_channel * height + input_row) * width,
+                sizeof(float) * width);
+          }
         }
       }
+//      else
+#endif
+      {
+        for (int in_channel = cbegin; in_channel < cend; ++in_channel) {
+          for (int input_row = 0; input_row < height; ++input_row) {
+            memcpy(
+                input_padded + (in_channel * (height + pad_h) + input_row + pad_h) * (width + pad_w) + pad_w,
+                input + (in_channel * height + input_row) * width,
+                sizeof(float) * width);
+          }
+        }
+      }
+
       if (nthread_groups != nthreads) barriers[gid]->wait(tid_in_group);
 
       if (tid == 0) padding_time += omp_get_wtime();
@@ -785,10 +943,10 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
 				  N,
 				  K,
 				  (float)1.,
-				  nz_weight_values_.cpu_data()+ weight_offset_ * g,
-				  nz_weight_indices_.cpu_data()+ weight_offset_ * g,
-				  nz_weight_index_pointers_.cpu_data() + row_offset * g,
-				  nz_weight_index_pointers_.cpu_data() + row_offset * g + 1,
+				  weight_values_[g],
+				  weight_colidx_[g],
+				  weight_rowptr_[g],
+				  weight_rowptr_[g] + 1,
 				  col_buff + col_offset_ * g,
 				  (float)0.,output + output_offset_ * g);
 		  break;
@@ -874,11 +1032,13 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
       const int output_w = (width + 2 * pad_w -
           (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
 
-		  const int *rowptr = nz_weight_index_pointers_.cpu_data() + row_offset * g;
-		  const float *values = nz_weight_values_.cpu_data()+ weight_offset_ * g;
-		  const int *colidx = nz_weight_indices_.cpu_data()+ weight_offset_ * g;
+		  const int *rowptr = weight_rowptr_[g];
+		  const float *values = weight_values_[g];
+		  const int *colidx = weight_colidx_[g];
 
 		  int ncolblock = weight_rowptr_blocked_.size()/group_;
+      int nnz = rowptr[M];
+      int col_major_ic_block = get_col_major_ic_block(nnz, M, conv_in_channels_/group_);
 
 		  if (height == 27 && width == 27 && pad_h == 2 && pad_w == 2 && stride_h == 1 && stride_w == 1 && kernel_w == 5 && kernel_h == 5 && dilation_h == 1 && dilation_w == 1) {
 		    // 2nd layer of AlexNet fused with bias term and pooling
@@ -898,16 +1058,27 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
             (const int **)(&weight_colidx_blocked_[0] + g*ncolblock),
             (const float **)(&weight_values_blocked_[0] + g*ncolblock),
             ncolblock,
-            NULL, NULL, NULL,
-            input_scratch_, output_colmajor_scratch_,
+//            NULL, NULL, NULL,
+//            input_scratch_, output_colmajor_scratch_,
             this->blobs_[1]->cpu_data(), bias_multiplier_.cpu_data(),
             ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g),
             ((ConvolutionReLUPoolLRNLayer<float> *)this)->max_idx_.mutable_cpu_data() + ((ConvolutionReLUPoolLRNLayer<float> *)this)->pool_top_[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g),
             output + output_offset_ * g,
             M,
-            output_scratch_ + tid*OC_BLOCK*width*16);
+            output_scratch_ + tid*OC_BLOCK*width*16,
+            col_major_ic_block,
+            input_aligned + conv_in_channels_/group_ * g * (height + pad_h) * 16,
+            weight_rowptr_split_[g], weight_colidx_split_[g], weight_values_split_[g]);
 		  }
-		  else {
+		  else if (height == 28 && width == 28 && pad_h == 0 && pad_w == 0 && stride_h == 1 && stride_w == 1 && kernel_w == 5 && kernel_h == 5 && dilation_h == 1 && dilation_w == 1) {
+		    // 2nd layer of OverFeat fused with bias term and pooling
+		    assert(std::string(type()) == "ConvolutionReLUPool");
+
+		    const float *bias = this->blobs_[1]->cpu_data();
+		    const float *bm = bias_multiplier_.cpu_data();
+		    float *pool_top = (*((ConvolutionReLUPoolLayer<float> *)this)->top_ptr_)[0]->mutable_cpu_data() + (*((ConvolutionReLUPoolLayer<float> *)this)->top_ptr_)[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g);
+		    int *mask = ((ConvolutionReLUPoolLayer<float> *)this)->max_idx_.mutable_cpu_data() + (*((ConvolutionReLUPoolLayer<float> *)this)->top_ptr_)[0]->offset(0, 1)*(conv_out_channels_*batch_idx + M*g);
+
         caffe_cpu_sconv<float>(
             input_padded + conv_in_channels_/group_ * g * (height + pad_h) * (width + pad_w),
             input + conv_in_channels_/group_ * g * height * width,
@@ -922,13 +1093,64 @@ void BaseConvolutionLayer<float>::forward_cpu_gemm(const float* input,
             (const int **)(&weight_colidx_blocked_[0] + g*ncolblock),
             (const float **)(&weight_values_blocked_[0] + g*ncolblock),
             ncolblock,
-            &weight_blockptr_colmajor_[g][0], &weight_kidx_colmajor_[g][0], &weight_values_colmajor_[g][0],
-            input_scratch_, output_colmajor_scratch_,
-            this->blobs_[1]->cpu_data(), bias_multiplier_.cpu_data(),
-            NULL, NULL,
+//            NULL, NULL, NULL,
+//            input_scratch_, output_colmajor_scratch_,
+            bias, bm,
+            pool_top,
+            mask,
             output + output_offset_ * g,
             M,
-            output_scratch_ + tid*OC_BLOCK*width*16);
+            output_scratch_ + tid*OC_BLOCK*width*16,
+            col_major_ic_block,
+            input_aligned + conv_in_channels_/group_ * g * (height + pad_h) * 16,
+            weight_rowptr_split_[g], weight_colidx_split_[g], weight_values_split_[g]);
+		  }
+		  else {
+#ifdef VECTORIZE_OVER_INPUTS
+        const int VLEN = 16;
+		    if (std::string(type()) == "ConvolutionReLU")
+		    {
+		      if (batch_idx%VLEN == 0) {
+            assert(output_offset_ == conv_out_channels_/group_*output_h*output_w);
+            sconv345_vectorize_over_inputs(
+                input_interleaved_ + (batch_idx/VLEN*conv_in_channels_ + conv_in_channels_/group_*g)*(height + pad_h)*(width + pad_w)*VLEN,
+                (const int **)(&weight_rowptr_blocked_[0] + g*ncolblock),
+                (const int **)(&weight_colidx_interleaved_[0] + g*ncolblock),
+                (const float **)(&weight_values_blocked_[0] + g*ncolblock),
+                ncolblock,
+                this->blobs_[1]->cpu_data(),
+                output_interleaved_ + (batch_idx/VLEN*conv_out_channels_ + conv_out_channels_/group_*g)*output_h*output_w*VLEN,
+                M, conv_in_channels_/group_);
+		      }
+		    }
+		    else
+#endif
+		    {
+          caffe_cpu_sconv<float>(
+              input_padded + conv_in_channels_/group_ * g * (height + pad_h) * (width + pad_w),
+              input + conv_in_channels_/group_ * g * height * width,
+              conv_in_channels_/group_,
+              height, width,
+              pad_h, pad_w,
+              stride_h, stride_w,
+              dilation_h, dilation_w,
+              rowptr, colidx, values,
+              kernel_h, kernel_w,
+              (const int **)(&weight_rowptr_blocked_[0] + g*ncolblock),
+              (const int **)(&weight_colidx_blocked_[0] + g*ncolblock),
+              (const float **)(&weight_values_blocked_[0] + g*ncolblock),
+              ncolblock,
+//              &weight_blockptr_colmajor_[g][0], &weight_kidx_colmajor_[g][0], &weight_values_colmajor_[g][0],
+//              input_scratch_, output_colmajor_scratch_,
+              this->blobs_[1]->cpu_data(), bias_multiplier_.cpu_data(),
+              NULL, NULL,
+              output + output_offset_ * g,
+              M,
+              output_scratch_ + tid*OC_BLOCK*width*16,
+              col_major_ic_block,
+              input_aligned + conv_in_channels_/group_ * g * (height + pad_h) * 16,
+              weight_rowptr_split_[g], weight_colidx_split_[g], weight_values_split_[g]);
+		    }
 		  }
 
 		  break;

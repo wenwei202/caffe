@@ -40,6 +40,22 @@ void ConvolutionReLULayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom
     conv_cycles_of_this_batch[i*16] = 0;
   }
 
+  int height = this->conv_input_shape_.cpu_data()[1];
+  int width = this->conv_input_shape_.cpu_data()[2];
+  int pad_h = this->pad_.cpu_data()[0];
+  int pad_w = this->pad_.cpu_data()[1];
+  int kernel_h = this->kernel_shape_.cpu_data()[0];
+  int kernel_w = this->kernel_shape_.cpu_data()[1];
+  int stride_h = this->stride_.cpu_data()[0];
+  int stride_w = this->stride_.cpu_data()[1];
+  int dilation_h = this->dilation_.cpu_data()[0];
+  int dilation_w = this->dilation_.cpu_data()[1];
+
+  const int output_h = (height + 2 * pad_h -
+      (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
+  const int output_w = (width + 2 * pad_w -
+      (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
+
   const Dtype* weight = this->blobs_[0]->cpu_data();
   const Dtype *bias = NULL;
   if (this->bias_term_) {
@@ -52,6 +68,42 @@ void ConvolutionReLULayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom
   for (int i = 0; i < bottom.size(); ++i) {
     const Dtype* bottom_data = bottom[i]->cpu_data();
     Dtype* top_data = top[i]->mutable_cpu_data();
+
+//  int nnz_input = 0;
+//  int num_of_non_zero_channels = 0;
+//  for (int n = 0; n < this->num_; ++n) {
+//    for (int ic = 0; ic < this->conv_in_channels_; ++ic) {
+//      bool is_non_zero_channel = true;
+//      for (int h = 0; h < height; ++h) {
+//        for (int w = 0; w < width; ++w) {
+//          if (bottom_data[((n*this->conv_in_channels_ + ic)*height + h)*width + w] == 0) ++nnz_input;
+//          else is_non_zero_channel = false;
+//        }
+//      }
+//      if (is_non_zero_channel) ++num_of_non_zero_channels;
+//    }
+//  }
+//  LOG(INFO) << "element-sparsity " << (double)nnz_input/(this->num_*this->conv_in_channels_*height*width) << " channel-sparsity " << (double)num_of_non_zero_channels/(this->num_*this->conv_in_channels_);
+
+#ifdef VECTORIZE_OVER_INPUTS
+    const int VLEN = 16;
+    if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+#pragma omp parallel for collapse(2)
+      for (int nblock = 0; nblock < this->num_/VLEN; ++nblock) {
+        for (int ic = 0; ic < this->conv_in_channels_; ++ic) {
+          for (int i = 0; i < height; ++i) {
+            for (int j = 0; j < width; ++j) {
+              for (int k = 0; k < VLEN; ++k) {
+                this->input_interleaved_[(((nblock*this->conv_in_channels_ + ic)*(height + pad_h) + i + pad_h)*(width + pad_w) + j + pad_w)*VLEN + k] =
+                    bottom_data[(((nblock*VLEN + k)*this->conv_in_channels_ + ic)*height + i)*width + j];
+              }
+            }
+          }
+        }
+      }
+    }
+#endif
+
 #pragma omp parallel
     {
       int nthreads = omp_get_num_threads();
@@ -66,17 +118,68 @@ void ConvolutionReLULayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom
       assert(nthreads%nthread_groups == 0);
       int nthreads_per_group = nthreads/nthread_groups;
       int gid = tid/nthreads_per_group;
+      int tid_in_group = tid%nthreads_per_group;
 
       int n_per_group = (this->num_ + nthread_groups - 1)/nthread_groups;
       int n_begin = std::min(n_per_group*gid, this->num_);
       int n_end = std::min(n_begin + n_per_group, this->num_);
 
+#ifdef VECTORIZE_OVER_INPUTS
+      if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
+        n_per_group = (this->num_/VLEN + nthread_groups - 1)/nthread_groups;
+        n_begin = std::min(n_per_group*gid, this->num_/VLEN);
+        n_end = std::min(n_begin + n_per_group, this->num_/VLEN);
+        n_begin *= VLEN;
+        n_end *= VLEN;
+      }
+#endif
+
       for (int n = n_begin; n < n_end; ++n) { // JSP: this->num_ is batch size
         Dtype *top_current = top_data + n * this->top_dim_;
 
         if (0 == tid) t2 -= omp_get_wtime();
-        this->forward_cpu_gemm(
-              bottom_data + n * this->bottom_dim_, weight, top_current, n);
+#ifdef VECTORIZE_OVER_INPUTS
+        if (this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV ||
+            n%VLEN == 0)
+#endif
+        {
+          this->forward_cpu_gemm(
+                bottom_data + n * this->bottom_dim_, weight, top_current, n);
+        }
+
+#ifdef VECTORIZE_OVER_INPUTS
+        if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV &&
+            n%VLEN == 0) {
+          assert(this->conv_out_channels_*output_h*output_w == this->top_dim_);
+
+          int oc_per_thread = (this->conv_out_channels_/this->group_ + nthreads_per_group - 1)/nthreads_per_group;
+          int oc_begin = std::min(oc_per_thread*tid_in_group, this->conv_out_channels_/this->group_);
+          int oc_end = std::min(oc_begin + oc_per_thread, this->conv_out_channels_/this->group_);
+
+          for (int g = 0; g < this->group_; ++g) {
+            for (int oc = this->conv_out_channels_/this->group_*g + oc_begin; oc < this->conv_out_channels_/this->group_*g + oc_end; ++oc) {
+              for (int i = 0; i < output_h; ++i) {
+                for (int j = 0; j < output_w; ++j) {
+                  for (int k = 0; k < VLEN; ++k) {
+                    top_data[(((n/VLEN*VLEN + k)*this->conv_out_channels_ + oc)*output_h + i)*output_w + j] =
+                        this->output_interleaved_[(((n/VLEN*this->conv_out_channels_ + oc)*output_h + i)*output_w + j)*VLEN + k];
+  //                static bool printed = false;
+  //                float expected = top_data[((n*this->conv_out_channels_ + oc)*output_h + i)*output_w + j];
+  //                float actual = this->output_interleaved_[(((n/VLEN*this->conv_out_channels_ + oc)*output_h + i)*output_w + j)*VLEN + n%VLEN];
+  //                if (fabs(expected - actual)/fabs(expected) >= 0.01 && !printed) {
+  //                  printf(
+  //                      "n=%d oc=%d i=%d j=%d expected %g actual %g\n",
+  //                      n, oc, i, j, expected, actual);
+  //                  printed = true;
+  //                }
+                  }
+                }
+              }
+            }
+          } // for each group
+        }
+#endif
+
         if (0 == tid) t2 += omp_get_wtime();
         if (this->bias_term_ &&
             this->layer_param_.convolution_param().conv_mode() != caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
@@ -112,22 +215,6 @@ void ConvolutionReLULayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom
   }
 
   LOG(INFO) << this->layer_param_.name() << " wall clock-time " << omp_get_wtime() - t << " padding-time " << padding_time << " relu-time " << t3;
-
-  int height = this->conv_input_shape_.cpu_data()[1];
-  int width = this->conv_input_shape_.cpu_data()[2];
-  int kernel_h = this->kernel_shape_.cpu_data()[0];
-  int kernel_w = this->kernel_shape_.cpu_data()[1];
-  int pad_h = this->pad_.cpu_data()[0];
-  int pad_w = this->pad_.cpu_data()[1];
-  int stride_h = this->stride_.cpu_data()[0];
-  int stride_w = this->stride_.cpu_data()[1];
-  int dilation_h = this->dilation_.cpu_data()[0];
-  int dilation_w = this->dilation_.cpu_data()[1];
-
-  const int output_h = (height + 2 * pad_h -
-      (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
-  const int output_w = (width + 2 * pad_w -
-      (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
 
   double flops = (double)this->num_*this->conv_out_channels_*this->conv_in_channels_/this->group_*output_h*output_w*kernel_h*kernel_w*2;
 

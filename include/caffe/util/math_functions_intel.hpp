@@ -51,8 +51,8 @@ void caffe_cpu_sconv(
     int kernel_h, int kernel_w,
     const int **rowptr_blocked, const int **colidx_blocked, const Dtype **values_blocked,
     int ncolblocks,
-    const int *blockptr, const int *kidx, const float *values_colmajor,
-    Dtype *input_scratch, Dtype *output_colmajor_scratch,
+//    const int *blockptr, const int *kidx, const float *values_colmajor,
+//    Dtype *input_scratch, Dtype *output_colmajor_scratch,
     // bias (for the case when bias is fused with convolution)
     const Dtype *bias, const Dtype *bias_multiplier,
     // pooling (for the case when pooling is fused with convolution)
@@ -60,7 +60,11 @@ void caffe_cpu_sconv(
     // output features
     Dtype *output,
     int out_channels,
-    float *output_scratch);
+    float *output_scratch, int col_major_ic_block,
+    const Dtype *input_aligned,
+    const int *weight_rowptr_split_,
+    const int *weight_colidx_split_,
+    const Dtype *weight_values_split_);
 
 }  // namespace caffe
 

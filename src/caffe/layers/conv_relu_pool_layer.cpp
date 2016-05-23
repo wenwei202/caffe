@@ -183,9 +183,30 @@ void ConvolutionReLUPoolLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
   double t = omp_get_wtime();
   double pool_time = 0;
 
+  top_ptr_ = (vector<Blob<Dtype>*> *)&top;
+
   for (int i = 0; i < bottom.size(); ++i) {
     const Dtype* bottom_data = bottom[i]->cpu_data();
     Dtype* middle_data = middle_[i]->mutable_cpu_data();
+
+    int height = this->conv_input_shape_.cpu_data()[1];
+    int width = this->conv_input_shape_.cpu_data()[2];
+//    int nnz_input = 0;
+//    int num_of_non_zero_channels = 0;
+//    for (int n = 0; n < this->num_; ++n) {
+//      for (int ic = 0; ic < this->conv_in_channels_; ++ic) {
+//        bool is_non_zero_channel = true;
+//        for (int h = 0; h < height; ++h) {
+//          for (int w = 0; w < width; ++w) {
+//            if (bottom_data[((n*this->conv_in_channels_ + ic)*height + h)*width + w] == 0) ++nnz_input;
+//            else is_non_zero_channel = false;
+//          }
+//        }
+//        if (is_non_zero_channel) ++num_of_non_zero_channels;
+//      }
+//    }
+//    LOG(INFO) << "element-sparsity " << (double)nnz_input/(this->num_*this->conv_in_channels_*height*width) << " channel-sparsity " << (double)num_of_non_zero_channels/(this->num_*this->conv_in_channels_);
+
 #pragma omp parallel
     {
       int nthreads = omp_get_num_threads();
@@ -216,6 +237,12 @@ void ConvolutionReLUPoolLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
           // JSP: common path of AlexNet
           this->forward_cpu_bias(middle_current, bias);
         }
+
+//        if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV &&
+//            kernel_w_ == 2) {
+//          // overfeat conv2 is fused with pool
+//          continue;
+//        }
 
         // Pooling
         const int top_count = top[0]->count();

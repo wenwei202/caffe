@@ -11,15 +11,15 @@
 #include <vector>
 #include <cassert>
 #include <cstring>
+#include <cmath>
 
 #include "../../include/caffe/util/conv.hpp"
 #include "SpMP/CSR.hpp"
 
-//#define SEP
 #ifdef SEP
 #include "sampling.h"
 #endif
-//#define VTUNE
+
 #ifdef VTUNE
 #include "ittnotify.h"
 #endif
@@ -28,19 +28,32 @@
 #include "sim_api.h"
 #endif
 
+#ifdef SDE
+#include "../../include/caffe/util/sde.h"
+#endif
+
 using namespace SpMP;
 using namespace std;
 
 synk::Barrier *barriers[256];
 
 unsigned long long conv_cycles_of_this_batch[1024*16];
+int flop_cnt = 0;
 
 int main(int argc, const char *argv[])
 {
-#ifdef SNIPER
+#if defined(SNIPER) || defined(SDE)
+#ifdef VECTORIZE_OVER_INPUTS
+  const int NBATCH = 16;
+#else
   const int NBATCH = 1;
+#endif
+#else
+#ifdef VECTORIZE_OVER_INPUTS
+  const int NBATCH = 512;
 #else
   const int NBATCH = 256;
+#endif
 #endif
 
   int nthreads = omp_get_max_threads();
@@ -106,32 +119,50 @@ int main(int argc, const char *argv[])
   values_blocked.resize(ncolblocks);
   std::vector<int> nnzs_of_col_blocks(ncolblocks, 0);
 
+  int *rowptr_split;
+  int *colidx_split;
+  float *values_split;
+
+  vector<int *> colidx_interleaved;
+  colidx_interleaved.resize(ncolblocks);
+
   int *blockptr_colmajor;
   int *kidx_colmajor;
   float *values_colmajor;
 
-  posix_memalign((void **)&blockptr_colmajor, 4096, sizeof(int)*(NIN/COL_MAJOR_IC_BLOCK*NOUT + 1));
-  memset(blockptr_colmajor, 0, sizeof(int)*(NIN/COL_MAJOR_IC_BLOCK*NOUT + 1));
-  posix_memalign((void **)&kidx_colmajor, 4096, sizeof(int)*A->getNnz());
-  posix_memalign((void **)&values_colmajor, 4096, sizeof(float)*A->getNnz());
+  int nnz = A->getNnz();
+  int col_major_ic_block = get_col_major_ic_block(nnz, NOUT, NIN);
+  printf("col_major_ic_block = %d\n", col_major_ic_block);
 
-  for (int out_channel = 0; out_channel < NOUT; ++out_channel) {
-    for (int j = A->rowptr[out_channel]; j < A->rowptr[out_channel + 1]; ++j) {
+  posix_memalign((void **)&blockptr_colmajor, 4096, sizeof(int)*(NIN/col_major_ic_block*NOUT + 1));
+  memset(blockptr_colmajor, 0, sizeof(int)*(NIN/col_major_ic_block*NOUT + 1));
+  posix_memalign((void **)&kidx_colmajor, 4096, sizeof(int)*nnz);
+  posix_memalign((void **)&values_colmajor, 4096, sizeof(float)*nnz);
+
+  posix_memalign((void **)&rowptr_split, 4096, sizeof(int)*(ncolblocks*NOUT*K + 1));
+  memset(rowptr_split, 0, sizeof(int)*(ncolblocks*NOUT*K + 1));
+  posix_memalign((void **)&colidx_split, 4096, sizeof(int)*nnz);
+  posix_memalign((void **)&values_split, 4096, sizeof(float)*nnz);
+
+  for (int oc = 0; oc < NOUT; ++oc) {
+    for (int j = A->rowptr[oc]; j < A->rowptr[oc + 1]; ++j) {
       int col = A->colidx[j];
 
       int kernel_col = col%K;
       int kernel_row = (col/K)%K;
-      int in_channel = col/(K*K);
-      assert(in_channel < NIN);
+      int ic = col/(K*K);
+      assert(ic < NIN);
 
-      A->colidx[j] = (in_channel*(WIDTH + PAD) + kernel_row)*(WIDTH + PAD) + kernel_col;
+      A->colidx[j] = (ic*(WIDTH + PAD) + kernel_row)*(WIDTH + PAD) + kernel_col;
       values[j] = A->values[j];
 
-      int bcol = in_channel/COL_BLOCK;
-      nnzs_of_col_blocks[bcol]++;
+      int bcol = ic/COL_BLOCK;
+      ++nnzs_of_col_blocks[bcol];
 
-      int bcol_colmajor = in_channel/COL_MAJOR_IC_BLOCK;
-      ++blockptr_colmajor[bcol_colmajor*NOUT + out_channel + 1];
+      ++rowptr_split[(ic/COL_BLOCK*NOUT + oc)*K + K - 1 - kernel_col + 1];
+
+      int bcol_colmajor = ic/col_major_ic_block;
+      ++blockptr_colmajor[bcol_colmajor*NOUT + oc + 1];
     }
   }
 
@@ -143,47 +174,63 @@ int main(int argc, const char *argv[])
     posix_memalign((void **)&rowptr_blocked[i], 4096, sizeof(int)*(NOUT + 1));
     posix_memalign((void **)&colidx_blocked[i], 4096, sizeof(int)*nnzs_of_col_blocks[i]);
     posix_memalign((void **)&values_blocked[i], 4096, sizeof(float)*nnzs_of_col_blocks[i]);
+    posix_memalign((void **)&colidx_interleaved[i], 4096, sizeof(float)*nnzs_of_col_blocks[i]);
     nnzs_of_col_blocks[i] = 0;
     rowptr_blocked[i][0] = 0;
   }
 
-  for (int i = 1; i < NIN/COL_MAJOR_IC_BLOCK*NOUT; ++i) {
+  for (int i = 1; i < NIN/col_major_ic_block*NOUT; ++i) {
     blockptr_colmajor[i + 1] += blockptr_colmajor[i];
   }
+  for (int i = 1; i < ncolblocks*NOUT*K; ++i) {
+    rowptr_split[i + 1] += rowptr_split[i];
+  }
+  assert(rowptr_split[ncolblocks*NOUT*K] == nnz);
 
   const int SCRATCH_SIZE_PER_IC = WOUT*16;
+  const int VLEN = 16;
 
-  for (int out_channel = 0; out_channel < NOUT; ++out_channel) {
-    for (int j = A->rowptr[out_channel]; j < A->rowptr[out_channel + 1]; ++j) {
+  for (int oc = 0; oc < NOUT; ++oc) {
+    for (int j = A->rowptr[oc]; j < A->rowptr[oc + 1]; ++j) {
       int c = A->colidx[j];
       int kernel_col = c%(WIDTH + PAD);
       int kernel_row = c/(WIDTH + PAD)%(WIDTH + PAD);
-      int in_channel = c/(WIDTH + PAD)/(WIDTH + PAD);
-      int bcol = in_channel/COL_BLOCK;
+      int ic = c/(WIDTH + PAD)/(WIDTH + PAD);
+      int bcol = ic/COL_BLOCK;
 
       colidx_blocked[bcol][nnzs_of_col_blocks[bcol]] = c;
       values_blocked[bcol][nnzs_of_col_blocks[bcol]] = values[j];
+      colidx_interleaved[bcol][nnzs_of_col_blocks[bcol]] = c*VLEN;
       nnzs_of_col_blocks[bcol]++;
 
-      int blockid = in_channel/COL_MAJOR_IC_BLOCK*NOUT + out_channel;
+      int splitid = (ic/COL_BLOCK*NOUT + oc)*K + (K - 1 - kernel_col);
+      colidx_split[rowptr_split[splitid]] = (ic*(WIDTH + PAD) + kernel_row)*16;
+      values_split[rowptr_split[splitid]] = values[j];
+      ++rowptr_split[splitid];
+
+      int blockid = ic/col_major_ic_block*NOUT + oc;
       int offset = blockptr_colmajor[blockid];
-      kidx_colmajor[offset] = ((in_channel%COL_MAJOR_IC_BLOCK*K + kernel_col)*(WOUT + PAD) + kernel_row)*16;
+      kidx_colmajor[offset] = ((ic%col_major_ic_block*K + kernel_col)*(WOUT + PAD) + kernel_row)*16;
       values_colmajor[offset] = values[j];
       ++blockptr_colmajor[blockid];
     }
 
     for (int i = 0; i < ncolblocks; ++i) {
-      rowptr_blocked[i][out_channel + 1] = nnzs_of_col_blocks[i];
+      rowptr_blocked[i][oc + 1] = nnzs_of_col_blocks[i];
     }
   }
 
-  for (int i = NIN/COL_MAJOR_IC_BLOCK*NOUT - 1; i > 0; --i) {
+  for (int i = NIN/col_major_ic_block*NOUT - 1; i > 0; --i) {
     blockptr_colmajor[i] = blockptr_colmajor[i - 1];
   }
   blockptr_colmajor[0] = 0;
+  for (int i = ncolblocks*NOUT*K - 1; i > 0; --i) {
+    rowptr_split[i] = rowptr_split[i - 1];
+  }
+  rowptr_split[0] = 0;
   for (int out_channel = 0; out_channel < NOUT; ++out_channel) {
     int nnz_of_oc = 0;
-    for (int i = 0; i < NIN/COL_MAJOR_IC_BLOCK; ++i) {
+    for (int i = 0; i < NIN/col_major_ic_block; ++i) {
       nnz_of_oc += blockptr_colmajor[i*NOUT + out_channel + 1] - blockptr_colmajor[i*NOUT + out_channel];
     }
     if (nnz_of_oc != A->rowptr[out_channel + 1] - A->rowptr[out_channel]) {
@@ -191,9 +238,9 @@ int main(int argc, const char *argv[])
     }
   }
 
-  float *input = (float *)_mm_malloc(sizeof(float)*NBATCH*NOUT*(WIDTH + PAD)*(WIDTH + PAD), 4096);
+  float *input = (float *)_mm_malloc(sizeof(float)*NBATCH*NOUT*(WIDTH + PAD)*16, 4096);
 //  float *input = (float *)malloc_huge_pages(sizeof(float)*NBATCH*NOUT*(WIDTH + PAD)*(WIDTH + PAD));
-  memset((void *)input, 0, sizeof(float)*NBATCH*NOUT*(WIDTH + PAD)*(WIDTH + PAD));
+  memset((void *)input, 0, sizeof(float)*NBATCH*NOUT*(WIDTH + PAD)*16);
   float *output = (float *)_mm_malloc(sizeof(float)*NBATCH*NOUT*(WIDTH + PAD)*(WIDTH + PAD), 4096);
 //  float *output = (float *)malloc_huge_pages(sizeof(float)*NBATCH*NOUT*(WIDTH + PAD)*(WIDTH + PAD));
   memset((void *)output, 0, sizeof(float)*NBATCH*NOUT*(WIDTH + PAD)*(WIDTH + PAD));
@@ -206,8 +253,8 @@ int main(int argc, const char *argv[])
   float *scratch = (float *)_mm_malloc(sizeof(float)*OC_BLOCK*WIDTH*16*omp_get_max_threads(), 4096);
   memset((void *)scratch, 0, sizeof(float)*OC_BLOCK*WIDTH*16*omp_get_max_threads());
 
-  float *input_scratch = (float *)_mm_malloc(sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*K*K*SCRATCH_SIZE_PER_IC, 4096);
-  memset((void *)input_scratch, 0, sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*K*K*SCRATCH_SIZE_PER_IC);
+  float *input_scratch = (float *)_mm_malloc(sizeof(float)*omp_get_max_threads()*col_major_ic_block*K*K*SCRATCH_SIZE_PER_IC, 4096);
+  memset((void *)input_scratch, 0, sizeof(float)*omp_get_max_threads()*col_major_ic_block*K*K*SCRATCH_SIZE_PER_IC);
 
   float *output_colmajor_scratch;
 #ifdef COL_MAJOR_OC_BLOCK
@@ -217,18 +264,28 @@ int main(int argc, const char *argv[])
 #endif
   memset((void *)output_colmajor_scratch, 0, sizeof(float)*omp_get_max_threads()*NOUT*SCRATCH_SIZE_PER_IC);
 
-  double t = omp_get_wtime();
   unsigned long long times[omp_get_max_threads()*16];
   for (int i = 0; i < omp_get_max_threads(); ++i) {
     times[i*16] = 0;
     conv_cycles_of_this_batch[i*16] = 0;
   }
 
-#ifdef SNIPER
+#if defined(SNIPER) || defined(SDE)
   const int REPEAT = 2;
+#else
+#ifdef VECTORIZE_OVER_INPUTS
+  const int REPEAT = 128;
 #else
   const int REPEAT = 256;
 #endif
+#endif
+
+  printf("REPEAT = %d, NBATCH = %d\n", REPEAT, NBATCH);
+
+  const int **rowptr_blocked_temp = (const int **)&rowptr_blocked[0];
+  const int **colidx_blocked_temp = (const int **)&colidx_blocked[0];
+  const float **values_blocked_temp = (const float **)&values_blocked[0];
+  const int **colidx_interleaved_temp = (const int **)&colidx_interleaved[0];
 
 #ifdef SEP
   VTResumeSampling();
@@ -237,46 +294,29 @@ int main(int argc, const char *argv[])
   fprintf(stderr, "__itt_resume\n");
   __itt_resume();
 #endif
-
 #ifdef SNIPER
   SimWarmup();
 #endif
-
-  for (int j = 0; j < REPEAT; ++j) {
-#pragma omp parallel
-    {
-      int nthreads = omp_get_num_threads();
-      int tid = omp_get_thread_num();
-
-#ifdef SNIPER
-      if (j == REPEAT - 1) {
-        SimRoiStart();
-
-        SimAddAddressRoi(input, sizeof(float)*NIN*(WIDTH + PAD)*(WIDTH + PAD));
-        SimSetAddressRoiName(input, "input");
-
-        SimAddAddressRoi(output, sizeof(float)*NOUT*WOUT*WOUT);
-        SimSetAddressRoiName(output, "output");
-
-        SimAddAddressRoi(blockptr_colmajor, sizeof(int)*(NIN/COL_MAJOR_IC_BLOCK*NOUT + 1));
-        SimSetAddressRoiName(blockptr_colmajor, "blockptr");
-
-        SimAddAddressRoi(kidx_colmajor, sizeof(int)*A->getNnz());
-        SimSetAddressRoiName(kidx_colmajor, "kidx");
-
-        SimAddAddressRoi(values_colmajor, sizeof(float)*A->getNnz());
-        SimSetAddressRoiName(values_colmajor, "values");
-
-        SimAddAddressRoi(input_scratch, sizeof(float)*omp_get_max_threads()*COL_MAJOR_IC_BLOCK*K*K*SCRATCH_SIZE_PER_IC);
-        SimSetAddressRoiName(input_scratch, "input_scratch");
-
-        SimAddAddressRoi(output_colmajor_scratch, sizeof(float)*omp_get_max_threads()*NOUT*SCRATCH_SIZE_PER_IC);
-        SimSetAddressRoiName(output_colmajor_scratch, "output_scratch");
-
-        SimAddAddressRoi(bias, sizeof(float)*NOUT);
-        SimSetAddressRoiName(bias, "bias");
-      }
+#ifdef SDE
+  ssc_initialization();
 #endif
+
+  double t = omp_get_wtime();
+
+#pragma omp parallel
+  {
+    int nthreads = omp_get_num_threads();
+    int tid = omp_get_thread_num();
+
+    for (int j = 0; j < REPEAT; ++j) {
+      if (j == REPEAT - 1 && 0 == tid) {
+#ifdef SNIPER
+        SimRoiStart();
+#endif
+#ifdef SDE
+        ssc_start_performance();
+#endif
+      }
 
       int nthread_groups = nthreads;
 #ifdef __AVX512F__
@@ -286,34 +326,67 @@ int main(int argc, const char *argv[])
       int nthreads_per_group = nthreads/nthread_groups;
       int gid = tid/nthreads_per_group;
 
+#ifdef VECTORIZE_OVER_INPUTS
+      int i_per_group = (NBATCH/VLEN + nthread_groups - 1)/nthread_groups;
+      int i_begin = std::min(i_per_group*gid, NBATCH/VLEN);
+      int i_end = std::min(i_begin + i_per_group, NBATCH/VLEN);
+      i_begin *= VLEN;
+      i_end *= VLEN;
+//      printf("[%d] %d-%d\n", tid, i_begin, i_end);
+#else
       int i_per_group = (NBATCH + nthread_groups - 1)/nthread_groups;
       int i_begin = std::min(i_per_group*gid, NBATCH);
       int i_end = std::min(i_begin + i_per_group, NBATCH);
+#endif
 
       unsigned long long tt = __rdtsc();
 
       for (int i = i_begin; i < i_end; ++i) {
-        sconv345_ver2(
-            input + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
-            input + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
-            NIN,
-            blockptr_colmajor, kidx_colmajor, values_colmajor,
-            bias,
-            output + i*NOUT*WOUT*WOUT, NOUT,
-            input_scratch, output_colmajor_scratch);
-//        sconv345(
-//            (j%2 == 0 ? input : output) + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
-//            A->rowptr, A->colidx, values,
-//            (const int **)(&rowptr_blocked[0]), (const int **)(&colidx_blocked[0]), (const float **)(&values_blocked[0]),
-//            ncolblocks,
+#ifdef VECTORIZE_OVER_INPUTS
+        if (i%VLEN == 0) {
+          sconv345_vectorize_over_inputs(
+              input + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
+              rowptr_blocked_temp, colidx_interleaved_temp, values_blocked_temp,
+              ncolblocks,
+              bias,
+              output + i*NOUT*WOUT*WOUT,
+              NOUT, NIN);
+        }
+#else
+//        sconv345_ver2(
+//            input + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
+//            input + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
+//            NIN,
+//            blockptr_colmajor, kidx_colmajor, values_colmajor,
 //            bias,
-//            (j%2 == 0 ? output : input) + i*NOUT*(WIDTH + PAD)*(WIDTH + PAD), NOUT,
-//            scratch + tid*OC_BLOCK*WIDTH*16);
+//            output + i*NOUT*WOUT*WOUT, NOUT,
+//            input_scratch, output_colmajor_scratch, col_major_ic_block);
+//          sconv345(
+//              input + i*NIN*(WIDTH + PAD)*(WIDTH + PAD),
+//              A->rowptr, A->colidx, values,
+//              rowptr_blocked_temp, colidx_blocked_temp, values_blocked_temp,
+//              ncolblocks,
+//              bias,
+//              output + i*NOUT*(WIDTH + PAD)*(WIDTH + PAD), NOUT,
+//              scratch + tid*OC_BLOCK*WIDTH*16);
+          sconv345_split(
+              input + i*NIN*(WIDTH + PAD)*16,
+              rowptr_split, colidx_split, values_split,
+              ncolblocks,
+              bias,
+              output + i*NOUT*(WIDTH + PAD)*(WIDTH + PAD), NOUT,
+              scratch + tid*OC_BLOCK*WIDTH*16);
+#endif
       }
 
+      if (j == REPEAT - 1 && 0 == tid) {
 #ifdef SNIPER
-      if (j == REPEAT - 1) SimRoiEnd();
+        SimRoiEnd();
 #endif
+#ifdef SDE
+        ssc_stop_performance();
+#endif
+      }
 
       times[tid*16] += __rdtsc() - tt;
     }
@@ -325,6 +398,9 @@ int main(int argc, const char *argv[])
 #ifdef VTUNE
   __itt_pause();
   fprintf(stderr, "__itt_pause\n");
+#endif
+#ifdef SDE
+  ssc_stop_simulation();
 #endif
 
   t = omp_get_wtime() - t;
@@ -338,6 +414,7 @@ int main(int argc, const char *argv[])
   }
 
   double flops = (double)NOUT*NIN*WIDTH*WIDTH*K*K*2;
+  printf("flops = %lld\n", flop_cnt);
   printf("mflops-per-file %g\n", flops/1e6);
   printf("effective-GF/s %g %g\n", flops*REPEAT*NBATCH/t/1e9, flops*REPEAT*NBATCH/(max_time/cpu_freq)/1e6);
   printf("time1 = %g, max_time = %g, avg_time = %g, tt = %g\n", t, max_time/cpu_freq, (double)sum_time/omp_get_max_threads()/cpu_freq, max_time2/cpu_freq);

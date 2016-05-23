@@ -77,6 +77,9 @@ class ConvolutionReLUPoolLayer : public BaseConvolutionLayer<Dtype> {
   }
   virtual inline bool EqualNumBottomTopBlobs() const { return false; }
 
+  vector<Blob<Dtype>*> *top_ptr_;
+  Blob<int> max_idx_;
+
  protected:
   virtual void Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
@@ -99,7 +102,7 @@ class ConvolutionReLUPoolLayer : public BaseConvolutionLayer<Dtype> {
   int pooled_height_, pooled_width_;
   bool global_pooling_;
   Blob<Dtype> rand_idx_;
-  Blob<int> max_idx_;
+
 };
 
 }  // namespace caffe

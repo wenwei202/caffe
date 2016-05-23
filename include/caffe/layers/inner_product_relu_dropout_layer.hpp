@@ -1,5 +1,5 @@
-#ifndef CAFFE_INNER_PRODUCT_LAYER_HPP_
-#define CAFFE_INNER_PRODUCT_LAYER_HPP_
+#ifndef CAFFE_INNER_PRODUCT_RELU_DROPOUT_LAYER_HPP_
+#define CAFFE_INNER_PRODUCT_RELU_DROPOUT_LAYER_HPP_
 
 #include <vector>
 
@@ -16,16 +16,16 @@ namespace caffe {
  * TODO(dox): thorough documentation for Forward, Backward, and proto params.
  */
 template <typename Dtype>
-class InnerProductLayer : public Layer<Dtype> {
+class InnerProductReLUDropoutLayer : public Layer<Dtype> {
  public:
-  explicit InnerProductLayer(const LayerParameter& param);
-  ~InnerProductLayer();
+  explicit InnerProductReLUDropoutLayer(const LayerParameter& param);
+  ~InnerProductReLUDropoutLayer();
   virtual void LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
   virtual void Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
 
-  virtual inline const char* type() const { return "InnerProduct"; }
+  virtual inline const char* type() const { return "InnerProductReLUDropout"; }
   virtual inline int ExactNumBottomBlobs() const { return 1; }
   virtual inline int ExactNumTopBlobs() const { return 1; }
   virtual void WeightAlign();
@@ -64,11 +64,9 @@ class InnerProductLayer : public Layer<Dtype> {
   int *weight_i_blocked_;
 
   Dtype *bottom_transposed_;
-
-  Dtype *B_temp_global_;
-  Dtype *C_temp_global_;
+  Dtype *spgemm_buf_;
 };
 
 }  // namespace caffe
 
-#endif  // CAFFE_INNER_PRODUCT_LAYER_HPP_
+#endif  // CAFFE_INNER_PRODUCT_RELU_DROPOUT_LAYER_HPP_

@@ -8,6 +8,7 @@
 #ifndef SRC_CAFFE_LAYERS_CONV_HPP_
 #define SRC_CAFFE_LAYERS_CONV_HPP_
 
+#include <vector>
 #include <immintrin.h>
 #include "synk/barrier.hpp"
 
@@ -15,14 +16,16 @@
 #ifdef SNIPER
 static const int NTILES = 1; // 1 tile
 #else
-static const int NTILES = 32; // FIXME - hardcoded for 68c KNL
+static const int NTILES = 64; // FIXME - hardcoded for 68c KNL
 #endif
 #endif
 
-static const int OC_BLOCK = 8;
+static const int OC_BLOCK = 16;
 static const int COL_BLOCK = 32;
 
-static const int COL_MAJOR_IC_BLOCK = 8;
+//#define VECTORIZE_OVER_INPUTS
+
+//static const int COL_MAJOR_IC_BLOCK = 8;
 //static const int COL_MAJOR_OC_BLOCK = 64;
 
 extern synk::Barrier *barriers[256];
@@ -3169,9 +3172,15 @@ inline void conv1_ver5(const float *weight, const float *input, float *output)
 
 extern unsigned long long conv_cycles_of_this_batch[1024*16], transpose_cycle, pool_cycle;
 
+static int get_col_major_ic_block(int nnz, int m, int n) {
+  // # of ics to have on average 8 non-zeros per oc
+  return std::max(8, 1 << (int)round(log2(8/((double)nnz/m/n))));
+}
+
+#if 0
 // JSP: AlexNet each group of conv3-5
-// Input: 256 x 13 x 13 => 1.3 KB per channel, 338 KB total
-// Output: 384 x 13 x 13 => 1.3 KB per channel, 507 KB total
+// Input: 256 x 15 x 15 => 900 B per channel, 225 KB total
+// Output: 384 x 13 x 13 => 676 B per channel, 253 KB total
 // Weight: 384 x 256 x 3 x 3 => 72B per channel pair, 18 KB per output channel, 27 KB per input channel, 6.8 MB total
 //         No matter what we do, there's no reuse on weight across different channels (only reuse is within a channel pair)
 // FLOPS: 2 x 384 x 256 x 13 x 13 x 3 x 3 = 299 MFLOPS
@@ -3186,7 +3195,8 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
     // bias (for the case when bias is fused with convolution)
     const float *bias,
     // output features
-    float *output, int out_channels, float *input_scratch_global, float *output_colmajor_scratch)
+    float *output, int out_channels, float *input_scratch_global, float *output_colmajor_scratch,
+    int col_major_ic_block)
 {
   unsigned long long t = __rdtsc();
 
@@ -3231,7 +3241,7 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
   int tid_in_ic_group = tid%nthreads_per_ic_group;
 
   static const int SCRATCH_SIZE_PER_IC = WOUT*16; // 208
-  float *input_scratch = input_scratch_global + ic_gid*COL_MAJOR_IC_BLOCK*K*(WIDTH + PAD)*16; // 2.5KB per ic
+  float *input_scratch = input_scratch_global + ic_gid*col_major_ic_block*K*(WIDTH + PAD)*16; // 2.5KB per ic
 
 #ifdef COL_MAJOR_OC_BLOCK
   float *output_scratch = output_colmajor_scratch + tid*COL_MAJOR_OC_BLOCK*SCRATCH_SIZE_PER_IC;
@@ -3255,9 +3265,9 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
     int oc_end = std::min(oc_begin + oc_per_thread, out_channels);
 #endif
 
-    int ic_per_thread = (COL_MAJOR_IC_BLOCK + nthreads_per_ic_group - 1)/nthreads_per_ic_group;
-    int ic_begin = std::min(ic_per_thread*tid_in_ic_group, COL_MAJOR_IC_BLOCK);
-    int ic_end = std::min(ic_begin + ic_per_thread, COL_MAJOR_IC_BLOCK);
+    int ic_per_thread = (col_major_ic_block + nthreads_per_ic_group - 1)/nthreads_per_ic_group;
+    int ic_begin = std::min(ic_per_thread*tid_in_ic_group, col_major_ic_block);
+    int ic_end = std::min(ic_begin + ic_per_thread, col_major_ic_block);
 
     int ic_block = 0;
 
@@ -3266,7 +3276,7 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
 #undef COPY_INPUT_TO_SCRATCH_STEP
 #endif
 #define COPY_INPUT_TO_SCRATCH_STEP(h) \
-      v = _mm512_loadu_ps(input + ((ic + ic_block*COL_MAJOR_IC_BLOCK)*WIDTH + h)*WIDTH); \
+      v = _mm512_loadu_ps(input + ((ic + ic_block*col_major_ic_block)*WIDTH + h)*WIDTH); \
       _mm512_mask_storeu_ps(input_scratch + (ic*K*(WIDTH + PAD) + h + 1)*16 + 1, 0x0fff, v); \
       _mm512_mask_store_ps(input_scratch + ((ic*K + 1)*(WIDTH + PAD) + h + 1)*16, 0x1fff, v); \
       _mm512_mask_compressstoreu_ps(input_scratch + ((ic*K + 2)*(WIDTH + PAD) + h + 1)*16, 0x1ffe, v);
@@ -3292,17 +3302,17 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
       COPY_INPUT_TO_SCRATCH_STEP(11); \
       COPY_INPUT_TO_SCRATCH_STEP(12); \
       /* prefetch next input channel block */ \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*0), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*1), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*2), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*3), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*4), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*5), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*6), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*7), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*8), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*9), _MM_HINT_T1); \
-      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*COL_MAJOR_IC_BLOCK)*WIDTH*WIDTH + 16*10), _MM_HINT_T1);
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*0), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*1), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*2), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*3), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*4), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*5), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*6), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*7), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*8), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*9), _MM_HINT_T1); \
+      _mm_prefetch((const char *)(input + (ic + (ic_block + INPUT_CHANNEL_PREFETCH_DISTANCE)*col_major_ic_block)*WIDTH*WIDTH + 16*10), _MM_HINT_T1);
 
       COPY_INPUT_TO_SCRATCH;
     }
@@ -3318,24 +3328,23 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
     int oc_offset = 0;
     for (int oc = oc_begin; oc < oc_end; ++oc) {
 #endif
-#define OC_PREFETCH_DISTANCE (1)
 
-#define PREFETCH_OUTPUT_SCRATCH \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 0*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 1*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 2*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 3*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 4*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 5*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 6*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 7*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 8*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 9*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 10*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 11*16), _MM_HINT_T0); \
-      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + OC_PREFETCH_DISTANCE)*SCRATCH_SIZE_PER_IC + 12*16), _MM_HINT_T0);
+#define PREFETCH_OUTPUT_SCRATCH(DISTANCE) \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 0*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 1*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 2*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 3*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 4*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 5*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 6*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 7*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 8*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 9*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 10*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 11*16), _MM_HINT_T0); \
+      _mm_prefetch((const char *)(output_scratch + (oc - oc_offset + DISTANCE)*SCRATCH_SIZE_PER_IC + 12*16), _MM_HINT_T0);
 
-      PREFETCH_OUTPUT_SCRATCH;
+      PREFETCH_OUTPUT_SCRATCH(0);
 
       __m512 bias_v = _mm512_set1_ps(bias[oc]);
 
@@ -3474,7 +3483,7 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
       STORE_OUTPUT_SCRATCH;
     }
 
-    for (int ic_block = 1; ic_block < in_channels/COL_MAJOR_IC_BLOCK - 1; ++ic_block) {
+    for (int ic_block = 1; ic_block < in_channels/col_major_ic_block - 1; ++ic_block) {
 
       if (num_of_oc_groups != nthreads) barriers[oc_gid]->wait(tid_in_oc_group);
 
@@ -3511,14 +3520,14 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
         sum12 = _mm512_load_ps(output_scratch + (oc - oc_offset)*SCRATCH_SIZE_PER_IC + 12*16);
 
         LOAD_OUTPUT_SCRATCH;
-        PREFETCH_OUTPUT_SCRATCH;
+        PREFETCH_OUTPUT_SCRATCH(1);
         MY_FMADD;
         STORE_OUTPUT_SCRATCH;
 #undef STORE_OUTPUT_SCRATCH
       } // for each oc
     } // for each ic block
 
-    ic_block = in_channels/COL_MAJOR_IC_BLOCK - 1;
+    ic_block = in_channels/col_major_ic_block - 1;
     if (num_of_oc_groups != nthreads) barriers[oc_gid]->wait(tid_in_oc_group);
 
     for (int ic = ic_begin; ic < ic_end; ++ic) {
@@ -3538,7 +3547,7 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
 
       LOAD_OUTPUT_SCRATCH;
 #undef LOAD_OUTPUT_SCRATCH
-      PREFETCH_OUTPUT_SCRATCH;
+      PREFETCH_OUTPUT_SCRATCH(1)
 #undef PREFETCH_OUTPUT_SCRATCH
 
       MY_FMADD;
@@ -3614,11 +3623,1413 @@ static /*inline */ void __attribute__((noinline)) sconv345_ver2(
 
   conv_cycles_of_this_batch[tid*16] += __rdtsc() - t;
 }
+#endif
+
+extern int flop_cnt;
+
+#if 0
+// JSP: AlexNet each group of conv3-5
+// Input: 256 x 13 x 13 x 16 => 11 KB per channel, 2.6 MB total
+// Output: 384 x 13 x 13 x 16 => 11 KB per channel, 4.0 MB total
+// Weight: 384 x 256 x 3 x 3 => 72B per channel pair, 18 KB per output channel, 27 KB per input channel, 6.8 MB total
+//         No matter what we do, there's no reuse on weight across different channels (only reuse is within a channel pair)
+// FLOPS: 2 x 384 x 256 x 13 x 13 x 3 x 3 = 299 MFLOPS
+
+// blocking by 16 input channels
+static void __attribute__((noinline)) sconv345_vectorize_over_inputs(
+    // input features,
+    const float *input,
+    // weights
+    const int **rowptr_block, const int **colidx_block, const float **values_block,
+    int ncolblocks,
+    // bias (for the case when bias is fused with convolution)
+    const float *bias,
+    // output features
+    float *output,
+    int out_channels, int in_channels)
+{
+  const int WIDTH = 13;
+  const int WOUT = 13;
+  const int PAD = 1;
+  const int VLEN = 16;
+
+  unsigned long long t = __rdtsc();
+
+  int nthreads = omp_get_num_threads();
+  int tid = omp_get_thread_num();
+
+  int nthread_groups = nthreads;
+#ifdef __AVX512F__
+  nthread_groups = NTILES;
+#else
+//      nthread_groups /= 2; // 1 group per core in Xeon
+#endif
+  assert(nthreads%nthread_groups == 0);
+  int nthreads_per_group = nthreads/nthread_groups;
+  int gid = tid/nthreads_per_group;
+  int tid_in_group = tid%nthreads_per_group;
+
+//  int oc_per_thread = (out_channels + nthreads_per_group - 1)/nthreads_per_group;
+//  int oc_begin = std::min(oc_per_thread*tid_in_group, out_channels);
+//  int oc_end = std::min(oc_begin + oc_per_thread, out_channels);
+
+  int oc_block_per_thread = (out_channels/OC_BLOCK + nthreads_per_group - 1)/nthreads_per_group;
+  int oc_block_begin = std::min(oc_block_per_thread*tid_in_group, out_channels/OC_BLOCK);
+  int oc_block_end = std::min(oc_block_begin + oc_block_per_thread, out_channels/OC_BLOCK);
+
+  int ic_prefetch_per_thread = (in_channels/ncolblocks + nthreads_per_group - 1)/nthreads_per_group;
+  int ic_prefetch_begin = std::min(ic_prefetch_per_thread*tid_in_group, in_channels/ncolblocks);
+  int ic_prefetch_end = std::min(ic_prefetch_begin + ic_prefetch_per_thread, in_channels/ncolblocks);
+
+//  printf("![%d] %d-%d\n", tid, oc_block_begin*OC_BLOCK, oc_block_end*OC_BLOCK);
+
+#ifdef __AVX512F__
+  for (int oc_begin = oc_block_begin*OC_BLOCK; oc_begin < oc_block_end*OC_BLOCK; oc_begin += OC_BLOCK) {
+    const int *rowptr = rowptr_block[0];
+    const int *colidx = colidx_block[0];
+    const float *values = values_block[0];
+
+    int in_block = 0;
+
+    __m512 sum[5][7];
+    for (int hblock = 0; hblock < 2; ++hblock) {
+      int hbegin = hblock*4, hend = (hblock + 1)*4;
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+        __m512 bias_v = _mm512_set1_ps(bias[oc]);
+
+#pragma unroll(4)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = bias_v;
+          sum[h - hbegin][1] = bias_v;
+          sum[h - hbegin][2] = bias_v;
+          sum[h - hbegin][3] = bias_v;
+          sum[h - hbegin][4] = bias_v;
+          sum[h - hbegin][5] = bias_v;
+          sum[h - hbegin][6] = bias_v;
+        }
+
+        for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+          __m512 c_v = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(4)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 0)*VLEN), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 1)*VLEN), sum[h - hbegin][1]);
+            sum[h - hbegin][2] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 2)*VLEN), sum[h - hbegin][2]);
+            sum[h - hbegin][3] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 3)*VLEN), sum[h - hbegin][3]);
+            sum[h - hbegin][4] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 4)*VLEN), sum[h - hbegin][4]);
+            sum[h - hbegin][5] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 5)*VLEN), sum[h - hbegin][5]);
+            sum[h - hbegin][6] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 6)*VLEN), sum[h - hbegin][6]);
+          }
+        }
+
+#pragma unroll(4)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 0)*VLEN, sum[h - hbegin][0]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 1)*VLEN, sum[h - hbegin][1]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 2)*VLEN, sum[h - hbegin][2]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 3)*VLEN, sum[h - hbegin][3]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 4)*VLEN, sum[h - hbegin][4]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 5)*VLEN, sum[h - hbegin][5]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 6)*VLEN, sum[h - hbegin][6]);
+        }
+      } // for each output block
+
+      hbegin = hblock*5, hend = (hblock + 1)*5;
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+        __m512 bias_v = _mm512_set1_ps(bias[oc]);
+
+#pragma unroll(5)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = bias_v;
+          sum[h - hbegin][1] = bias_v;
+          sum[h - hbegin][2] = bias_v;
+          sum[h - hbegin][3] = bias_v;
+          sum[h - hbegin][4] = bias_v;
+          sum[h - hbegin][5] = bias_v;
+        }
+
+        for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+          __m512 c_v = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(5)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 7)*VLEN), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 8)*VLEN), sum[h - hbegin][1]);
+            sum[h - hbegin][2] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 9)*VLEN), sum[h - hbegin][2]);
+            sum[h - hbegin][3] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 10)*VLEN), sum[h - hbegin][3]);
+            sum[h - hbegin][4] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 11)*VLEN), sum[h - hbegin][4]);
+            sum[h - hbegin][5] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 12)*VLEN), sum[h - hbegin][5]);
+          }
+        }
+
+#pragma unroll(5)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 7)*VLEN, sum[h - hbegin][0]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 8)*VLEN, sum[h - hbegin][1]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 9)*VLEN, sum[h - hbegin][2]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 10)*VLEN, sum[h - hbegin][3]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 11)*VLEN, sum[h - hbegin][4]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 12)*VLEN, sum[h - hbegin][5]);
+        }
+      } // for each output channel
+    } // for each outrow block
+
+    int hbegin = 8, hend = 13;
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      __m512 bias_v = _mm512_set1_ps(bias[oc]);
+
+#pragma unroll(5)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+        sum[h - hbegin][2] = bias_v;
+        sum[h - hbegin][3] = bias_v;
+        sum[h - hbegin][4] = bias_v;
+        sum[h - hbegin][5] = bias_v;
+      }
+
+      for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+        __m512 c_v = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(5)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 0)*VLEN), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 1)*VLEN), sum[h - hbegin][1]);
+          sum[h - hbegin][2] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 2)*VLEN), sum[h - hbegin][2]);
+          sum[h - hbegin][3] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 3)*VLEN), sum[h - hbegin][3]);
+          sum[h - hbegin][4] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 4)*VLEN), sum[h - hbegin][4]);
+          sum[h - hbegin][5] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 5)*VLEN), sum[h - hbegin][5]);
+        }
+      }
+
+#pragma unroll(5)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 0)*VLEN, sum[h - hbegin][0]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 1)*VLEN, sum[h - hbegin][1]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 2)*VLEN, sum[h - hbegin][2]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 3)*VLEN, sum[h - hbegin][3]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 4)*VLEN, sum[h - hbegin][4]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 5)*VLEN, sum[h - hbegin][5]);
+      }
+    } // for each output channel
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      __m512 bias_v = _mm512_set1_ps(bias[oc]);
+
+      hbegin = 8;
+#pragma unroll(5)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[0][h - hbegin] = bias_v;
+      }
+
+      hbegin = 9;
+#pragma unroll(3)
+      for (int h = hbegin + 1; h < 13; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+        sum[h - hbegin][2] = bias_v;
+        sum[h - hbegin][3] = bias_v;
+        sum[h - hbegin][4] = bias_v;
+        sum[h - hbegin][5] = bias_v;
+      }
+
+      for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+        __m512 c_v = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+        hbegin = 8;
+#pragma unroll(5)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[0][h - hbegin] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 6)*VLEN), sum[0][h - hbegin]);
+        }
+
+        hbegin = 9;
+#pragma unroll(3)
+        for (int h = hbegin + 1; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 7)*VLEN), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 8)*VLEN), sum[h - hbegin][1]);
+          sum[h - hbegin][2] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 9)*VLEN), sum[h - hbegin][2]);
+          sum[h - hbegin][3] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 10)*VLEN), sum[h - hbegin][3]);
+          sum[h - hbegin][4] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 11)*VLEN), sum[h - hbegin][4]);
+          sum[h - hbegin][5] = _mm512_fmadd_ps(
+              c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 12)*VLEN), sum[h - hbegin][5]);
+        }
+      }
+
+      hbegin = 8;
+#pragma unroll(5)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 6)*VLEN, sum[0][h - hbegin]);
+      }
+
+      hbegin = 9;
+#pragma unroll(3)
+      for (int h = hbegin + 1; h < hend; ++h) {
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 7)*VLEN, sum[h - hbegin][0]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 8)*VLEN, sum[h - hbegin][1]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 9)*VLEN, sum[h - hbegin][2]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 10)*VLEN, sum[h - hbegin][3]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 11)*VLEN, sum[h - hbegin][4]);
+        _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 12)*VLEN, sum[h - hbegin][5]);
+      }
+    } // for each output channel
+
+    for (int in_block = 1; in_block < ncolblocks; ++in_block) {
+      rowptr = rowptr_block[in_block];
+      colidx = colidx_block[in_block];
+      values = values_block[in_block];
+
+      __m512 sum[5][7];
+      for (int hblock = 0; hblock < 2; ++hblock) {
+        int hbegin = hblock*4, hend = (hblock + 1)*4;
+        for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+
+#pragma unroll(4)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 0)*VLEN);
+            sum[h - hbegin][1] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 1)*VLEN);
+            sum[h - hbegin][2] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 2)*VLEN);
+            sum[h - hbegin][3] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 3)*VLEN);
+            sum[h - hbegin][4] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 4)*VLEN);
+            sum[h - hbegin][5] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 5)*VLEN);
+            sum[h - hbegin][6] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 6)*VLEN);
+          }
+
+          for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+            __m512 c_v = _mm512_set1_ps(values[j]);
+            int off = colidx[j];
+
+#pragma unroll(4)
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 0)*VLEN), sum[h - hbegin][0]);
+              sum[h - hbegin][1] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 1)*VLEN), sum[h - hbegin][1]);
+              sum[h - hbegin][2] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 2)*VLEN), sum[h - hbegin][2]);
+              sum[h - hbegin][3] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 3)*VLEN), sum[h - hbegin][3]);
+              sum[h - hbegin][4] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 4)*VLEN), sum[h - hbegin][4]);
+              sum[h - hbegin][5] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 5)*VLEN), sum[h - hbegin][5]);
+              sum[h - hbegin][6] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 6)*VLEN), sum[h - hbegin][6]);
+            }
+          }
+
+#pragma unroll(4)
+          for (int h = hbegin; h < hend; ++h) {
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 0)*VLEN, sum[h - hbegin][0]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 1)*VLEN, sum[h - hbegin][1]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 2)*VLEN, sum[h - hbegin][2]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 3)*VLEN, sum[h - hbegin][3]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 4)*VLEN, sum[h - hbegin][4]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 5)*VLEN, sum[h - hbegin][5]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 6)*VLEN, sum[h - hbegin][6]);
+          }
+        } // for each output block
+
+        hbegin = hblock*5, hend = (hblock + 1)*5;
+        for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(5)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 7)*VLEN);
+            sum[h - hbegin][1] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 8)*VLEN);
+            sum[h - hbegin][2] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 9)*VLEN);
+            sum[h - hbegin][3] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 10)*VLEN);
+            sum[h - hbegin][4] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 11)*VLEN);
+            sum[h - hbegin][5] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 12)*VLEN);
+          }
+
+          for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+            __m512 c_v = _mm512_set1_ps(values[j]);
+            int off = colidx[j];
+
+#pragma unroll(5)
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 7)*VLEN), sum[h - hbegin][0]);
+              sum[h - hbegin][1] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 8)*VLEN), sum[h - hbegin][1]);
+              sum[h - hbegin][2] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 9)*VLEN), sum[h - hbegin][2]);
+              sum[h - hbegin][3] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 10)*VLEN), sum[h - hbegin][3]);
+              sum[h - hbegin][4] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 11)*VLEN), sum[h - hbegin][4]);
+              sum[h - hbegin][5] = _mm512_fmadd_ps(
+                  c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 12)*VLEN), sum[h - hbegin][5]);
+            }
+          }
+
+#pragma unroll(5)
+          for (int h = hbegin; h < hend; ++h) {
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 7)*VLEN, sum[h - hbegin][0]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 8)*VLEN, sum[h - hbegin][1]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 9)*VLEN, sum[h - hbegin][2]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 10)*VLEN, sum[h - hbegin][3]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 11)*VLEN, sum[h - hbegin][4]);
+            _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 12)*VLEN, sum[h - hbegin][5]);
+          }
+        } // for each output channel
+      } // for each outrow block
+
+      int hbegin = 8, hend = 13;
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(5)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 0)*VLEN);
+          sum[h - hbegin][1] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 1)*VLEN);
+          sum[h - hbegin][2] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 2)*VLEN);
+          sum[h - hbegin][3] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 3)*VLEN);
+          sum[h - hbegin][4] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 4)*VLEN);
+          sum[h - hbegin][5] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 5)*VLEN);
+        }
+
+        for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+          __m512 c_v = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(5)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 0)*VLEN), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 1)*VLEN), sum[h - hbegin][1]);
+            sum[h - hbegin][2] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 2)*VLEN), sum[h - hbegin][2]);
+            sum[h - hbegin][3] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 3)*VLEN), sum[h - hbegin][3]);
+            sum[h - hbegin][4] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 4)*VLEN), sum[h - hbegin][4]);
+            sum[h - hbegin][5] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 5)*VLEN), sum[h - hbegin][5]);
+          }
+        }
+
+#pragma unroll(5)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 0)*VLEN, sum[h - hbegin][0]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 1)*VLEN, sum[h - hbegin][1]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 2)*VLEN, sum[h - hbegin][2]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 3)*VLEN, sum[h - hbegin][3]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 4)*VLEN, sum[h - hbegin][4]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 5)*VLEN, sum[h - hbegin][5]);
+        }
+      } // for each output channel
+
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+        hbegin = 8;
+#pragma unroll(5)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[0][h - hbegin] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 6)*VLEN);
+        }
+
+        hbegin = 9;
+#pragma unroll(3)
+        for (int h = hbegin + 1; h < 13; ++h) {
+          sum[h - hbegin][0] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 7)*VLEN);
+          sum[h - hbegin][1] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 8)*VLEN);
+          sum[h - hbegin][2] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 9)*VLEN);
+          sum[h - hbegin][3] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 10)*VLEN);
+          sum[h - hbegin][4] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 11)*VLEN);
+          sum[h - hbegin][5] = _mm512_load_ps(output + ((oc*WOUT + h)*WOUT + 12)*VLEN);
+        }
+
+        for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+          __m512 c_v = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+          hbegin = 8;
+#pragma unroll(5)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[0][h - hbegin] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 6)*VLEN), sum[0][h - hbegin]);
+          }
+
+          hbegin = 9;
+#pragma unroll(3)
+          for (int h = hbegin + 1; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 7)*VLEN), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 8)*VLEN), sum[h - hbegin][1]);
+            sum[h - hbegin][2] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 9)*VLEN), sum[h - hbegin][2]);
+            sum[h - hbegin][3] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 10)*VLEN), sum[h - hbegin][3]);
+            sum[h - hbegin][4] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 11)*VLEN), sum[h - hbegin][4]);
+            sum[h - hbegin][5] = _mm512_fmadd_ps(
+                c_v, _mm512_load_ps(input + off + (h*(WIDTH + PAD) + 12)*VLEN), sum[h - hbegin][5]);
+          }
+        }
+
+        hbegin = 8;
+#pragma unroll(5)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 6)*VLEN, sum[0][h - hbegin]);
+        }
+
+        hbegin = 9;
+#pragma unroll(3)
+        for (int h = hbegin + 1; h < hend; ++h) {
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 7)*VLEN, sum[h - hbegin][0]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 8)*VLEN, sum[h - hbegin][1]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 9)*VLEN, sum[h - hbegin][2]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 10)*VLEN, sum[h - hbegin][3]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 11)*VLEN, sum[h - hbegin][4]);
+          _mm512_store_ps(output + ((oc*WOUT + h)*WOUT + 12)*VLEN, sum[h - hbegin][5]);
+        }
+      } // for each output channel
+    } // for each input channel block
+  }
+#else
+  for (int in_block = 0; in_block < ncolblocks; ++in_block) {
+    for (int oc = oc_begin; oc < oc_end; ++oc) {
+      if (in_block == 0) {
+        for (int h = 0; h < WOUT; ++h) {
+          for (int w = 0; w < WOUT; ++w) {
+            for (int k = 0; k < VLEN; ++k) {
+              output[((oc*WOUT + h)*WOUT + w)*VLEN + k] = bias[oc];
+    //          if (oc == 220 && h == 8 && w == 3 && k == 1) {
+    //            printf("%g", bias[oc]);
+    //          }
+            }
+          }
+        }
+      }
+
+      for (int j = rowptr[in_block][oc]; j < rowptr[in_block][oc + 1]; ++j) {
+        float c = values[in_block][j];
+        int off = colidx[in_block][j];
+
+        for (int h = 0; h < WOUT; ++h) {
+          for (int w = 0; w < WOUT; ++w) {
+            for (int k = 0; k < VLEN; ++k) {
+              output[((oc*WOUT + h)*WOUT + w)*VLEN + k] +=
+                  c*input[off + (h*(WOUT + PAD) + w)*VLEN + k];
+  //            if (oc == 220 && h == 8 && w == 3 && k == 1) {
+  //              printf(" + %g*%g", c, input[off + (h*(WOUT + PAD) + w)*VLEN + k]);
+  //            }
+            }
+          }
+        }
+      }
+
+  //    if (oc == 220) {
+  //      printf(" = %g!\n", output[((oc*WOUT + 8)*WOUT + 3)*VLEN + 1]);
+  //    }
+    } // for each out channel
+  }
+#endif
+
+  conv_cycles_of_this_batch[tid*16] += __rdtsc() - t;
+}
+#endif
 
 /**
  * Direct sparse convolution optimized for 3-5 layers of AlexNet
  */
-static inline void /*__attribute__((noinline))*/ sconv345(
+static /*inline*/ void __attribute__((noinline)) sconv345(
+    // input features
+    const float *input,
+    // weights
+    const int **rowptr_blocked, const int **colidx_blocked, const float **values_blocked,
+    int ncolblocks,
+    // bias (for the case when bias is fused with convolution)
+    const float *bias,
+    // output features
+    float *output,
+    int out_channels,
+    float *scratch) // scratch: 832B per OC_BLOCK
+{
+  unsigned long long t = __rdtsc();
+
+  int nthreads = omp_get_num_threads();
+  int tid = omp_get_thread_num();
+
+  const int WIDTH = 13;
+  const int WOUT = 13;
+  const int PAD = 1;
+
+  int nthread_groups = nthreads;
+#ifdef __AVX512F__
+  nthread_groups = NTILES;
+#else
+//  nthread_groups /= 2; // 1 group per core in Xeon
+#endif
+  assert(nthreads%nthread_groups == 0);
+  int nthreads_per_group = nthreads/nthread_groups;
+  int gid = tid/nthreads_per_group;
+  int tid_in_group = tid%nthreads_per_group;
+
+  int c_per_thread = (out_channels/OC_BLOCK + nthreads_per_group - 1)/nthreads_per_group;
+  int c_begin = std::min(c_per_thread*tid_in_group, out_channels/OC_BLOCK);
+  int c_end = std::min(c_begin + c_per_thread, out_channels/OC_BLOCK);
+
+#if !defined(__AVX512F__) && defined(__AVX2__)
+  __declspec(aligned(64)) int mask_temp[8] = { -1, -1, -1, -1, -1, 0, 0, 0 };
+  __m256i mask_v = _mm256_load_si256((__m256i *)mask_temp);
+#endif
+
+  for (int oc_begin = c_begin*OC_BLOCK; oc_begin < c_end*OC_BLOCK; oc_begin += OC_BLOCK) {
+#ifdef __AVX512F__
+    __m512 sum[13];
+
+    const int *rowptr = rowptr_blocked[0];
+    const int *colidx = colidx_blocked[0];
+    const float *values = values_blocked[0];
+
+    int hbegin = 0, hend = 13;
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      __m512 bias_v = _mm512_set1_ps(bias[oc]);
+
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = bias_v;
+      }
+
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+
+#define W_PREFETCH_DISTANCE (1)
+
+//      _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin]);
+      }
+    } // for each oc channel
+
+    for (int b = 1; b < ncolblocks - 1; ++b) {
+      rowptr = rowptr_blocked[b];
+      colidx = colidx_blocked[b];
+      values = values_blocked[b];
+
+      hbegin = 0, hend = 13;
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+        int jbegin = rowptr[oc];
+        int jend = rowptr[oc + 1];
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+          //_mm_prefetch((const char *)(scratch + ((oc - oc_begin + 1)*WOUT + h)*16), _MM_HINT_T0);
+          _mm_prefetch((const char *)(values + jend + (h - hbegin)*16), _MM_HINT_T0);
+          _mm_prefetch((const char *)(colidx + jend + (h - hbegin)*16), _MM_HINT_T0);
+        }
+
+        for (int j = jbegin; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(13)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin]);
+        }
+      } // for each out channel
+    } // for each col block
+
+    rowptr = rowptr_blocked[ncolblocks - 1];
+    colidx = colidx_blocked[ncolblocks - 1];
+    values = values_blocked[ncolblocks - 1];
+
+    hbegin = 0; hend = 13;
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+        _mm_prefetch((const char *)(output + oc*WOUT*WOUT + h*16), _MM_HINT_T0);
+      }
+
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+
+//      _mm_prefetch((const char *)(values + rowptr[oc + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(values + rowptr[oc + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[oc + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[oc + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_mask_storeu_ps(output + (oc*WOUT + h)*WOUT, 0x1fff, sum[h - hbegin]);
+      }
+    }
+#elif defined(__AVX2__)
+    __m256 sum[(WOUT + 1)/2][2]; // [7][2]
+    __m256 w_v;
+    int off;
+
+    const int *rowptr = rowptr_blocked[0];
+    const int *colidx = colidx_blocked[0];
+    const float *values = values_blocked[0];
+
+    for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
+      __m256 bias_v = _mm256_set1_ps(bias[out_channel]);
+
+      // Upper half of images
+      int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(7) // compiler gives warning for unroll pragma, but it still unrolls as we want.
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+      }
+
+      int jbegin = rowptr[out_channel];
+      int jend = rowptr[out_channel + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+      }
+
+      // Lower half of images
+      hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+      }
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+      }
+    }
+
+    for (int b = 1; b < ncolblocks - 1; ++b) {
+      rowptr = rowptr_blocked[b];
+      colidx = colidx_blocked[b];
+      values = values_blocked[b];
+
+      for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
+
+        // Upper half of images
+        int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+        }
+
+        int jbegin = rowptr[out_channel];
+        int jend = rowptr[out_channel + 1];
+
+        for (int j = jbegin; j < jend; ++j) {
+          w_v = _mm256_set1_ps(values[j]);
+          off = colidx[j];
+
+#pragma unroll(7)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        }
+
+        // Lower half of images
+        hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+        }
+
+        for (int j = jbegin; j < jend; ++j) {
+          w_v = _mm256_set1_ps(values[j]);
+          off = colidx[j];
+
+#pragma unroll(6)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        }
+      }
+    } // for each col block
+
+    rowptr = rowptr_blocked[ncolblocks - 1];
+    colidx = colidx_blocked[ncolblocks - 1];
+    values = values_blocked[ncolblocks - 1];
+
+    for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
+
+      // Upper half of images
+      int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+      }
+
+      int jbegin = rowptr[out_channel];
+      int jend = rowptr[out_channel + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_storeu_ps(output + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+        _mm256_maskstore_ps(output + (out_channel*WOUT + h)*WOUT + 8, mask_v, sum[h - hbegin][1]);
+      }
+
+      // Lower half of images
+      hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+      }
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_storeu_ps(output + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+        _mm256_maskstore_ps(output + (out_channel*WOUT + h)*WOUT + 8, mask_v, sum[h - hbegin][1]);
+      }
+    }
+#else
+    // !defined(__AVX512__) && !defined(__AVX2__)
+    __m128 sum[3][4]; // [3][4]
+
+    const int *rowptr = rowptr_blocked[0];
+    const int *colidx = colidx_blocked[0];
+    const float *values = values_blocked[0];
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      for (int hbegin = 0; hbegin < 12; hbegin += 3) {
+        int hend = hbegin + 3;
+
+#pragma unroll(3)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm_set1_ps(bias[oc]);
+          sum[h - hbegin][1] = _mm_set1_ps(bias[oc]);
+          sum[h - hbegin][2] = _mm_set1_ps(bias[oc]);
+          sum[h - hbegin][3] = _mm_set1_ps(bias[oc]);
+        }
+
+        for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+          __m128 w_v = _mm_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(3)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD))), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 4)), sum[h - hbegin][1]);
+            sum[h - hbegin][2] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 8)), sum[h - hbegin][2]);
+            sum[h - hbegin][3] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 12)), sum[h - hbegin][3]);
+          }
+        }
+
+#pragma unroll(3)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm_storeu_ps(output + (oc*WOUT + h)*WOUT, sum[h - hbegin][0]);
+          _mm_storeu_ps(output + (oc*WOUT + h)*WOUT + 4, sum[h - hbegin][1]);
+          _mm_storeu_ps(output + (oc*WOUT + h)*WOUT + 8, sum[h - hbegin][2]);
+          ((int *)output)[(oc*WOUT + h)*WOUT + 12] = _mm_extract_ps(sum[h - hbegin][3], 0);
+        }
+      }
+
+      int hbegin = 12, hend = 13;
+#pragma unroll(1)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = _mm_set1_ps(bias[oc]);
+        sum[h - hbegin][1] = _mm_set1_ps(bias[oc]);
+        sum[h - hbegin][2] = _mm_set1_ps(bias[oc]);
+        sum[h - hbegin][3] = _mm_set1_ps(bias[oc]);
+      }
+
+      for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+        __m128 w_v = _mm_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(1)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD))), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 4)), sum[h - hbegin][1]);
+          sum[h - hbegin][2] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 8)), sum[h - hbegin][2]);
+          sum[h - hbegin][3] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 12)), sum[h - hbegin][3]);
+        }
+      }
+
+#pragma unroll(1)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm_storeu_ps(output + (oc*WOUT + h)*WOUT, sum[h - hbegin][0]);
+        _mm_storeu_ps(output + (oc*WOUT + h)*WOUT + 4, sum[h - hbegin][1]);
+        _mm_storeu_ps(output + (oc*WOUT + h)*WOUT + 8, sum[h - hbegin][2]);
+        ((int *)output)[(oc*WOUT + h)*WOUT + 12] = _mm_extract_ps(sum[h - hbegin][3], 0);
+      }
+    }
+
+    for (int b = 1; b < ncolblocks; ++b) {
+      rowptr = rowptr_blocked[b];
+      colidx = colidx_blocked[b];
+      values = values_blocked[b];
+
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+        for (int hbegin = 0; hbegin < 12; hbegin += 3) {
+          int hend = hbegin + 3;
+
+#pragma unroll(3)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm_loadu_ps(output + (oc*WOUT + h)*WOUT);
+            sum[h - hbegin][1] = _mm_loadu_ps(output + (oc*WOUT + h)*WOUT + 4);
+            sum[h - hbegin][2] = _mm_loadu_ps(output + (oc*WOUT + h)*WOUT + 8);
+            sum[h - hbegin][3] = _mm_loadu_ps(output + (oc*WOUT + h)*WOUT + 12);
+          }
+
+          for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+            __m128 w_v = _mm_set1_ps(values[j]);
+            int off = colidx[j];
+
+#pragma unroll(3)
+            for (int h = hbegin; h < hend; ++h) {
+              sum[h - hbegin][0] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD))), sum[h - hbegin][0]);
+              sum[h - hbegin][1] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 4)), sum[h - hbegin][1]);
+              sum[h - hbegin][2] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 8)), sum[h - hbegin][2]);
+              sum[h - hbegin][3] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 12)), sum[h - hbegin][3]);
+            }
+          }
+
+#pragma unroll(3)
+          for (int h = hbegin; h < hend; ++h) {
+            _mm_storeu_ps(output + (oc*WOUT + h)*WOUT, sum[h - hbegin][0]);
+            _mm_storeu_ps(output + (oc*WOUT + h)*WOUT + 4, sum[h - hbegin][1]);
+            _mm_storeu_ps(output + (oc*WOUT + h)*WOUT + 8, sum[h - hbegin][2]);
+            ((int *)output)[(oc*WOUT + h)*WOUT + 12] = _mm_extract_ps(sum[h - hbegin][3], 0);
+          }
+        }
+
+        int hbegin = 12, hend = 13;
+#pragma unroll(1)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm_loadu_ps(output + (oc*WOUT + h)*WOUT);
+          sum[h - hbegin][1] = _mm_loadu_ps(output + (oc*WOUT + h)*WOUT + 4);
+          sum[h - hbegin][2] = _mm_loadu_ps(output + (oc*WOUT + h)*WOUT + 8);
+          sum[h - hbegin][3] = _mm_loadu_ps(output + (oc*WOUT + h)*WOUT + 12);
+        }
+
+        for (int j = rowptr[oc]; j < rowptr[oc + 1]; ++j) {
+          __m128 w_v = _mm_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(1)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD))), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 4)), sum[h - hbegin][1]);
+            sum[h - hbegin][2] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 8)), sum[h - hbegin][2]);
+            sum[h - hbegin][3] = _mm_add_ps(_mm_mul_ps(w_v, _mm_loadu_ps(input + off + h*(WIDTH + PAD) + 12)), sum[h - hbegin][3]);
+          }
+        }
+
+#pragma unroll(1)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm_storeu_ps(output + (oc*WOUT + h)*WOUT, sum[h - hbegin][0]);
+          _mm_storeu_ps(output + (oc*WOUT + h)*WOUT + 4, sum[h - hbegin][1]);
+          _mm_storeu_ps(output + (oc*WOUT + h)*WOUT + 8, sum[h - hbegin][2]);
+          ((int *)output)[(oc*WOUT + h)*WOUT + 12] = _mm_extract_ps(sum[h - hbegin][3], 0);
+        }
+      } // for each oc
+    } // for each col block
+#endif
+  }
+
+  conv_cycles_of_this_batch[tid*16] += __rdtsc() - t;
+}
+
+// JSP: Overfeat each group of conv3
+// Input: 256 x 13 x 13 => 676 B per channel, 169 KB total
+// Output: 512 x 12 x 12 => 576 B per channel, 288 KB total
+// Weight: 512 x 256 x 3 x 3 => 36B per channel pair, 9 KB per output channel, 18 KB per input channel, 4.5 MB total
+//         No matter what we do, there's no reuse on weight across different channels (only reuse is within a channel pair)
+// FLOPS: 2 x 512 x 256 x 12 x 12 x 3 x 3 = 324 MFLOPS
+
+// Conv4
+// Input: 512 x 13 x 13 => 338 KB total
+// Output: 1024 x 12 x 12 => 576 KB total
+
+// Conv5
+// Input: 1024 x 13 x 13 => 676 KB total
+// Output: 1024 x 12 x 12 => 576 KB total
+
+static /*inline*/ void __attribute__((noinline)) sconv345_overfeat(
+    // input features
+    const float *input,
+    // weights
+    const int **rowptr_blocked, const int **colidx_blocked, const float **values_blocked,
+    int ncolblocks,
+    // bias (for the case when bias is fused with convolution)
+    const float *bias,
+    // output features
+    float *output,
+    int out_channels,
+    float *scratch) // scratch: 832B per OC_BLOCK
+{
+  unsigned long long t = __rdtsc();
+
+  int nthreads = omp_get_num_threads();
+  int tid = omp_get_thread_num();
+
+  const int WIDTH = 12;
+  const int WOUT = 12;
+  const int PAD = 1;
+
+  int nthread_groups = nthreads;
+#if 0 // def __AVX512F__
+  nthread_groups = NTILES;
+#else
+//  nthread_groups /= 2; // 1 group per core in Xeon
+#endif
+  assert(nthreads%nthread_groups == 0);
+  int nthreads_per_group = nthreads/nthread_groups;
+  int gid = tid/nthreads_per_group;
+  int tid_in_group = tid%nthreads_per_group;
+
+  int c_per_thread = (out_channels/OC_BLOCK + nthreads_per_group - 1)/nthreads_per_group;
+  int c_begin = std::min(c_per_thread*tid_in_group, out_channels/OC_BLOCK);
+  int c_end = std::min(c_begin + c_per_thread, out_channels/OC_BLOCK);
+
+#ifndef __AVX512F__
+  __declspec(aligned(64)) int mask_temp[8] = { -1, -1, -1, -1, 0, 0, 0, 0 };
+  __m256i mask_v = _mm256_load_si256((__m256i *)mask_temp);
+#endif
+
+  for (int oc_begin = c_begin*OC_BLOCK; oc_begin < c_end*OC_BLOCK; oc_begin += OC_BLOCK) {
+#ifdef __AVX512F__
+    __m512 sum[12];
+
+    const int *rowptr = rowptr_blocked[0];
+    const int *colidx = colidx_blocked[0];
+    const float *values = values_blocked[0];
+
+    int hbegin = 0, hend = 12;
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      __m512 bias_v = _mm512_set1_ps(bias[oc]);
+
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = bias_v;
+      }
+
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+
+#define W_PREFETCH_DISTANCE (1)
+
+//      _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin]);
+      }
+    } // for each oc channel
+
+    for (int b = 1; b < ncolblocks - 1; ++b) {
+      rowptr = rowptr_blocked[b];
+      colidx = colidx_blocked[b];
+      values = values_blocked[b];
+
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+        int jbegin = rowptr[oc];
+        int jend = rowptr[oc + 1];
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+          //_mm_prefetch((const char *)(scratch + ((oc - oc_begin + 1)*WOUT + h)*16), _MM_HINT_T0);
+//          _mm_prefetch((const char *)(values + jend + (h - hbegin)*16), _MM_HINT_T0);
+//          _mm_prefetch((const char *)(colidx + jend + (h - hbegin)*16), _MM_HINT_T0);
+        }
+
+        for (int j = jbegin; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(12)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin]);
+        }
+      } // for each out channel
+    } // for each col block
+
+    rowptr = rowptr_blocked[ncolblocks - 1];
+    colidx = colidx_blocked[ncolblocks - 1];
+    values = values_blocked[ncolblocks - 1];
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+        _mm_prefetch((const char *)(output + oc*WOUT*WOUT + h*16), _MM_HINT_T0);
+      }
+
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+
+//      _mm_prefetch((const char *)(values + rowptr[oc + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(values + rowptr[oc + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[oc + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[oc + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_mask_storeu_ps(output + (oc*WOUT + h)*WOUT, 0x0fff, sum[h - hbegin]);
+      }
+    }
+#else
+    __m256 sum[(WOUT + 1)/2][2]; // [6][2]
+    __m256 w_v;
+    int off;
+
+    const int *rowptr = rowptr_blocked[0];
+    const int *colidx = colidx_blocked[0];
+    const float *values = values_blocked[0];
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      __m256 bias_v = _mm256_set1_ps(bias[oc]);
+
+      // Upper half of images
+      int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(6) // compiler gives warning for unroll pragma, but it still unrolls as we want.
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+      }
+
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+      }
+
+      // Lower half of images
+      hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+      }
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+      }
+    }
+
+    for (int b = 1; b < ncolblocks - 1; ++b) {
+      rowptr = rowptr_blocked[b];
+      colidx = colidx_blocked[b];
+      values = values_blocked[b];
+
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+
+        // Upper half of images
+        int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16 + 8);
+        }
+
+        int jbegin = rowptr[oc];
+        int jend = rowptr[oc + 1];
+
+        for (int j = jbegin; j < jend; ++j) {
+          w_v = _mm256_set1_ps(values[j]);
+          off = colidx[j];
+
+#pragma unroll(6)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        }
+
+        // Lower half of images
+        hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16 + 8);
+        }
+
+        for (int j = jbegin; j < jend; ++j) {
+          w_v = _mm256_set1_ps(values[j]);
+          off = colidx[j];
+
+#pragma unroll(6)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        }
+      }
+    } // for each col block
+
+    rowptr = rowptr_blocked[ncolblocks - 1];
+    colidx = colidx_blocked[ncolblocks - 1];
+    values = values_blocked[ncolblocks - 1];
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+
+      // Upper half of images
+      int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16 + 8);
+      }
+
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_storeu_ps(output + (oc*WOUT + h)*WOUT, sum[h - hbegin][0]);
+        _mm256_maskstore_ps(output + (oc*WOUT + h)*WOUT + 8, mask_v, sum[h - hbegin][1]);
+      }
+
+      // Lower half of images
+      hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16 + 8);
+      }
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_storeu_ps(output + (oc*WOUT + h)*WOUT, sum[h - hbegin][0]);
+        _mm256_maskstore_ps(output + (oc*WOUT + h)*WOUT + 8, mask_v, sum[h - hbegin][1]);
+      }
+    }
+#endif
+  }
+
+  conv_cycles_of_this_batch[tid*16] += __rdtsc() - t;
+}
+
+#if 0
+static /*inline*/ void __attribute__((noinline)) sconv345(
     // input features
     const float *input,
     // weights
@@ -3661,35 +5072,31 @@ static inline void /*__attribute__((noinline))*/ sconv345(
   __m256i mask_v = _mm256_load_si256((__m256i *)mask_temp);
 #endif
 
-  for (int out_channel_begin = c_begin*OC_BLOCK; out_channel_begin < c_end*OC_BLOCK; out_channel_begin += OC_BLOCK) {
-#ifdef __AVX512F__
-    __m512 sum0, sum1, sum2, sum3, sum4, sum5, sum6, sum7, sum8, sum9, sum10, sum11, sum12;
+  for (int oc_begin = c_begin*OC_BLOCK; oc_begin < c_end*OC_BLOCK; oc_begin += OC_BLOCK) {
+#if 1 // def __AVX512F__
+    __m512 sum[30];
 
     const int *rowptr = rowptr_blocked[0];
     const int *colidx = colidx_blocked[0];
     const float *values = values_blocked[0];
 
-    for (int out_channel = out_channel_begin; out_channel < out_channel_begin + OC_BLOCK; ++out_channel) {
-      __m512 bias_v = _mm512_set1_ps(bias[out_channel]);
+    int hbegin = 0, hend = 7;
 
-      int hbegin = 0, hend = WOUT;
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      __m512 bias_v = _mm512_set1_ps(bias[oc]);
 
-      sum0 = bias_v;
-      sum1 = bias_v;
-      sum2 = bias_v;
-      sum3 = bias_v;
-      sum4 = bias_v;
-      sum5 = bias_v;
-      sum6 = bias_v;
-      sum7 = bias_v;
-      sum8 = bias_v;
-      sum9 = bias_v;
-      sum10 = bias_v;
-      sum11 = bias_v;
-      sum12 = bias_v;
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = bias_v;
+      }
+#pragma unroll(7)
+      for (int h = 0; h < 7; ++h) {
+        sum[h + 7] = _mm512_setzero_ps();
+      }
 
-      int jbegin = rowptr[out_channel];
-      int jend = rowptr[out_channel + 1];
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+      int jend2 = jbegin + (jend - jbegin)/4*4;
 
 #define W_PREFETCH_DISTANCE (1)
 
@@ -3698,208 +5105,212 @@ static inline void /*__attribute__((noinline))*/ sconv345(
 //      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
 //      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
 
-      for (int j = jbegin; j < jend; ++j) {
-//#define HACK_WEIGHT
-#ifdef HACK_WEIGHT
-        __m512 c = _mm512_set1_ps(3);
-        int off = j*16;
-#else
-        __m512 c = _mm512_set1_ps(values[j]);
-        int off = colidx[j];
-#endif
+      for (int j = jbegin; j < jend2; j += 4) {
+        __m512 c0 = _mm512_set1_ps(values[j]);
+        __m512 c1 = _mm512_set1_ps(values[j + 1]);
+        __m512 c2 = _mm512_set1_ps(values[j + 2]);
+        __m512 c3 = _mm512_set1_ps(values[j + 3]);
 
-//#define HACK_ALIGN
-#if defined(HACK_ALIGN) && defined(HACK_WEIGHT)
-        sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 0*(16)), sum0);
-        sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 1*(16)), sum1);
-        sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 2*(16)), sum2);
-        sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 3*(16)), sum3);
-        sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 4*(16)), sum4);
-        sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 5*(16)), sum5);
-        sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 6*(16)), sum6);
-        sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 7*(16)), sum7);
-        sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 8*(16)), sum8);
-        sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 9*(16)), sum9);
-        sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 10*(16)), sum10);
-        sum11 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 11*(16)), sum11);
-        sum12 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 12*(16)), sum12);
-#else
-        sum0 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 0*(WIDTH + PAD)), sum0);
-        sum1 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 1*(WIDTH + PAD)), sum1);
-        sum2 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 2*(WIDTH + PAD)), sum2);
-        sum3 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 3*(WIDTH + PAD)), sum3);
-        sum4 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 4*(WIDTH + PAD)), sum4);
-        sum5 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 5*(WIDTH + PAD)), sum5);
-        sum6 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 6*(WIDTH + PAD)), sum6);
-        sum7 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 7*(WIDTH + PAD)), sum7);
-        sum8 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 8*(WIDTH + PAD)), sum8);
-        sum9 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 9*(WIDTH + PAD)), sum9);
-        sum10 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 10*(WIDTH + PAD)), sum10);
-        sum11 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 11*(WIDTH + PAD)), sum11);
-        sum12 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 12*(WIDTH + PAD)), sum12);
-#endif
+        int off0 = colidx[j];
+        int off1 = colidx[j + 1];
+        int off2 = colidx[j + 2];
+        int off3 = colidx[j + 3];
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c0, _mm512_loadu_ps(input + off0 + h*(WIDTH + PAD)), sum[h - hbegin]);
+          sum[h - hbegin + 7] = _mm512_fmadd_ps(c1, _mm512_loadu_ps(input + off1 + h*(WIDTH + PAD)), sum[h - hbegin + 7]);
+          sum[h - hbegin] = _mm512_fmadd_ps(c2, _mm512_loadu_ps(input + off2 + h*(WIDTH + PAD)), sum[h - hbegin]);
+          sum[h - hbegin + 7] = _mm512_fmadd_ps(c3, _mm512_loadu_ps(input + off3 + h*(WIDTH + PAD)), sum[h - hbegin + 7]);
+        }
       }
 
-//#define HACK_OUTPUT
-#ifdef HACK_OUTPUT
-      _mm512_store_ps(scratch + (0*WOUT + 0)*16, sum0);
-      _mm512_store_ps(scratch + (0*WOUT + 1)*16, sum1);
-      _mm512_store_ps(scratch + (0*WOUT + 2)*16, sum2);
-      _mm512_store_ps(scratch + (0*WOUT + 3)*16, sum3);
-      _mm512_store_ps(scratch + (0*WOUT + 4)*16, sum4);
-      _mm512_store_ps(scratch + (0*WOUT + 5)*16, sum5);
-      _mm512_store_ps(scratch + (0*WOUT + 6)*16, sum6);
-      _mm512_store_ps(scratch + (0*WOUT + 7)*16, sum7);
-      _mm512_store_ps(scratch + (0*WOUT + 8)*16, sum8);
-      _mm512_store_ps(scratch + (0*WOUT + 9)*16, sum9);
-      _mm512_store_ps(scratch + (0*WOUT + 10)*16, sum10);
-      _mm512_store_ps(scratch + (0*WOUT + 11)*16, sum11);
-      _mm512_store_ps(scratch + (0*WOUT + 12)*16, sum12);
-#else
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 0)*16, sum0);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 1)*16, sum1);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 2)*16, sum2);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 3)*16, sum3);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 4)*16, sum4);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 5)*16, sum5);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 6)*16, sum6);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 7)*16, sum7);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 8)*16, sum8);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 9)*16, sum9);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 10)*16, sum10);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 11)*16, sum11);
-      _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 12)*16, sum12);
-#endif
+      for (int j = jend2; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
 
-//#define PREFETCH_OUTPUT
-#ifdef PREFETCH_OUTPUT
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 16), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 32), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 48), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 64), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 80), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 96), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 112), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 128), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 144), _MM_HINT_T0);
-      _mm_prefetch((const char *)(output + out_channel*WOUT*WOUT + 160), _MM_HINT_T0);
-#endif
-    }
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, _mm512_add_ps(sum[h - hbegin], sum[h - hbegin + 7]));
+      }
+    } // for each oc channel
+
+    hbegin = 7, hend = 13;
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      __m512 bias_v = _mm512_set1_ps(bias[oc]);
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = bias_v;
+      }
+#pragma unroll(6)
+      for (int h = 0; h < 6; ++h) {
+        sum[h + 6] = _mm512_setzero_ps();
+      }
+
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+      int jend2 = jbegin + (jend - jbegin)/4*4;
+
+#define W_PREFETCH_DISTANCE (1)
+
+//      _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+
+      for (int j = jbegin; j < jend2; j += 4) {
+        __m512 c0 = _mm512_set1_ps(values[j]);
+        __m512 c1 = _mm512_set1_ps(values[j + 1]);
+        __m512 c2 = _mm512_set1_ps(values[j + 2]);
+        __m512 c3 = _mm512_set1_ps(values[j + 3]);
+
+        int off0 = colidx[j];
+        int off1 = colidx[j + 1];
+        int off2 = colidx[j + 2];
+        int off3 = colidx[j + 3];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c0, _mm512_loadu_ps(input + off0 + h*(WIDTH + PAD)), sum[h - hbegin]);
+          sum[h - hbegin + 6] = _mm512_fmadd_ps(c1, _mm512_loadu_ps(input + off1 + h*(WIDTH + PAD)), sum[h - hbegin + 6]);
+          sum[h - hbegin] = _mm512_fmadd_ps(c2, _mm512_loadu_ps(input + off2 + h*(WIDTH + PAD)), sum[h - hbegin]);
+          sum[h - hbegin + 6] = _mm512_fmadd_ps(c3, _mm512_loadu_ps(input + off3 + h*(WIDTH + PAD)), sum[h - hbegin + 6]);
+        }
+      }
+
+      for (int j = jend2; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, _mm512_add_ps(sum[h - hbegin], sum[h - hbegin + 6]));
+      }
+    } // for each oc channel
 
     for (int b = 1; b < ncolblocks - 1; ++b) {
       rowptr = rowptr_blocked[b];
       colidx = colidx_blocked[b];
       values = values_blocked[b];
 
-      for (int out_channel = out_channel_begin; out_channel < out_channel_begin + OC_BLOCK; ++out_channel) {
-#ifdef HACK_OUTPUT
-        sum0 = _mm512_load_ps(scratch + (0*WOUT + 0)*16);
-        sum1 = _mm512_load_ps(scratch + (0*WOUT + 1)*16);
-        sum2 = _mm512_load_ps(scratch + (0*WOUT + 2)*16);
-        sum3 = _mm512_load_ps(scratch + (0*WOUT + 3)*16);
-        sum4 = _mm512_load_ps(scratch + (0*WOUT + 4)*16);
-        sum5 = _mm512_load_ps(scratch + (0*WOUT + 5)*16);
-        sum6 = _mm512_load_ps(scratch + (0*WOUT + 6)*16);
-        sum7 = _mm512_load_ps(scratch + (0*WOUT + 7)*16);
-        sum8 = _mm512_load_ps(scratch + (0*WOUT + 8)*16);
-        sum9 = _mm512_load_ps(scratch + (0*WOUT + 9)*16);
-        sum10 = _mm512_load_ps(scratch + (0*WOUT + 10)*16);
-        sum11 = _mm512_load_ps(scratch + (0*WOUT + 11)*16);
-        sum12 = _mm512_load_ps(scratch + (0*WOUT + 12)*16);
-#else
-        sum0 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 0)*16);
-        sum1 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 1)*16);
-        sum2 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 2)*16);
-        sum3 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 3)*16);
-        sum4 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 4)*16);
-        sum5 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 5)*16);
-        sum6 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 6)*16);
-        sum7 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 7)*16);
-        sum8 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 8)*16);
-        sum9 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 9)*16);
-        sum10 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 10)*16);
-        sum11 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 11)*16);
-        sum12 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 12)*16);
-#endif
+      hbegin = 0, hend = 7;
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+        int jbegin = rowptr[oc];
+        int jend = rowptr[oc + 1];
+        int jend2 = jbegin + (jend - jbegin)/4*4;
 
-        int jbegin = rowptr[out_channel];
-        int jend = rowptr[out_channel + 1];
-
-//        _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
-//        _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
-//        _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
-//        _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
-
-        for (int j = jbegin; j < jend; ++j) {
-#ifdef HACK_WEIGHT
-          __m512 c = _mm512_set1_ps(3);
-          int off = j*16;
-#else
-          __m512 c = _mm512_set1_ps(values[j]);
-          int off = colidx[j];
-#endif
-
-#if defined(HACK_ALIGN) && defined(HACK_WEIGHT)
-          sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 0*(16)), sum0);
-          sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 1*(16)), sum1);
-          sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 2*(16)), sum2);
-          sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 3*(16)), sum3);
-          sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 4*(16)), sum4);
-          sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 5*(16)), sum5);
-          sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 6*(16)), sum6);
-          sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 7*(16)), sum7);
-          sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 8*(16)), sum8);
-          sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 9*(16)), sum9);
-          sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 10*(16)), sum10);
-          sum11 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 11*(16)), sum11);
-          sum12 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 12*(16)), sum12);
-#else
-          sum0 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 0*(WIDTH + PAD)), sum0);
-          sum1 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 1*(WIDTH + PAD)), sum1);
-          sum2 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 2*(WIDTH + PAD)), sum2);
-          sum3 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 3*(WIDTH + PAD)), sum3);
-          sum4 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 4*(WIDTH + PAD)), sum4);
-          sum5 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 5*(WIDTH + PAD)), sum5);
-          sum6 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 6*(WIDTH + PAD)), sum6);
-          sum7 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 7*(WIDTH + PAD)), sum7);
-          sum8 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 8*(WIDTH + PAD)), sum8);
-          sum9 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 9*(WIDTH + PAD)), sum9);
-          sum10 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 10*(WIDTH + PAD)), sum10);
-          sum11 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 11*(WIDTH + PAD)), sum11);
-          sum12 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 12*(WIDTH + PAD)), sum12);
-#endif
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+          //_mm_prefetch((const char *)(scratch + ((oc - oc_begin + 1)*WOUT + h)*16), _MM_HINT_T0);
+          _mm_prefetch((const char *)(values + jend + (h - hbegin)*16), _MM_HINT_T0);
+          _mm_prefetch((const char *)(colidx + jend + (h - hbegin)*16), _MM_HINT_T0);
+        }
+#pragma unroll(7)
+        for (int h = 0; h < 7; ++h) {
+          sum[h + 7] = _mm512_setzero_ps();
         }
 
-#ifdef HACK_OUTPUT
-        _mm512_store_ps(scratch + (0*WOUT + 0)*16, sum0);
-        _mm512_store_ps(scratch + (0*WOUT + 1)*16, sum1);
-        _mm512_store_ps(scratch + (0*WOUT + 2)*16, sum2);
-        _mm512_store_ps(scratch + (0*WOUT + 3)*16, sum3);
-        _mm512_store_ps(scratch + (0*WOUT + 4)*16, sum4);
-        _mm512_store_ps(scratch + (0*WOUT + 5)*16, sum5);
-        _mm512_store_ps(scratch + (0*WOUT + 6)*16, sum6);
-        _mm512_store_ps(scratch + (0*WOUT + 7)*16, sum7);
-        _mm512_store_ps(scratch + (0*WOUT + 8)*16, sum8);
-        _mm512_store_ps(scratch + (0*WOUT + 9)*16, sum9);
-        _mm512_store_ps(scratch + (0*WOUT + 10)*16, sum10);
-        _mm512_store_ps(scratch + (0*WOUT + 11)*16, sum11);
-        _mm512_store_ps(scratch + (0*WOUT + 12)*16, sum12);
-#else
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 0)*16, sum0);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 1)*16, sum1);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 2)*16, sum2);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 3)*16, sum3);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 4)*16, sum4);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 5)*16, sum5);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 6)*16, sum6);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 7)*16, sum7);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 8)*16, sum8);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 9)*16, sum9);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 10)*16, sum10);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 11)*16, sum11);
-        _mm512_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 12)*16, sum12);
-#endif
+        for (int j = jbegin; j < jend2; j += 4) {
+          __m512 c0 = _mm512_set1_ps(values[j]);
+          __m512 c1 = _mm512_set1_ps(values[j + 1]);
+          __m512 c2 = _mm512_set1_ps(values[j + 2]);
+          __m512 c3 = _mm512_set1_ps(values[j + 3]);
+
+          int off0 = colidx[j];
+          int off1 = colidx[j + 1];
+          int off2 = colidx[j + 2];
+          int off3 = colidx[j + 3];
+
+#pragma unroll(7)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c0, _mm512_loadu_ps(input + off0 + h*(WIDTH + PAD)), sum[h - hbegin]);
+            sum[h - hbegin + 7] = _mm512_fmadd_ps(c1, _mm512_loadu_ps(input + off1 + h*(WIDTH + PAD)), sum[h - hbegin + 7]);
+            sum[h - hbegin] = _mm512_fmadd_ps(c2, _mm512_loadu_ps(input + off2 + h*(WIDTH + PAD)), sum[h - hbegin]);
+            sum[h - hbegin + 7] = _mm512_fmadd_ps(c3, _mm512_loadu_ps(input + off3 + h*(WIDTH + PAD)), sum[h - hbegin + 7]);
+          }
+        }
+
+        for (int j = jend2; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(7)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, _mm512_add_ps(sum[h - hbegin], sum[h - hbegin + 7]));
+        }
+      } // for each out channel
+
+      hbegin = 7; hend = 13;
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+          //_mm_prefetch((const char *)(scratch + ((oc - oc_begin + 1)*WOUT + h)*16), _MM_HINT_T0);
+        }
+#pragma unroll(6)
+        for (int h = 0; h < 6; ++h) {
+          sum[h + 6] = _mm512_setzero_ps();
+        }
+
+        int jbegin = rowptr[oc];
+        int jend = rowptr[oc + 1];
+        int jend2 = jbegin + (jend - jbegin)/4*4;
+
+        for (int j = jbegin; j < jend2; j += 4) {
+          __m512 c0 = _mm512_set1_ps(values[j]);
+          __m512 c1 = _mm512_set1_ps(values[j + 1]);
+          __m512 c2 = _mm512_set1_ps(values[j + 2]);
+          __m512 c3 = _mm512_set1_ps(values[j + 3]);
+
+          int off0 = colidx[j];
+          int off1 = colidx[j + 1];
+          int off2 = colidx[j + 2];
+          int off3 = colidx[j + 3];
+
+#pragma unroll(6)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c0, _mm512_loadu_ps(input + off0 + h*(WIDTH + PAD)), sum[h - hbegin]);
+            sum[h - hbegin + 6] = _mm512_fmadd_ps(c1, _mm512_loadu_ps(input + off1 + h*(WIDTH + PAD)), sum[h - hbegin + 6]);
+            sum[h - hbegin] = _mm512_fmadd_ps(c2, _mm512_loadu_ps(input + off2 + h*(WIDTH + PAD)), sum[h - hbegin]);
+            sum[h - hbegin + 6] = _mm512_fmadd_ps(c3, _mm512_loadu_ps(input + off3 + h*(WIDTH + PAD)), sum[h - hbegin + 6]);
+          }
+        }
+
+        for (int j = jend2; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(6)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, _mm512_add_ps(sum[h - hbegin], sum[h - hbegin + 6]));
+        }
       } // for each out channel
     } // for each col block
 
@@ -3907,114 +5318,115 @@ static inline void /*__attribute__((noinline))*/ sconv345(
     colidx = colidx_blocked[ncolblocks - 1];
     values = values_blocked[ncolblocks - 1];
 
-    for (int out_channel = out_channel_begin; out_channel < out_channel_begin + OC_BLOCK; ++out_channel) {
-#ifdef HACK_OUTPUT
-      sum0 = _mm512_load_ps(scratch + (0*WOUT + 0)*16);
-      sum1 = _mm512_load_ps(scratch + (0*WOUT + 1)*16);
-      sum2 = _mm512_load_ps(scratch + (0*WOUT + 2)*16);
-      sum3 = _mm512_load_ps(scratch + (0*WOUT + 3)*16);
-      sum4 = _mm512_load_ps(scratch + (0*WOUT + 4)*16);
-      sum5 = _mm512_load_ps(scratch + (0*WOUT + 5)*16);
-      sum6 = _mm512_load_ps(scratch + (0*WOUT + 6)*16);
-      sum7 = _mm512_load_ps(scratch + (0*WOUT + 7)*16);
-      sum8 = _mm512_load_ps(scratch + (0*WOUT + 8)*16);
-      sum9 = _mm512_load_ps(scratch + (0*WOUT + 9)*16);
-      sum10 = _mm512_load_ps(scratch + (0*WOUT + 10)*16);
-      sum11 = _mm512_load_ps(scratch + (0*WOUT + 11)*16);
-      sum12 = _mm512_load_ps(scratch + (0*WOUT + 12)*16);
-#else
-      sum0 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 0)*16);
-      sum1 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 1)*16);
-      sum2 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 2)*16);
-      sum3 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 3)*16);
-      sum4 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 4)*16);
-      sum5 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 5)*16);
-      sum6 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 6)*16);
-      sum7 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 7)*16);
-      sum8 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 8)*16);
-      sum9 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 9)*16);
-      sum10 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 10)*16);
-      sum11 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 11)*16);
-      sum12 = _mm512_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + 12)*16);
-#endif
+    hbegin = 0; hend = 7;
 
-      int jbegin = rowptr[out_channel];
-      int jend = rowptr[out_channel + 1];
-
-//      _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
-//      _mm_prefetch((const char *)(values + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
-//      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
-//      _mm_prefetch((const char *)(colidx + rowptr[out_channel + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
-
-      for (int j = jbegin; j < jend; ++j) {
-#ifdef HACK_WEIGHT
-        __m512 c = _mm512_set1_ps(3);
-        int off = j*16;
-#else
-        __m512 c = _mm512_set1_ps(values[j]);
-        int off = colidx[j];
-#endif
-
-#if defined(HACK_ALIGN) && defined(HACK_WEIGHT)
-        sum0 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 0*(16)), sum0);
-        sum1 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 1*(16)), sum1);
-        sum2 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 2*(16)), sum2);
-        sum3 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 3*(16)), sum3);
-        sum4 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 4*(16)), sum4);
-        sum5 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 5*(16)), sum5);
-        sum6 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 6*(16)), sum6);
-        sum7 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 7*(16)), sum7);
-        sum8 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 8*(16)), sum8);
-        sum9 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 9*(16)), sum9);
-        sum10 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 10*(16)), sum10);
-        sum11 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 11*(16)), sum11);
-        sum12 = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + 12*(16)), sum12);
-#else
-        sum0 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 0*(WIDTH + PAD)), sum0);
-        sum1 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 1*(WIDTH + PAD)), sum1);
-        sum2 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 2*(WIDTH + PAD)), sum2);
-        sum3 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 3*(WIDTH + PAD)), sum3);
-        sum4 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 4*(WIDTH + PAD)), sum4);
-        sum5 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 5*(WIDTH + PAD)), sum5);
-        sum6 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 6*(WIDTH + PAD)), sum6);
-        sum7 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 7*(WIDTH + PAD)), sum7);
-        sum8 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 8*(WIDTH + PAD)), sum8);
-        sum9 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 9*(WIDTH + PAD)), sum9);
-        sum10 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 10*(WIDTH + PAD)), sum10);
-        sum11 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 11*(WIDTH + PAD)), sum11);
-        sum12 = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + 12*(WIDTH + PAD)), sum12);
-#endif
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+        _mm_prefetch((const char *)(output + oc*WOUT*WOUT + h*16), _MM_HINT_T0);
+      }
+#pragma unroll(7)
+      for (int h = 0; h < 7; ++h) {
+        sum[h + 7] = _mm512_setzero_ps();
       }
 
-#ifdef HACK_OUTPUT
-      _mm512_mask_storeu_ps(output + (0*WOUT + 0)*WOUT, 0x1fff, sum0);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 1)*WOUT, 0x1fff, sum1);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 2)*WOUT, 0x1fff, sum2);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 3)*WOUT, 0x1fff, sum3);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 4)*WOUT, 0x1fff, sum4);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 5)*WOUT, 0x1fff, sum5);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 6)*WOUT, 0x1fff, sum6);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 7)*WOUT, 0x1fff, sum7);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 8)*WOUT, 0x1fff, sum8);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 9)*WOUT, 0x1fff, sum9);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 10)*WOUT, 0x1fff, sum10);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 11)*WOUT, 0x1fff, sum11);
-      _mm512_mask_storeu_ps(output + (0*WOUT + 12)*WOUT, 0x1fff, sum12);
-#else
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 0)*WOUT, 0x1fff, sum0);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 1)*WOUT, 0x1fff, sum1);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 2)*WOUT, 0x1fff, sum2);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 3)*WOUT, 0x1fff, sum3);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 4)*WOUT, 0x1fff, sum4);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 5)*WOUT, 0x1fff, sum5);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 6)*WOUT, 0x1fff, sum6);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 7)*WOUT, 0x1fff, sum7);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 8)*WOUT, 0x1fff, sum8);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 9)*WOUT, 0x1fff, sum9);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 10)*WOUT, 0x1fff, sum10);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 11)*WOUT, 0x1fff, sum11);
-      _mm512_mask_storeu_ps(output + (out_channel*WOUT + 12)*WOUT, 0x1fff, sum12);
-#endif
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+      int jend2 = jbegin + (jend - jbegin)/4*4;
+
+//      _mm_prefetch((const char *)(values + rowptr[oc + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(values + rowptr[oc + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[oc + W_PREFETCH_DISTANCE]), _MM_HINT_T1);
+//      _mm_prefetch((const char *)(colidx + rowptr[oc + W_PREFETCH_DISTANCE] + 16), _MM_HINT_T1);
+
+      for (int j = jbegin; j < jend2; j += 4) {
+        __m512 c0 = _mm512_set1_ps(values[j]);
+        __m512 c1 = _mm512_set1_ps(values[j + 1]);
+        __m512 c2 = _mm512_set1_ps(values[j + 2]);
+        __m512 c3 = _mm512_set1_ps(values[j + 3]);
+
+        int off0 = colidx[j];
+        int off1 = colidx[j + 1];
+        int off2 = colidx[j + 2];
+        int off3 = colidx[j + 3];
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c0, _mm512_loadu_ps(input + off0 + h*(WIDTH + PAD)), sum[h - hbegin]);
+          sum[h - hbegin + 7] = _mm512_fmadd_ps(c1, _mm512_loadu_ps(input + off1 + h*(WIDTH + PAD)), sum[h - hbegin + 7]);
+          sum[h - hbegin] = _mm512_fmadd_ps(c2, _mm512_loadu_ps(input + off2 + h*(WIDTH + PAD)), sum[h - hbegin]);
+          sum[h - hbegin + 7] = _mm512_fmadd_ps(c3, _mm512_loadu_ps(input + off3 + h*(WIDTH + PAD)), sum[h - hbegin + 7]);
+        }
+      }
+
+      for (int j = jend2; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_mask_storeu_ps(output + (oc*WOUT + h)*WOUT, 0x1fff, _mm512_add_ps(sum[h - hbegin], sum[h - hbegin + 7]));
+      }
+    }
+
+    hbegin = 7; hend = 13;
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_load_ps(scratch + ((oc - oc_begin)*WOUT + h)*16);
+        _mm_prefetch((const char *)(output + (oc*WOUT + 7)*WOUT + (h - hbegin)*16), _MM_HINT_T0);
+      }
+#pragma unroll(6)
+      for (int h = 0; h < 6; ++h) {
+        sum[h + 6] = _mm512_setzero_ps();
+      }
+
+      int jbegin = rowptr[oc];
+      int jend = rowptr[oc + 1];
+      int jend2 = jbegin + (jend - jbegin)/4*4;
+
+      for (int j = jbegin; j < jend2; j += 4) {
+        __m512 c0 = _mm512_set1_ps(values[j]);
+        __m512 c1 = _mm512_set1_ps(values[j + 1]);
+        __m512 c2 = _mm512_set1_ps(values[j + 2]);
+        __m512 c3 = _mm512_set1_ps(values[j + 3]);
+
+        int off0 = colidx[j];
+        int off1 = colidx[j + 1];
+        int off2 = colidx[j + 2];
+        int off3 = colidx[j + 3];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c0, _mm512_loadu_ps(input + off0 + h*(WIDTH + PAD)), sum[h - hbegin]);
+          sum[h - hbegin + 6] = _mm512_fmadd_ps(c1, _mm512_loadu_ps(input + off1 + h*(WIDTH + PAD)), sum[h - hbegin + 6]);
+          sum[h - hbegin] = _mm512_fmadd_ps(c2, _mm512_loadu_ps(input + off2 + h*(WIDTH + PAD)), sum[h - hbegin]);
+          sum[h - hbegin + 6] = _mm512_fmadd_ps(c3, _mm512_loadu_ps(input + off3 + h*(WIDTH + PAD)), sum[h - hbegin + 6]);
+        }
+      }
+
+      for (int j = jend2; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_mask_storeu_ps(output + (oc*WOUT + h)*WOUT, 0x1fff, _mm512_add_ps(sum[h - hbegin], sum[h - hbegin + 6]));
+      }
     }
 #else
     __m256 sum[(WOUT + 1)/2][2]; // [7][2]
@@ -4025,13 +5437,13 @@ static inline void /*__attribute__((noinline))*/ sconv345(
     const int *colidx = colidx_blocked[0];
     const float *values = values_blocked[0];
 
-    for (int out_channel = out_channel_begin; out_channel < out_channel_begin + OC_BLOCK; ++out_channel) {
+    for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
       __m256 bias_v = _mm256_set1_ps(bias[out_channel]);
 
       // Upper half of images
       int hbegin = 0, hend = (WOUT + 1)/2;
 
-#pragma unroll(7) // FIXME - compiler refuses to unroll this. Let's manually unroll it.
+#pragma unroll(7) // compiler gives warning for unroll pragma, but it still unrolls as we want.
       for (int h = hbegin; h < hend; ++h) {
         sum[h - hbegin][0] = bias_v;
         sum[h - hbegin][1] = bias_v;
@@ -4053,8 +5465,8 @@ static inline void /*__attribute__((noinline))*/ sconv345(
 
 #pragma unroll(7)
       for (int h = hbegin; h < hend; ++h) {
-        _mm256_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16, sum[h - hbegin][0]);
-        _mm256_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
       }
 
       // Lower half of images
@@ -4079,8 +5491,8 @@ static inline void /*__attribute__((noinline))*/ sconv345(
 
 #pragma unroll(6)
       for (int h = hbegin; h < hend; ++h) {
-        _mm256_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16, sum[h - hbegin][0]);
-        _mm256_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
       }
     }
 
@@ -4089,15 +5501,15 @@ static inline void /*__attribute__((noinline))*/ sconv345(
       colidx = colidx_blocked[b];
       values = values_blocked[b];
 
-      for (int out_channel = out_channel_begin; out_channel < out_channel_begin + OC_BLOCK; ++out_channel) {
+      for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
 
         // Upper half of images
         int hbegin = 0, hend = (WOUT + 1)/2;
 
 #pragma unroll(7)
         for (int h = hbegin; h < hend; ++h) {
-          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16);
-          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16 + 8);
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
         }
 
         int jbegin = rowptr[out_channel];
@@ -4116,8 +5528,8 @@ static inline void /*__attribute__((noinline))*/ sconv345(
 
 #pragma unroll(7)
         for (int h = hbegin; h < hend; ++h) {
-          _mm256_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16, sum[h - hbegin][0]);
-          _mm256_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
         }
 
         // Lower half of images
@@ -4125,8 +5537,8 @@ static inline void /*__attribute__((noinline))*/ sconv345(
 
 #pragma unroll(6)
         for (int h = hbegin; h < hend; ++h) {
-          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16);
-          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16 + 8);
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
         }
 
         for (int j = jbegin; j < jend; ++j) {
@@ -4142,8 +5554,8 @@ static inline void /*__attribute__((noinline))*/ sconv345(
 
 #pragma unroll(6)
         for (int h = hbegin; h < hend; ++h) {
-          _mm256_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16, sum[h - hbegin][0]);
-          _mm256_store_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
         }
       }
     } // for each col block
@@ -4152,15 +5564,15 @@ static inline void /*__attribute__((noinline))*/ sconv345(
     colidx = colidx_blocked[ncolblocks - 1];
     values = values_blocked[ncolblocks - 1];
 
-    for (int out_channel = out_channel_begin; out_channel < out_channel_begin + OC_BLOCK; ++out_channel) {
+    for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
 
       // Upper half of images
       int hbegin = 0, hend = (WOUT + 1)/2;
 
 #pragma unroll(7)
       for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16);
-        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16 + 8);
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
       }
 
       int jbegin = rowptr[out_channel];
@@ -4188,8 +5600,872 @@ static inline void /*__attribute__((noinline))*/ sconv345(
 
 #pragma unroll(6)
       for (int h = hbegin; h < hend; ++h) {
-        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16);
-        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - out_channel_begin)*WOUT + h)*16 + 8);
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+      }
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_storeu_ps(output + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+        _mm256_maskstore_ps(output + (out_channel*WOUT + h)*WOUT + 8, mask_v, sum[h - hbegin][1]);
+      }
+    }
+#endif
+  }
+
+  conv_cycles_of_this_batch[tid*16] += __rdtsc() - t;
+}
+#endif
+
+static /*inline*/ void __attribute__((noinline)) sconv345_split(
+    // input features
+    const float *input,
+    // weights
+    const int *rowptr,
+    const int *colidx,
+    const float *values,
+    int ncolblocks,
+    // bias (for the case when bias is fused with convolution)
+    const float *bias,
+    // output features
+    float *output,
+    int out_channels,
+    float *scratch) // scratch: 832B per OC_BLOCK
+{
+  unsigned long long t = __rdtsc();
+
+  int nthreads = omp_get_num_threads();
+  int tid = omp_get_thread_num();
+
+  const int WIDTH = 13;
+  const int WOUT = 13;
+  const int PAD = 1;
+
+  int nthread_groups = nthreads;
+#ifdef __AVX512F__
+  nthread_groups = NTILES;
+#else
+//  nthread_groups /= 2; // 1 group per core in Xeon
+#endif
+  assert(nthreads%nthread_groups == 0);
+  int nthreads_per_group = nthreads/nthread_groups;
+  int gid = tid/nthreads_per_group;
+  int tid_in_group = tid%nthreads_per_group;
+
+  int c_per_thread = (out_channels/OC_BLOCK + nthreads_per_group - 1)/nthreads_per_group;
+  int c_begin = std::min(c_per_thread*tid_in_group, out_channels/OC_BLOCK);
+  int c_end = std::min(c_begin + c_per_thread, out_channels/OC_BLOCK);
+
+#ifndef __AVX512F__
+  __declspec(aligned(64)) int mask_temp[8] = { -1, -1, -1, -1, -1, 0, 0, 0 };
+  __m256i mask_v = _mm256_load_si256((__m256i *)mask_temp);
+#endif
+
+
+  for (int oc_begin = c_begin*OC_BLOCK; oc_begin < c_end*OC_BLOCK; oc_begin += OC_BLOCK) {
+#if 1 // def __AVX512F__
+    int b = 0;
+    __m512 sum[13];
+
+    int hbegin = 0, hend = WOUT;
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      __m512 bias_v = _mm512_set1_ps(bias[oc]);
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = bias_v;
+      }
+
+      int jbegin = rowptr[(b*out_channels + oc)*3], jend = rowptr[(b*out_channels + oc)*3 + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+      }
+
+      jbegin = rowptr[(b*out_channels + oc)*3 + 1], jend = rowptr[(b*out_channels + oc)*3 + 2];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+      }
+
+      jbegin = rowptr[(b*out_channels + oc)*3 + 2], jend = rowptr[(b*out_channels + oc)*3 + 3];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin]);
+      }
+    } // for each oc channel
+
+    for (b = 1; b < ncolblocks - 1; ++b) {
+      hbegin = 0, hend = WOUT;
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_maskz_expandloadu_ps(0xfffc, scratch + ((oc - oc_begin)*WOUT + h)*16);
+        }
+
+        int jbegin = rowptr[(b*out_channels + oc)*3], jend = rowptr[(b*out_channels + oc)*3 + 1];
+
+        for (int j = jbegin; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(13)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+        }
+
+        jbegin = rowptr[(b*out_channels + oc)*3 + 1], jend = rowptr[(b*out_channels + oc)*3 + 2];
+
+        for (int j = jbegin; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(13)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+        }
+
+        jbegin = rowptr[(b*out_channels + oc)*3 + 2], jend = rowptr[(b*out_channels + oc)*3 + 3];
+
+        for (int j = jbegin; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(13)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin]);
+        }
+      } // for each oc
+    } // for each col block
+
+    hbegin = 0; hend = WOUT;
+    b = ncolblocks - 1;
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_expandloadu_ps(0xfffc, scratch + ((oc - oc_begin)*WOUT + h)*16);
+        _mm_prefetch((const char *)(output + oc*WOUT*WOUT + h*16), _MM_HINT_T0);
+      }
+
+      int jbegin = rowptr[(b*out_channels + oc)*3], jend = rowptr[(b*out_channels + oc)*3 + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+      }
+
+      jbegin = rowptr[(b*out_channels + oc)*3 + 1], jend = rowptr[(b*out_channels + oc)*3 + 2];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+      }
+
+      jbegin = rowptr[(b*out_channels + oc)*3 + 2], jend = rowptr[(b*out_channels + oc)*3 + 3];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(13)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(13)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_mask_storeu_ps(output + (oc*WOUT + h)*WOUT, 0x1fff, sum[h - hbegin]);
+      }
+    } // for each oc
+#else
+    __m256 sum[(WOUT + 1)/2][2]; // [7][2]
+    __m256 w_v;
+    int off;
+
+    const int *rowptr = rowptr_blocked[0];
+    const int *colidx = colidx_blocked[0];
+    const float *values = values_blocked[0];
+
+    for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
+      __m256 bias_v = _mm256_set1_ps(bias[out_channel]);
+
+      // Upper half of images
+      int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(7) // compiler gives warning for unroll pragma, but it still unrolls as we want.
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+      }
+
+      int jbegin = rowptr[out_channel];
+      int jend = rowptr[out_channel + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+      }
+
+      // Lower half of images
+      hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+      }
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+      }
+    }
+
+    for (int b = 1; b < ncolblocks - 1; ++b) {
+      rowptr = rowptr_blocked[b];
+      colidx = colidx_blocked[b];
+      values = values_blocked[b];
+
+      for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
+
+        // Upper half of images
+        int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+        }
+
+        int jbegin = rowptr[out_channel];
+        int jend = rowptr[out_channel + 1];
+
+        for (int j = jbegin; j < jend; ++j) {
+          w_v = _mm256_set1_ps(values[j]);
+          off = colidx[j];
+
+#pragma unroll(7)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        }
+
+        // Lower half of images
+        hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+        }
+
+        for (int j = jbegin; j < jend; ++j) {
+          w_v = _mm256_set1_ps(values[j]);
+          off = colidx[j];
+
+#pragma unroll(6)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        }
+      }
+    } // for each col block
+
+    rowptr = rowptr_blocked[ncolblocks - 1];
+    colidx = colidx_blocked[ncolblocks - 1];
+    values = values_blocked[ncolblocks - 1];
+
+    for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
+
+      // Upper half of images
+      int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+      }
+
+      int jbegin = rowptr[out_channel];
+      int jend = rowptr[out_channel + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_storeu_ps(output + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+        _mm256_maskstore_ps(output + (out_channel*WOUT + h)*WOUT + 8, mask_v, sum[h - hbegin][1]);
+      }
+
+      // Lower half of images
+      hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+      }
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_storeu_ps(output + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+        _mm256_maskstore_ps(output + (out_channel*WOUT + h)*WOUT + 8, mask_v, sum[h - hbegin][1]);
+      }
+    }
+#endif
+  }
+
+  conv_cycles_of_this_batch[tid*16] += __rdtsc() - t;
+}
+
+static /*inline*/ void __attribute__((noinline)) sconv345_split_overfeat(
+    // input features
+    const float *input,
+    // weights
+    const int *rowptr,
+    const int *colidx,
+    const float *values,
+    int ncolblocks,
+    // bias (for the case when bias is fused with convolution)
+    const float *bias,
+    // output features
+    float *output,
+    int out_channels,
+    float *scratch) // scratch: 832B per OC_BLOCK
+{
+  unsigned long long t = __rdtsc();
+
+  int nthreads = omp_get_num_threads();
+  int tid = omp_get_thread_num();
+
+  const int WIDTH = 12;
+  const int WOUT = 12;
+  const int PAD = 1;
+
+  int nthread_groups = nthreads;
+#ifdef __AVX512F__
+  nthread_groups = NTILES;
+#else
+//  nthread_groups /= 2; // 1 group per core in Xeon
+#endif
+  assert(nthreads%nthread_groups == 0);
+  int nthreads_per_group = nthreads/nthread_groups;
+  int gid = tid/nthreads_per_group;
+  int tid_in_group = tid%nthreads_per_group;
+
+  int c_per_thread = (out_channels/OC_BLOCK + nthreads_per_group - 1)/nthreads_per_group;
+  int c_begin = std::min(c_per_thread*tid_in_group, out_channels/OC_BLOCK);
+  int c_end = std::min(c_begin + c_per_thread, out_channels/OC_BLOCK);
+
+#ifndef __AVX512F__
+  __declspec(aligned(64)) int mask_temp[8] = { -1, -1, -1, -1, -1, 0, 0, 0 };
+  __m256i mask_v = _mm256_load_si256((__m256i *)mask_temp);
+#endif
+
+  for (int oc_begin = c_begin*OC_BLOCK; oc_begin < c_end*OC_BLOCK; oc_begin += OC_BLOCK) {
+#if 1 // def __AVX512F__
+    int b = 0;
+    __m512 sum[WOUT];
+
+    int hbegin = 0, hend = WOUT;
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+      __m512 bias_v = _mm512_set1_ps(bias[oc]);
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = bias_v;
+      }
+
+      int jbegin = rowptr[(b*out_channels + oc)*3], jend = rowptr[(b*out_channels + oc)*3 + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+      }
+
+      jbegin = rowptr[(b*out_channels + oc)*3 + 1], jend = rowptr[(b*out_channels + oc)*3 + 2];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+      }
+
+      jbegin = rowptr[(b*out_channels + oc)*3 + 2], jend = rowptr[(b*out_channels + oc)*3 + 3];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin]);
+      }
+    } // for each oc channel
+
+    for (b = 1; b < ncolblocks - 1; ++b) {
+      hbegin = 0, hend = WOUT;
+      for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_maskz_expandloadu_ps(0xfffc, scratch + ((oc - oc_begin)*WOUT + h)*16);
+        }
+
+        int jbegin = rowptr[(b*out_channels + oc)*3], jend = rowptr[(b*out_channels + oc)*3 + 1];
+
+        for (int j = jbegin; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(12)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+        }
+
+        jbegin = rowptr[(b*out_channels + oc)*3 + 1], jend = rowptr[(b*out_channels + oc)*3 + 2];
+
+        for (int j = jbegin; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(12)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+        }
+
+        jbegin = rowptr[(b*out_channels + oc)*3 + 2], jend = rowptr[(b*out_channels + oc)*3 + 3];
+
+        for (int j = jbegin; j < jend; ++j) {
+          __m512 c = _mm512_set1_ps(values[j]);
+          int off = colidx[j];
+
+#pragma unroll(12)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+          }
+        }
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_store_ps(scratch + ((oc - oc_begin)*WOUT + h)*16, sum[h - hbegin]);
+        }
+      } // for each oc
+    } // for each col block
+
+    hbegin = 0; hend = WOUT;
+    b = ncolblocks - 1;
+
+    for (int oc = oc_begin; oc < oc_begin + OC_BLOCK; ++oc) {
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_expandloadu_ps(0xfffc, scratch + ((oc - oc_begin)*WOUT + h)*16);
+        _mm_prefetch((const char *)(output + oc*WOUT*WOUT + h*16), _MM_HINT_T0);
+      }
+
+      int jbegin = rowptr[(b*out_channels + oc)*3], jend = rowptr[(b*out_channels + oc)*3 + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+      }
+
+      jbegin = rowptr[(b*out_channels + oc)*3 + 1], jend = rowptr[(b*out_channels + oc)*3 + 2];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin] = _mm512_maskz_compress_ps(0xfffe, sum[h - hbegin]);
+      }
+
+      jbegin = rowptr[(b*out_channels + oc)*3 + 2], jend = rowptr[(b*out_channels + oc)*3 + 3];
+
+      for (int j = jbegin; j < jend; ++j) {
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = colidx[j];
+
+#pragma unroll(12)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_load_ps(input + off + h*16), sum[h - hbegin]);
+        }
+      }
+
+#pragma unroll(12)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_mask_storeu_ps(output + (oc*WOUT + h)*WOUT, 0x0fff, sum[h - hbegin]);
+      }
+    } // for each oc
+#else
+    __m256 sum[(WOUT + 1)/2][2]; // [7][2]
+    __m256 w_v;
+    int off;
+
+    const int *rowptr = rowptr_blocked[0];
+    const int *colidx = colidx_blocked[0];
+    const float *values = values_blocked[0];
+
+    for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
+      __m256 bias_v = _mm256_set1_ps(bias[out_channel]);
+
+      // Upper half of images
+      int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(7) // compiler gives warning for unroll pragma, but it still unrolls as we want.
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+      }
+
+      int jbegin = rowptr[out_channel];
+      int jend = rowptr[out_channel + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+      }
+
+      // Lower half of images
+      hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = bias_v;
+        sum[h - hbegin][1] = bias_v;
+      }
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+        _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+      }
+    }
+
+    for (int b = 1; b < ncolblocks - 1; ++b) {
+      rowptr = rowptr_blocked[b];
+      colidx = colidx_blocked[b];
+      values = values_blocked[b];
+
+      for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
+
+        // Upper half of images
+        int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+        }
+
+        int jbegin = rowptr[out_channel];
+        int jend = rowptr[out_channel + 1];
+
+        for (int j = jbegin; j < jend; ++j) {
+          w_v = _mm256_set1_ps(values[j]);
+          off = colidx[j];
+
+#pragma unroll(7)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        }
+
+        // Lower half of images
+        hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+          sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+        }
+
+        for (int j = jbegin; j < jend; ++j) {
+          w_v = _mm256_set1_ps(values[j]);
+          off = colidx[j];
+
+#pragma unroll(6)
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+            sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+          }
+        }
+
+#pragma unroll(6)
+        for (int h = hbegin; h < hend; ++h) {
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16, sum[h - hbegin][0]);
+          _mm256_store_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8, sum[h - hbegin][1]);
+        }
+      }
+    } // for each col block
+
+    rowptr = rowptr_blocked[ncolblocks - 1];
+    colidx = colidx_blocked[ncolblocks - 1];
+    values = values_blocked[ncolblocks - 1];
+
+    for (int out_channel = oc_begin; out_channel < oc_begin + OC_BLOCK; ++out_channel) {
+
+      // Upper half of images
+      int hbegin = 0, hend = (WOUT + 1)/2;
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
+      }
+
+      int jbegin = rowptr[out_channel];
+      int jend = rowptr[out_channel + 1];
+
+      for (int j = jbegin; j < jend; ++j) {
+        w_v = _mm256_set1_ps(values[j]);
+        off = colidx[j];
+
+#pragma unroll(7)
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin][0] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD)), sum[h - hbegin][0]);
+          sum[h - hbegin][1] = _mm256_fmadd_ps(w_v, _mm256_loadu_ps(input + off + h*(WIDTH + PAD) + 8), sum[h - hbegin][1]);
+        }
+      }
+
+#pragma unroll(7)
+      for (int h = hbegin; h < hend; ++h) {
+        _mm256_storeu_ps(output + (out_channel*WOUT + h)*WOUT, sum[h - hbegin][0]);
+        _mm256_maskstore_ps(output + (out_channel*WOUT + h)*WOUT + 8, mask_v, sum[h - hbegin][1]);
+      }
+
+      // Lower half of images
+      hbegin = (WOUT + 1)/2; hend = WOUT;
+
+#pragma unroll(6)
+      for (int h = hbegin; h < hend; ++h) {
+        sum[h - hbegin][0] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16);
+        sum[h - hbegin][1] = _mm256_load_ps(scratch + ((out_channel - oc_begin)*WOUT + h)*16 + 8);
       }
 
       for (int j = jbegin; j < jend; ++j) {

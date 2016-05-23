@@ -1,10 +1,18 @@
 #include <vector>
 
+#include <cfloat>
+#include <omp.h>
+
 #include "caffe/filler.hpp"
-#include "caffe/layers/inner_product_layer.hpp"
+#include "caffe/layers/inner_product_relu_dropout_layer.hpp"
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/spgemm.hpp"
+#include "CSR.hpp"
+#include "reordering/BFSBipartite.hpp"
 
+std::map<std::string, CSR> layer2weight;
+std::map<std::string, float *> layer2bottom;
+std::map<std::string, float *> layer2bias;
 extern std::map<std::string, unsigned long long> total_conv_cycles;
 extern std::map<std::string, double> total_conv_flops;
 extern int total_files;
@@ -14,24 +22,25 @@ double get_cpu_freq();
 namespace caffe {
 
 template<typename Dtype>
-InnerProductLayer<Dtype>::InnerProductLayer(const LayerParameter& param) :
+InnerProductReLUDropoutLayer<Dtype>::InnerProductReLUDropoutLayer(const LayerParameter& param) :
     Layer<Dtype>(param),
     bottom_values_(NULL), bottom_j_(NULL), bottom_i_(NULL),
     top_values_(NULL), top_j_(NULL), top_i_(NULL),
     weight_values_(NULL), weight_j_(NULL), weight_i_(NULL),
-    bottom_transposed_(NULL), B_temp_global_(NULL), C_temp_global_(NULL),
+    bottom_transposed_(NULL), spgemm_buf_(NULL),
     weight_values_blocked_(NULL), weight_j_blocked_(NULL), weight_i_blocked_(NULL)
 {
 
 }
 
 template<typename Dtype>
-InnerProductLayer<Dtype>::~InnerProductLayer()
+InnerProductReLUDropoutLayer<Dtype>::~InnerProductReLUDropoutLayer()
 {
   free(bottom_values_);
   free(bottom_j_);
   free(bottom_i_);
   free(bottom_transposed_);
+  free(spgemm_buf_);
 
   free(top_values_);
   free(top_j_);
@@ -40,9 +49,6 @@ InnerProductLayer<Dtype>::~InnerProductLayer()
   free(weight_values_);
   free(weight_j_);
   free(weight_i_);
-
-  free(B_temp_global_);
-  free(C_temp_global_);
 
   free(weight_values_blocked_);
   free(weight_j_blocked_);
@@ -61,14 +67,14 @@ enum
 static int method = SPMDM_CSR;
 
 template<>
-void InnerProductLayer<double>::WeightAlign(){
+void InnerProductReLUDropoutLayer<double>::WeightAlign(){
   NOT_IMPLEMENTED;
 }
 
 static int col_block_size = 128;
 
 template<>
-void InnerProductLayer<float>::WeightAlign(){
+void InnerProductReLUDropoutLayer<float>::WeightAlign(){
 	const LayerParameter& layerparam = this->layer_param();
 	LOG(INFO)<<"layer\t"<<layerparam.name()<<"\t"<<"has sparsity of "<< this->blobs_[0]->GetSparsity() << " transpose " << transpose_;
 //	this->blobs_[0]->WriteToNistMMIO(layerparam.name()+".weight");
@@ -77,13 +83,15 @@ void InnerProductLayer<float>::WeightAlign(){
 	posix_memalign((void **)&weight_j_, 4096, sizeof(int)*K_*N_);
 	posix_memalign((void **)&weight_values_, 4096, sizeof(float)*K_*N_);
 
-	posix_memalign((void **)&B_temp_global_, 4096, sizeof(float)*omp_get_max_threads()*4096);
-	posix_memalign((void **)&C_temp_global_, 4096, sizeof(float)*omp_get_max_threads()*4096);
+	CSR csr;
+	csr.values = weight_values_;
+	csr.rowptr = weight_i_;
+	csr.colidx = weight_j_;
 
   MKL_INT job[] = {
       0 /*dense->CSR*/,
       0 /*0-based indexing in dense matrix */,
-      0 /*1-based CSR*/,
+      0 /*0-based CSR*/,
       2 /* whole matrix*/,
       K_*N_, /* nzmax */
       1 /* generate a, i, and j */
@@ -123,6 +131,35 @@ void InnerProductLayer<float>::WeightAlign(){
 	        info<<"-th row "
 	        <<"because there is no space in the arrays acsr and ja according to the value nzmax.";
 	  }
+	  csr.m = m;
+	  csr.n = n;
+
+    SpMP::CSR A(m, n, weight_i_[m]);
+    for (int i = 0; i <= m; ++i) {
+      A.rowptr[i] = weight_i_[i];
+    }
+    for (int i = 0; i < weight_i_[m]; ++i) {
+      A.colidx[i] = weight_j_[i];
+    }
+
+    SpMP::CSR *AT = A.transpose();
+    int *rowPerm = new int[m], *rowInversePerm = new int[m];
+    int *colPerm = new int[n], *colInversePerm = new int[n];
+    bfsBipartite(A, *AT, rowPerm, rowInversePerm, colPerm, colInversePerm);
+    FREE(A.diagptr);
+    SpMP::CSR *AReordered = A.permute(colPerm, rowInversePerm);
+    SpMP::CSR *ATReordered = AReordered->transpose();
+
+    LOG(INFO) << "Average width of " << m << " x " << n << " matrix = " << A.getAverageWidth() << " " << AT->getAverageWidth();
+    LOG(INFO) << "Average width after reordering = " << AReordered->getAverageWidth() << " " << ATReordered->getAverageWidth();
+
+    delete[] rowPerm;
+    delete[] rowInversePerm;
+    delete[] colPerm;
+    delete[] colInversePerm;
+    delete AT;
+    delete AReordered;
+    delete ATReordered;
 	}
 	else if (SPGEMM_CSR == method && !transpose_ || SPGEMM_CSC == method && transpose_) {
 	  int m = transpose_ ? K_ : N_;
@@ -138,7 +175,41 @@ void InnerProductLayer<float>::WeightAlign(){
           <<"because there is no space in the arrays acsr and ja according to the value nzmax.";
     }
     free(weight_transposed);
+    csr.m = n;
+    csr.n = m;
+
+    SpMP::CSR A(n, m, weight_i_[n]);
+    for (int i = 0; i <= n; ++i) {
+      A.rowptr[i] = weight_i_[i];
+    }
+    for (int i = 0; i < weight_i_[n]; ++i) {
+      A.colidx[i] = weight_j_[i];
+    }
+
+    SpMP::CSR *AT = A.transpose();
+    int *rowPerm = new int[n], *rowInversePerm = new int[n];
+    int *colPerm = new int[m], *colInversePerm = new int[m];
+    bfsBipartite(A, *AT, rowPerm, rowInversePerm, colPerm, colInversePerm);
+    FREE(A.diagptr);
+    SpMP::CSR *AReordered = A.permute(colPerm, rowInversePerm);
+    SpMP::CSR *ATReordered = AReordered->transpose();
+
+    LOG(INFO) << "Average width of " << n << " x " << m << " matrix = " << A.getAverageWidth() << " " << AT->getAverageWidth();
+    LOG(INFO) << "Average width after reordering = " << AReordered->getAverageWidth() << " " << ATReordered->getAverageWidth();
+
+    delete[] rowPerm;
+    delete[] rowInversePerm;
+    delete[] colPerm;
+    delete[] colInversePerm;
+    delete AT;
+    delete AReordered;
+    delete ATReordered;
 	}
+
+  layer2weight[layerparam.name()] = csr;
+  layer2bias[layerparam.name()] = this->blobs_[1]->mutable_cpu_data();
+
+  posix_memalign((void **)&spgemm_buf_, 4096, sizeof(float)*omp_get_max_threads()*(SPGEMM_CSR == method ? N_ : M_));
 
   posix_memalign((void **)&bottom_i_, 4096, sizeof(int)*(std::max(M_, K_) + 1));
   posix_memalign((void **)&bottom_j_, 4096, sizeof(int)*M_*K_);
@@ -161,7 +232,7 @@ void InnerProductLayer<float>::WeightAlign(){
 }
 
 template <typename Dtype>
-void InnerProductLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
+void InnerProductReLUDropoutLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   const int num_output = this->layer_param_.inner_product_param().num_output();
   bias_term_ = this->layer_param_.inner_product_param().bias_term();
@@ -210,7 +281,7 @@ void InnerProductLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
 }
 
 template <typename Dtype>
-void InnerProductLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
+void InnerProductReLUDropoutLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   // Figure out the dimensions
   const int axis = bottom[0]->CanonicalAxisIndex(
@@ -236,21 +307,24 @@ void InnerProductLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
 }
 
 template<>
-void InnerProductLayer<double>::Forward_cpu(const vector<Blob<double>*>& bottom,
+void InnerProductReLUDropoutLayer<double>::Forward_cpu(const vector<Blob<double>*>& bottom,
     const vector<Blob<double>*>& top) {
   NOT_IMPLEMENTED;
 }
 
 template<>
-void InnerProductLayer<float>::Forward_cpu(const vector<Blob<float>*>& bottom,
+void InnerProductReLUDropoutLayer<float>::Forward_cpu(const vector<Blob<float>*>& bottom,
     const vector<Blob<float>*>& top) {
   float* bottom_data = bottom[0]->mutable_cpu_data();
   float* top_data = top[0]->mutable_cpu_data();
   float* weight = this->blobs_[0]->mutable_cpu_data();
 
+  layer2bottom[this->layer_param().name()] = bottom_data;
+
   bool PRINT_FEATURE_SPARSITY = false;
   if (PRINT_FEATURE_SPARSITY) {
     int cnt = 0;
+#pragma omp parallel for reduction(+:cnt)
     for (int i = 0; i < M_*K_; ++i) {
       if (bottom_data[i] == 0) ++cnt;
     }
@@ -272,7 +346,7 @@ void InnerProductLayer<float>::Forward_cpu(const vector<Blob<float>*>& bottom,
 
     int ncolblocks = K_/col_block_size;
     double t = omp_get_wtime();
-    csrmm(
+    csrmm_fused(
         weight_values_blocked_, weight_j_blocked_, weight_i_blocked_,
         bottom_transposed_,
         top_data,
@@ -295,123 +369,45 @@ void InnerProductLayer<float>::Forward_cpu(const vector<Blob<float>*>& bottom,
     total_files += M_;
   }
   else if (SPGEMM_CSR == method) {
-    float *A = layer2bottom["fc6"];
+    assert(this->layer_param_.relu_param().negative_slope() == 0);
 
-    CSR B = layer2weight["fc6"];
-    CSR C = layer2weight["fc7"];
+    mkl_sdnscsr(job, &M_, &K_, bottom_data, &K_, bottom_values_, bottom_j_, bottom_i_, &info);
+    if(info) {
+      LOG(FATAL)<<"The routine is interrupted processing the "<<
+          info<<"-th row "
+          <<"because there is no space in the arrays acsr and ja according to the value nzmax.";
+    }
 
-    float *B_bias = layer2bias["fc6"];
-    float *C_bias = layer2bias["fc7"];
-
-//    caffe_cpu_gemm<float>(CblasNoTrans, transpose_ ? CblasNoTrans : CblasTrans,
-//        M_, N_, K_, (float)1.,
-//        bottom_data, weight, (float)0., top_data);
-//
-//    if (bias_term_) {
-//      // JSP: common path for AlexNet
-//      caffe_cpu_gemm<float>(CblasNoTrans, CblasNoTrans, M_, N_, 1, (float)1.,
-//          bias_multiplier_.cpu_data(),
-//          this->blobs_[1]->cpu_data(), (float)1., top_data);
-//    }
-//    printf("%s %g\n", this->layer_param_.name().c_str(), top_data[123*N_ + 123]);
-
-    int flops = csrmultd_fused_flops(
-        A,
-        B.values, B.colidx, B.rowptr,
-        C.values, C.colidx, C.rowptr,
+    int flops = spgemm_flops(
+        bottom_values_, bottom_j_, bottom_i_,
         weight_values_, weight_j_, weight_i_,
-        B_bias, C_bias, this->blobs_[1]->cpu_data(),
-        top_data,
-        M_,
-        B.m, B.n, K_, N_,
-        B_temp_global_, C_temp_global_);
+        M_);
+    LOG(INFO) << "flop-sparsity " << 1 - (double)flops/(2.*M_*N_*K_);
 
-    int cnt = 0;
-    for (int i = 0; i < B.m; ++i) {
-      if (B_bias[i] <= 0) ++cnt;
-    }
-    LOG(INFO) << "B_bias sparsity " << (double)cnt/B.m;
-    cnt = 0;
-    for (int i = 0; i < K_; ++i) {
-      if (C_bias[i] <= 0) ++cnt;
-    }
-    LOG(INFO) << "C_bias sparsity " << (double)cnt/K_;
-    cnt = 0;
-    for (int i = 0; i < N_; ++i) {
-      if (this->blobs_[1]->cpu_data()[i] <= 0) ++cnt;
-    }
-    LOG(INFO) << "D_bias sparsity " << (double)cnt/N_;
+//    return; // fused with fc8
 
-    assert(C.n == K_);
+    int nnz;
     double t = omp_get_wtime();
-    csrmultd_fused(
-        A,
-        B.values, B.colidx, B.rowptr,
-        C.values, C.colidx, C.rowptr,
+    csrmultd(
+        bottom_values_, bottom_j_, bottom_i_,
         weight_values_, weight_j_, weight_i_,
-        B_bias, C_bias, this->blobs_[1]->cpu_data(),
+        this->blobs_[1]->cpu_data(),
         top_data,
-        M_,
-        B.m, B.n, K_, N_,
-        B_temp_global_, C_temp_global_);
+//        top_values_, top_j_, top_i_, &nnz,
+        M_, N_/*, spgemm_buf_*/);
+
     t = omp_get_wtime() - t;
+    LOG(INFO) << "spgemm takes " << t << " GF/s= " << (double)flops/t/1e9 << " nnz-sparsity " << 1 - (double)nnz/(M_*N_);
 
-    LOG(INFO) << "fused_spgemm takes " << t << " GF/s= " << (double)flops/t/1e9 << " flop-sparsity " << 1 - (double)flops/(2.*(M_*B.m*B.n + M_*C.m*C.n + M_*K_*N_));
-
-//    printf("E[123][123] = %g\n", top_data[123*N_ + 123]);
-
-//    mkl_sdnscsr(job, &M_, &K_, bottom_data, &K_, bottom_values_, bottom_j_, bottom_i_, &info);
-//    if(info) {
-//      LOG(FATAL)<<"The routine is interrupted processing the "<<
-//          info<<"-th row "
-//          <<"because there is no space in the arrays acsr and ja according to the value nzmax.";
-//    }
-//
-//    char transa = 'N';
-//    MKL_INT request = 0; // output pre-allocated
-//    MKL_INT sort = 0; // sort output
-//    MKL_INT nzmax = M_*N_;
-//    MKL_INT info;
-//
-//    mkl_scsrmultcsr(
-//        &transa, &request, &sort, &M_, &K_, &N_,
-//        bottom_values_, bottom_j_, bottom_i_,
-//        weight_values_, weight_j_, weight_i_,
-//        top_values_, top_j_, top_i_,
-//        &nzmax, &info);
-//    if(info) {
-//      LOG(FATAL)<<"The routine is interrupted processing the "<<
-//          info<<"-th row "
-//          <<"because there is no space in the arrays acsr and ja according to the value nzmax.";
-//    }
-//
-//    caffe_cpu_gemm<float>(CblasNoTrans, transpose_ ? CblasNoTrans : CblasTrans,
-//        M_, N_, K_, (float)1.,
-//        bottom_data, weight, (float)0., top_data);
-//
-////    memset(top_data, 0, sizeof(float)*M_*N_);
+//#pragma omp parallel for
 //    for (int i = 0; i < M_; ++i) {
-//      for (int j = top_i_[i] - 1; j < top_i_[i + 1] - 1; ++j) {
-//        float expected = top_data[i*N_ + top_j_[j] - 1];
-//        float actual = top_values_[j];
-//        float expected2 = 0;
-//        for (int k = 0; k < K_; ++k) {
-//          expected2 += bottom_data[i*K_ + k]*weight[k*N_ + top_j_[j] - 1];
-//        }
-//        if (fabs(expected - actual)/fabs(expected) > 0.1 && fabs(expected) > 1e-4 && fabs(actual) > 1e-4) {
-//          LOG(FATAL) << "expected " << expected << " actual " << actual;
-//        }
+//      for (int j = 0; j < N_; ++j) {
+//        top_data[i*N_ + j] = 0;
+//      }
+//      for (int j = top_i_[i]; j < top_i_[i + 1]; ++j) {
+//        top_data[i*N_ + top_j_[j]] = top_values_[j];
 //      }
 //    }
-//
-////    job[0] = 1; /* CSR->dense */
-////    job[4] = M_*N_;
-////    mkl_sdnscsr(job, &M_, &N_, top_data, &N_, top_values_, top_j_, top_i_, &info);
-////    if(info) {
-////      LOG(FATAL)<<"The routine is interrupted processing the "<<
-////          info<<"-th row "
-////          <<"because there is no space in the arrays acsr and ja according to the value nzmax.";
-////    }
   }
   else if (SPGEMM_CSC == method) {
     mkl_somatcopy('R', 'T', M_, K_, 1, bottom_data, K_, bottom_transposed_, M_);
@@ -422,51 +418,65 @@ void InnerProductLayer<float>::Forward_cpu(const vector<Blob<float>*>& bottom,
           <<"because there is no space in the arrays acsr and ja according to the value nzmax.";
     }
 
-    char transa = 'N';
-    MKL_INT request = 0; // output pre-allocated
-    MKL_INT sort = 0; // sort output
-    MKL_INT nzmax = M_*N_;
-    MKL_INT info;
-
-    mkl_scsrmultcsr(
-        &transa, &request, &sort, &N_, &K_, &M_,
+    int flops = spgemm_flops(
         weight_values_, weight_j_, weight_i_,
         bottom_values_, bottom_j_, bottom_i_,
-        top_values_, top_j_, top_i_,
-        &nzmax, &info);
-    if(info) {
-      LOG(FATAL)<<"The routine is interrupted processing the "<<
-          info<<"-th row "
-          <<"because there is no space in the arrays acsr and ja according to the value nzmax.";
-    }
+        N_);
 
-    job[0] = 1; /* CSR->dense */
-    job[4] = M_*N_;
-    mkl_sdnscsr(job, &N_, &M_, bottom_transposed_, &M_, top_values_, top_j_, top_i_, &info);
-    if(info) {
-      LOG(FATAL)<<"The routine is interrupted processing the "<<
-          info<<"-th row "
-          <<"because there is no space in the arrays acsr and ja according to the value nzmax.";
-    }
+    int nnz;
+    double t = omp_get_wtime();
+    csrmultd_csc(
+        weight_values_, weight_j_, weight_i_,
+        bottom_values_, bottom_j_, bottom_i_,
+        this->blobs_[1]->cpu_data(), // FIXME - should access bias differently
+        bottom_transposed_,
+        N_, M_);
+    LOG(INFO) << "spgemm takes " << omp_get_wtime() - t << " nnz-sparsity " << 1 - (double)nnz/(M_*N_) << " flop-sparsity " << 1 - (double)flops/(2.*M_*N_*K_);
+
     mkl_somatcopy('R', 'T', N_, M_, 1, bottom_transposed_, M_, top_data, N_);
+
+//#pragma omp parallel for
+//    for (int i = 0; i < N_; ++i) {
+//      for (int j = 0; j < M_; ++j) {
+//        top_data[j*N_ + i] = 0;
+//      }
+//      for (int j = top_i_[i]; j < top_i_[i + 1]; ++j) {
+//        top_data[top_j_[j]*N_ + i] = top_values_[j];
+//      }
+//    }
   }
   else {
     assert(GEMM == method);
     caffe_cpu_gemm<float>(CblasNoTrans, transpose_ ? CblasNoTrans : CblasTrans,
         M_, N_, K_, (float)1.,
         bottom_data, weight, (float)0., top_data);
-
     if (bias_term_) {
       // JSP: common path for AlexNet
       caffe_cpu_gemm<float>(CblasNoTrans, CblasNoTrans, M_, N_, 1, (float)1.,
           bias_multiplier_.cpu_data(),
           this->blobs_[1]->cpu_data(), (float)1., top_data);
     }
+
+    const int count = top[0]->count();
+    float negative_slope = this->layer_param_.relu_param().negative_slope();
+    if (0 == negative_slope) {
+#pragma omp parallel for
+      for (int i = 0; i < count; ++i) {
+        top_data[i] = std::max(top_data[i], float(0));
+      }
+    }
+    else {
+#pragma omp parallel for
+      for (int i = 0; i < count; ++i) {
+        top_data[i] = std::max(top_data[i], float(0))
+            + negative_slope * std::min(top_data[i], float(0));
+      }
+    }
   }
 }
 
 template <typename Dtype>
-void InnerProductLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
+void InnerProductReLUDropoutLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     const vector<bool>& propagate_down,
     const vector<Blob<Dtype>*>& bottom) {
   if (this->param_propagate_down_[0]) {
@@ -510,10 +520,10 @@ void InnerProductLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
 }
 
 #ifdef CPU_ONLY
-STUB_GPU(InnerProductLayer);
+STUB_GPU(InnerProductReLUDropoutLayer);
 #endif
 
-INSTANTIATE_CLASS(InnerProductLayer);
-REGISTER_LAYER_CLASS(InnerProduct);
+INSTANTIATE_CLASS(InnerProductReLUDropoutLayer);
+REGISTER_LAYER_CLASS(InnerProductReLUDropout);
 
 }  // namespace caffe

@@ -36,8 +36,8 @@ static void printEfficiency(
     //"%g sec %7.2f sparse_gflops %7.2f dense_gflops %7.2f sparse_gbps %7.2f dense_gflops(including_lowering_overhead)\n",
     //t, flop/t/1e9, denseFlop/t/1e9, byte/t/1e9, denseFlop/(t + loweringTime)/1e9);
   printf(
-    "%7.2f dense_gflops %7.2f dense_gflops(including_lowering_overhead)\n",
-    denseFlop/t/1e9, denseFlop/(t + loweringTime)/1e9);
+    "%7.2f dense_gflops %7.2f dense_gflops(including_lowering_overhead) %g sec.\n",
+    denseFlop/t/1e9, denseFlop/(t + loweringTime)/1e9, t);
 }
 
 /**
@@ -125,12 +125,12 @@ void my_scsrmm(
 //#pragma simd
       for (int k = 0; k < N; ++k) {
         sum[k] += v*B[c*N + k];
-        /*if (i*N + k == 5) {
+        /*if (i*N + k == 0) {
           printf("%g*%g +", v, B[c*N + k]);
         }*/
       }
     }
-    //if (i*N <= 5 && (i + 1)*N > 5) printf(" = %g, %d:%d\n", sum[5], A_rowptr[i], A_rowptr[i + 1]);
+    //if (i*N <= 0 && (i + 1)*N > 0) printf(" = %g, %d:%d\n", sum[0], A_rowptr[i], A_rowptr[i + 1]);
 //#pragma vector nontemporal(C)
     for (int k = 0; k < N; ++k) {
       C[i*N + k] = sum[k];
@@ -144,18 +144,81 @@ void im2col_cpu(const Dtype* data_im, const int channels,
     const int height, const int width, const int kernel_h, const int kernel_w,
     const int pad_h, const int pad_w,
     const int stride_h, const int stride_w,
-    Dtype* data_col,int* all_zero_mask, int * feature_map_mask) {
+    Dtype* data_col,int* all_zero_mask, int * feature_map_mask,
+    bool serial = false) {
   //get zero and nonzero maps
 	int kernel_slice_dim = kernel_w*kernel_h;
 
-  int height_col = (height + 2 * pad_h - kernel_h) / stride_h + 1;
-  int width_col = (width + 2 * pad_w - kernel_w) / stride_w + 1;
+  int output_h = (height + 2 * pad_h - kernel_h) / stride_h + 1;
+  int output_w = (width + 2 * pad_w - kernel_w) / stride_w + 1;
   int channels_col = channels * kernel_h * kernel_w;
   int forward_count = 0;
-#pragma omp parallel for
-  for (int c = 0; c < channels_col; ++c) {
-    int w_offset = c % kernel_w;
-    int h_offset = (c / kernel_w) % kernel_h;
+
+  int c_begin = 0, c_end = channels_col;
+  if (!serial) {
+    int nthreads = omp_get_num_threads();
+    int tid = omp_get_thread_num();
+
+    int c_per_channel = (channels_col + nthreads - 1)/nthreads;
+    c_begin = tid == 0 ? 0 : min(c_per_channel*tid, channels_col);
+    c_end = tid == nthreads - 1 ? channels_col : min(c_begin + c_per_channel, channels_col);
+  }
+
+#ifdef __AVX512F__
+  if (width == 13 && pad_w == 1 && stride_w == 1 && kernel_w == 3) {
+    int WIDTH = 13;
+    int WOUT = 13;
+    int PAD = 1;
+    int K = 9;
+
+    for (int c = c_begin; c < c_end; ++c) {
+      int w_offset = c%3;
+      int h_offset = (c/3)%3;
+      int c_im = c/9;
+      int off = h_offset*(WIDTH + PAD) + w_offset;
+
+      // Upper half of images
+      for (int h = 0; h < WOUT; ++h) {
+        _mm512_mask_storeu_ps(
+          data_col + (c*WOUT + h)*WOUT,
+          0x1fff,
+          _mm512_loadu_ps(
+            data_im + (c_im*(WIDTH + PAD) + h)*(WIDTH + PAD) + off));
+      }
+    }
+  }
+  else if (width == 27 && pad_w == 2 && stride_w == 1 && kernel_w == 5) {
+    int WIDTH = 27;
+    int WOUT = 27;
+    int PAD = 2;
+
+    int hbegin = 0, hend = WOUT;
+    for (int c = c_begin; c < c_end; ++c) {
+      int w_offset = c%5;
+      int h_offset = (c/5)%5;
+      int c_im = c/25;
+      int off = h_offset*(WIDTH + PAD) + w_offset;
+
+      // Upper half of images
+      for (int h = hbegin; h < hend; ++h) {
+        _mm512_storeu_ps(
+          data_col + (c*WOUT + h)*WOUT,
+          _mm512_loadu_ps(
+            data_im + (c_im*(WIDTH + PAD) + h)*(WIDTH + PAD) + off));
+        _mm512_mask_storeu_ps(
+          data_col + (c*WOUT + h)*WOUT + 16,
+          0x7ff,
+          _mm512_loadu_ps(
+            data_im + (c_im*(WIDTH + PAD) + h)*(WIDTH + PAD) + off + 16));
+      }
+    }
+  }
+  else
+#endif // __AVX512F__
+  {
+  for (int c = c_begin; c < c_end; ++c) {
+    int kernel_col = c % kernel_w;
+    int kernel_row = (c / kernel_w) % kernel_h;
     int c_im = c / kernel_h / kernel_w;
     //int sum=0;
     //for(int ii=0;ii<forwarding_mask.size();ii++){
@@ -164,22 +227,27 @@ void im2col_cpu(const Dtype* data_im, const int channels,
     //if(all_zero_mask && all_zero_mask[c]/*feature_map_mask && !feature_map_mask[c_im]*/) {
     	//continue;
     //}
-    for (int h = 0; h < height_col; ++h) {
-      for (int w = 0; w < width_col; ++w) {
-        int h_pad = h * stride_h + h_offset;
-        int w_pad = w * stride_w + w_offset;
-        //if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width){
-          //data_col[(c * height_col + h) * width_col + w] =
-        	data_col[(c * height_col + h) * width_col + w] =
-            data_im[(c_im * (height + pad_h) + h_pad) * (width + pad_w) + w_pad];
+    for (int h = 0; h < output_h; ++h) {
+      for (int w = 0; w < output_w; ++w) {
+        int input_row = kernel_row + h * stride_h;
+        int input_col = kernel_col + w * stride_w;
+        //if (input_row >= 0 && input_row < height && input_col >= 0 && input_col < width){
+          // c is the row index of lowered data_col matrix
+          // # of rows of matrix is (channels col) = channels * kernel_w * kernel_h
+          // # of cols of matrix is output_h*output_w
+          // input tensor is channels * height * width
+        	data_col[(c * output_h + h) * output_w + w] =
+            data_im[(c_im * (height + pad_h) + input_row) * (width + pad_w) + input_col];
         //}
         //else{
-          //data_col[(c * height_col + h) * width_col + w] = 0;
-        	//data_col[(forward_count * height_col + h) * width_col + w] = 0;
+          //data_col[(c * output_h + h) * output_w + w] = 0;
+          //printf("c=%d h=%d w=%d\n", c, h, w);
+        	//data_col[(forward_count * output_h + h) * output_w + w] = 0;
         //}
       }
     }
     //forward_count++;
+  }
   }
 }
 
@@ -203,10 +271,16 @@ public :
     for (int i = 0; i < Ain->m; ++i) {
       A->rowptr[i] = Ain->rowptr[i];
       for (int j = Ain->rowptr[i]; j < Ain->rowptr[i + 1]; ++j) {
-        int c = Ain->colidx[j];
-        int ic = c/(k*k);
+        int col = Ain->colidx[j];
 
-        A->colidx[j] = (ic*(width + pad) + (c/k)%k)*(width + pad) + c%k;
+        int kernel_col = col%k;
+        int kernel_row = (col/k)%k;
+        int ic = col/(k*k);
+
+        int input_row = kernel_row;
+        int input_col = kernel_col;
+
+        A->colidx[j] = (ic*(width + pad) + input_row)*(width + pad) + input_col;
         A->values[j] = Ain->values[j];
 
         nnz_per_channel_pair[i][ic]++;
@@ -271,6 +345,317 @@ public :
       end = tid == nthreads - 1 ? A->m : std::lower_bound(A->rowptr, A->rowptr + A->m, work_per_thread*(tid + 1)) - A->rowptr;
     }
 
+#if 1
+#ifdef __AVX512F__
+    if (width == 13 && pad == 1 && stride == 1 && k == 3) {
+      int WIDTH = 13;
+      int WOUT = 13;
+      int PAD = 1;
+      
+      __m512 sum[(WOUT + 1)/2];
+
+      for (int i = begin; i < end; ++i) {
+        if (A->rowptr[i + 1] == A->rowptr[i]) continue;
+
+        // Upper half of images
+        int hbegin = 0, hend = (WOUT + 1)/2;
+        int j = A->rowptr[i];
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)));
+        }
+
+        int jbegin = A->rowptr[i] + 1;
+        int jend = A->rowptr[i + 1];
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_mask_storeu_ps(out + (i*WOUT + h)*WOUT, 0x1fff, sum[h - hbegin]);
+        }
+
+#if 0
+        // Lower half of images
+        hbegin = (WOUT + 3)/4; hend = (WOUT + 3)/4*2;
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_mask_storeu_ps(out + (i*WOUT + h)*WOUT, 0x1fff, sum[h - hbegin]);
+        }
+
+        hbegin = (WOUT + 3)/4*2; hend = (WOUT + 3)/4*3;
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_mask_storeu_ps(out + (i*WOUT + h)*WOUT, 0x1fff, sum[h - hbegin]);
+        }
+#endif
+
+        hbegin = (WOUT + 1)/2; hend = WOUT;
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_mask_storeu_ps(out + (i*WOUT + h)*WOUT, 0x1fff, sum[h - hbegin]);
+        }
+      }
+
+      return;
+    }
+    else if (width == 27 && pad == 2 && stride == 1 && k == 5) {
+      //return conv_<27, 27, 2>(in, out, stride, serial);
+      int WIDTH = 27;
+      int WOUT = 27;
+      int PAD = 2;
+      
+      __m512 sum[(WOUT + 3)/4];
+
+      for (int i = begin; i < end; ++i) {
+        if (A->rowptr[i + 1] == A->rowptr[i]) continue;
+
+        // (0, 0) block
+        int hbegin = 0, hend = (WOUT + 3)/4;
+        int j = A->rowptr[i];
+        __m512 c = _mm512_set1_ps(values[j]);
+        int off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)));
+        }
+
+        int jbegin = A->rowptr[i] + 1;
+        int jend = A->rowptr[i + 1];
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_storeu_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin]);
+        }
+
+        // (0, 1) block
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_mask_storeu_ps(out + (i*WOUT + h)*WOUT + 16, 0x7ff, sum[h - hbegin]);
+        }
+
+        // (1, 0) block
+        hbegin = (WOUT + 3)/4; hend = (WOUT + 3)/4*2;
+
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_storeu_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin]);
+        }
+
+        // (1, 1) block
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_mask_storeu_ps(out + (i*WOUT + h)*WOUT + 16, 0x7ff, sum[h - hbegin]);
+        }
+
+        // (2, 0) block
+        hbegin = (WOUT + 3)/4*2; hend = (WOUT + 3)/4*3;
+
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_storeu_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin]);
+        }
+
+        // (2, 1) block
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_mask_storeu_ps(out + (i*WOUT + h)*WOUT + 16, 0x7ff, sum[h - hbegin]);
+        }
+
+        // (3, 0) block
+        hbegin = (WOUT + 3)/4*3; hend = WOUT;
+
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD)), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_storeu_ps(out + (i*WOUT + h)*WOUT, sum[h - hbegin]);
+        }
+
+        // (3, 1) block
+        j = A->rowptr[i];
+        c = _mm512_set1_ps(values[j]);
+        off = A->colidx[j];
+
+        for (int h = hbegin; h < hend; ++h) {
+          sum[h - hbegin] = _mm512_mul_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD) + 16));
+        }
+
+        for (j = jbegin; j < jend; ++j) {
+          c = _mm512_set1_ps(values[j]);
+          off = A->colidx[j];
+
+          for (int h = hbegin; h < hend; ++h) {
+            sum[h - hbegin] = _mm512_fmadd_ps(c, _mm512_loadu_ps(in + off + h*(WIDTH + PAD) + 16), sum[h - hbegin]);
+          }
+        }
+
+        for (int h = hbegin; h < hend; ++h) {
+          _mm512_mask_storeu_ps(out + (i*WOUT + h)*WOUT + 16, 0x7ff, sum[h - hbegin]);
+        }
+      }
+      return;
+    }
+    else
+#elif __AVX2__
     if (width == 13 && pad == 1 && stride == 1 && k == 3) {
       int WIDTH = 13;
       int WOUT = 13;
@@ -352,14 +737,14 @@ public :
       int WOUT = 27;
       int PAD = 2;
       
-      __m256 sum[(WOUT + 1)/4][2];
+      __m256 sum[(WOUT + 3)/4][2];
       __declspec(aligned(64)) float sum_temp[8];
 
       for (int i = begin; i < end; ++i) {
         if (A->rowptr[i + 1] == A->rowptr[i]) continue;
 
         // (0, 0) block
-        int hbegin = 0, hend = (WOUT + 1)/4;
+        int hbegin = 0, hend = (WOUT + 3)/4;
         int j = A->rowptr[i];
         __m256 c = _mm256_set1_ps(values[j]);
         int off = A->colidx[j];
@@ -416,7 +801,7 @@ public :
         }
 
         // (1, 0) block
-        hbegin = (WOUT + 1)/4; hend = (WOUT + 1)/4*2;
+        hbegin = (WOUT + 3)/4; hend = (WOUT + 3)/4*2;
 
         j = A->rowptr[i];
         c = _mm256_set1_ps(values[j]);
@@ -471,7 +856,7 @@ public :
         }
 
         // (2, 0) block
-        hbegin = (WOUT + 1)/4*2; hend = (WOUT + 1)/4*3;
+        hbegin = (WOUT + 3)/4*2; hend = (WOUT + 3)/4*3;
 
         j = A->rowptr[i];
         c = _mm256_set1_ps(values[j]);
@@ -526,7 +911,7 @@ public :
         }
 
         // (3, 0) block
-        hbegin = (WOUT + 1)/4*3; hend = WOUT;
+        hbegin = (WOUT + 3)/4*3; hend = WOUT;
 
         j = A->rowptr[i];
         c = _mm256_set1_ps(values[j]);
@@ -582,7 +967,9 @@ public :
       }
       return;
     }
-    else if (width == 227 && pad == 0 && stride == 4 && k == 11) {
+    else
+#endif
+    if (width == 227 && pad == 0 && stride == 4 && k == 11) {
       int wOut = (width + 2*pad - k)/stride + 1;
 
       float sum[wOut];
@@ -612,6 +999,7 @@ public :
       }
       return;
     }
+#endif
 
     int wOut = (width + 2*pad - k)/stride + 1;
 
@@ -677,9 +1065,15 @@ public :
             for (int j = A->rowptr[i]; j < A->rowptr[i + 1]; ++j) {
               float c = values[j];
               sum += c*in_temp[A->colidx[j]];
+              /*if ((i*wOut + h)*wOut + w == 24037) {
+                printf("%g*%g + ", c, in_temp[A->colidx[j]]);
+              }*/
             }
 
             out[(i*wOut + h)*wOut + w] = sum;
+            /*if ((i*wOut + h)*wOut + w == 24037) {
+              printf("= %g\n", sum);
+            }*/
           }
         }
       }
@@ -784,9 +1178,9 @@ int main(int argc, char *argv[])
       }
     }
   }
-  for (int i = 0; i < A->m; ++i) {
+  for (int i = 0; i < nNonZeroRows; ++i) {
     for (int j = 0; j < nNonZeroCols; ++j) {
-      assert(A_dense[nonZeroRows[j]*A->n + nonZeroColumns[j]] == A_compressed[i*nNonZeroCols + j]);
+      assert(A_dense[nonZeroRows[i]*A->n + nonZeroColumns[j]] == A_compressed[i*nNonZeroCols + j]);
     }
   }
 
@@ -794,11 +1188,11 @@ int main(int argc, char *argv[])
   double denseFlop = 2*A->m*A->n*N;
   double byte = (sizeof(float) + sizeof(int))*A->getNnz() + sizeof(int)*A->m + sizeof(float)*(nNonZeroCols + A->m)*N;
 
-  const int NBATCH = 50;
+  const int NBATCH = 68*8; // a multiple of 68 for KNL
   const int REPEAT = 16;
 
 #ifdef NDEBUG
-  double tol = 1e-1;
+  double tol = 1e-3;
 #else
   double tol = 1e-1; // when compiled with -O0 option, FMA is not used so less accurate
 #endif
@@ -809,7 +1203,6 @@ int main(int argc, char *argv[])
   float *B_im[NBATCH];
 
   srand(0); // determinimistic randomization
-  double im2col_time = 0;
   for (int b = 0; b < NBATCH; ++b) {
     posix_memalign((void **)&B[b], 4096, sizeof(float)*A->n*N);
     posix_memalign((void **)&C[b], 4096, sizeof(float)*A->m*N);
@@ -825,17 +1218,62 @@ int main(int argc, char *argv[])
         }
       }
     }
+  }
+
+  double im2col_time = 0;
+#pragma omp parallel
+  {
+    int tid = omp_get_thread_num();
 
     for (int i = 0; i < REPEAT; ++i) {
       flushLlc();
 
-      im2col_time -= omp_get_wtime();
-      im2col_cpu(B_im[b], nic, w, w, ATensor->k, ATensor->k, pad, pad, stride, stride, B[b], NULL, NULL);
-      im2col_time += omp_get_wtime();
+      synk::Barrier::getInstance()->wait(tid);
+
+      double t = omp_get_wtime();
+
+      for (int b = 0; b < NBATCH; ++b) {
+        im2col_cpu(B_im[b], nic, w, w, ATensor->k, ATensor->k, pad, pad, stride, stride, B[b], NULL, NULL);
+      }
+
+      synk::Barrier::getInstance()->wait(tid);
+
+      if (0 == tid) {
+        im2col_time += omp_get_wtime() - t;
+      }
     }
   }
   im2col_time /= REPEAT*NBATCH;
-  //printf("im2col_cpu takes %g\n", im2col_time);
+
+  double im2col_batch_time = 0;
+#pragma omp parallel
+  {
+    int tid = omp_get_thread_num();
+
+    for (int i = 0; i < REPEAT; ++i) {
+      flushLlc();
+
+      synk::Barrier::getInstance()->wait(tid);
+
+      double t = omp_get_wtime();
+
+#pragma omp for
+      for (int b = 0; b < NBATCH; ++b) {
+        im2col_cpu(B_im[b], nic, w, w, ATensor->k, ATensor->k, pad, pad, stride, stride, B[b], NULL, NULL, true);
+      }
+
+      synk::Barrier::getInstance()->wait(tid);
+
+      if (0 == tid) {
+        im2col_batch_time += omp_get_wtime() - t;
+      }
+    }
+  }
+  im2col_batch_time /= REPEAT*NBATCH;
+
+  printf("im2col_cpu takes %g %g\n", im2col_time, im2col_batch_time);
+
+  im2col_time = im2col_batch_time;
 
   float *B_concatenated, *C_concatenated, *C_concatenated_ref;
   int N_concatenated = N*NBATCH;
@@ -884,6 +1322,14 @@ int main(int argc, char *argv[])
               C_ref[b][j] = C[b][j];
             }
           }
+
+          for (int i = 0; i < A->m; ++i) {
+            for (int b = 0; b < NBATCH; ++b) {
+              for (int j = 0; j < N; ++j) {
+                C_concatenated_ref[(i*NBATCH + b)*N + j] = C_ref[b][i*N + j];
+              }
+            }
+          }
         }
       }
     }
@@ -909,7 +1355,7 @@ int main(int argc, char *argv[])
 
         // Copy reference output
         for (int i = 0; i < A->m*N_concatenated; ++i) {
-          C_concatenated_ref[i] = C_concatenated_ref[i];
+          C_concatenated_ref[i] = C_concatenated[i];
         }
       }
     }
@@ -957,6 +1403,7 @@ int main(int argc, char *argv[])
   } // omp parallel
 #endif
 
+#if 0
   // 2. Test our own CSRMM
 #pragma omp parallel
   {
@@ -994,7 +1441,7 @@ int main(int argc, char *argv[])
       }
     }
 
-    for (int iter = 0; iter < REPEAT; ++iter) {
+    /*for (int iter = 0; iter < REPEAT; ++iter) {
       flushLlc();
 
       synk::Barrier::getInstance()->wait(tid);
@@ -1053,8 +1500,9 @@ int main(int argc, char *argv[])
           }
         }
       }
-    }
+    }*/
   } // omp parallel
+#endif
 
   // Convolution without lowering
 #pragma omp parallel
@@ -1268,6 +1716,7 @@ int main(int argc, char *argv[])
     } // omp parallel
 #endif
 
+#if 0
     // 4. Test our own CSRMM with reordering
 #pragma omp parallel
     {
@@ -1382,6 +1831,7 @@ int main(int argc, char *argv[])
         }
       }
     } // omp parallel
+#endif
 
     delete AT;
     delete AReordered;

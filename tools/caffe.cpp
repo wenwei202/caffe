@@ -243,32 +243,6 @@ int test() {
   CHECK_GT(FLAGS_model.size(), 0) << "Need a model definition to score.";
   CHECK_GT(FLAGS_weights.size(), 0) << "Need model weights to score.";
 
-  int nthreads = omp_get_max_threads();
-  int nthread_groups = nthreads;
-#ifdef __AVX512F__
-  nthread_groups = NTILES;
-#else
-//  nthread_groups = nthreads/2;
-#endif
-
-  assert(nthreads%nthread_groups == 0);
-  int nthreads_per_group = nthreads/nthread_groups;
-  if (nthread_groups != nthreads) {
-    for (int i = 0; i < nthread_groups; ++i) {
-      barriers[i] = new synk::Barrier(1, nthreads_per_group);
-    }
-#pragma omp parallel
-    {
-      assert(omp_get_num_threads() == nthreads);
-
-      int tid = omp_get_thread_num();
-      int gid = tid/nthreads_per_group;
-      int tid_in_group = tid%nthreads_per_group;
-
-      barriers[gid]->init(tid_in_group);
-    }
-  }
-
   // Set device id and mode
   vector<int> gpus;
   get_gpus(&gpus);
@@ -335,13 +309,15 @@ int test() {
     LOG(INFO) << output_name << " = " << mean_score << loss_msg_stream.str();
   }
 
-  total_files /= total_conv_cycles.size(); // compensate for duplicated counts at each conv layer
-  LOG(INFO) << "Total-images-processed: " << total_files;
-  std::map<std::string, unsigned long long>::const_iterator itr;
-  for (itr = total_conv_cycles.begin(); itr != total_conv_cycles.end(); ++itr) {
-    LOG(INFO) << itr->first << " K-cycles-per-file " << itr->second/total_files/1e3 <<
-        " mFlops-per-file " << total_conv_flops[itr->first]/total_files/1e6 <<
-        " GF/s " << total_conv_flops[itr->first]/(itr->second/get_cpu_freq())/1e9;
+  if (!total_conv_cycles.empty()) {
+    total_files /= total_conv_cycles.size(); // compensate for duplicated counts at each conv layer
+    LOG(INFO) << "Total-images-processed: " << total_files;
+    std::map<std::string, unsigned long long>::const_iterator itr;
+    for (itr = total_conv_cycles.begin(); itr != total_conv_cycles.end(); ++itr) {
+      LOG(INFO) << itr->first << " K-cycles-per-file " << itr->second/total_files/1e3 <<
+          " mFlops-per-file " << total_conv_flops[itr->first]/total_files/1e6 <<
+          " GF/s " << total_conv_flops[itr->first]/(itr->second/get_cpu_freq())/1e9;
+    }
   }
 //  LOG(INFO) << "Time-taken-per-image: " << (double)total_conv_cycles/total_files/1e3;
 
