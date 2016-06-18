@@ -230,7 +230,7 @@ message SolverParameter {
   
   optional float breadth_decay = 41 [default = 0.0]; // The group weight decay on each kernel.
   optional float kernel_shape_decay = 42 [default = 0.0]; // The group weight decay on all elemements having the same coordinate in each kernel
-  optional float block_group_decay = 43 [default = 0.0]; // The group weight decay on all elemements having the same coordinate in each kernel
+  optional float block_group_decay = 43 [default = 0.0]; // The group weight decay on all elemements each block
 
   // DEPRECATED: old solver enum types, use string instead
   enum SolverType {
@@ -318,13 +318,13 @@ message ParamSpec {
 
 // Specifies shape and decay multiplier of a block, on which group lasso regularization is enforced.
 message BlockGroupLassoSpec {
-  // the size of the block along x-dimension (e.g. along row of a matrix)
+  // the size of the block along x-dimension (i.e. along row of a matrix)
   optional uint32 xdimen = 1 [default = 1]; 
   
-  // the size of the block along y-dimension (e.g. along column of a matrix)
+  // the size of the block along y-dimension (i.e. along column of a matrix)
   optional uint32 ydimen = 2 [default = 1]; 
   
-  // decay multiplier of group lasso regularization on the block
+  // loca decay multiplier of group lasso regularization on this block
   optional float block_decay_mult = 3 [default = 1.0];
 }
 
@@ -362,7 +362,7 @@ message LayerParameter {
   enum ConnectivityMode {
     CONNECTED = 0;  //keep connected
     DISCONNECTED_ELTWISE = 1; //disconnect all zero-weight connections
-    DISCONNECTED_GRPWISE = 2; //disconnect those lying in all-zero groups 
+    DISCONNECTED_GRPWISE = 2; //disconnect connections lying in all-zero rows and all-zero columns 
   }
   optional ConnectivityMode connectivity_mode = 12 [default = CONNECTED];
   
@@ -636,10 +636,10 @@ message ConvolutionParameter {
   // the method of convolutional computation
   enum ConvMode {
     LOWERED_GEMM = 0;   //gemm on lowered tensors
-    LOWERED_CSRMM = 1;  //sparse mm by CSR format on lowered tensors
-    LOWERED_CCNMM = 2;  //removing all-zero rows & columns and ConCateNating remaining ones, then gemm on lowered tensors
-    DIRECT_SCONV = 3;  //direct convolution on tensors without lowering, harnessing sparsity
-    DIRECT_DCONV = 4;  //direct convolution on tensors without lowering, dense format
+    LOWERED_CSRMM = 1;  //sparse weight matrix in CSR format * lowered feature maps
+    LOWERED_CCNMM = 2;  //removing all-zero rows & columns and ConCateNating remaining ones, then do gemm 
+    DIRECT_SCONV = 3;  //direct convolution on tensors without lowering, harnessing sparsity. More in intel branch
+    DIRECT_DCONV = 4;  //direct convolution on tensors without lowering, dense format. More in intel branch
   }
   optional ConvMode conv_mode = 21 [default = LOWERED_GEMM];
 }
