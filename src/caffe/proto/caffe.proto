@@ -637,7 +637,7 @@ message ConvolutionParameter {
   enum ConvMode {
     LOWERED_GEMM = 0;   //gemm on lowered tensors
     LOWERED_CSRMM = 1;  //sparse weight matrix in CSR format * lowered feature maps
-    LOWERED_CCNMM = 2;  //removing all-zero rows & columns and ConCateNating remaining ones, then do gemm 
+    LOWERED_CCNMM = 2;  //removing all-zero rows & columns and ConCateNating remaining ones, then do gemm. GPU mode is implemented with partial CPU subroutines :(. 
     DIRECT_SCONV = 3;  //direct convolution on tensors without lowering, harnessing sparsity. More in intel branch
     DIRECT_DCONV = 4;  //direct convolution on tensors without lowering, dense format. More in intel branch
   }
