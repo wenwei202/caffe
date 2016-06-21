@@ -1,7 +1,6 @@
 # Caffe for Sparse Convolutional Neural Networks
 
 This is a fork of [Caffe](http://caffe.berkeleyvision.org/) targeting on sparse convolutional neural networks to speedup DNN evaluation in computation- and memory-limited devices.
-We note that the GPU speedup utilizing random sparse weights (after L1-norm regularization or connection pruning) is very limited.
 
 ## HowTo and Features
 ### train sparse convolutional neural networks 
