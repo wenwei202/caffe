@@ -5,15 +5,15 @@ This is a fork of [Caffe](http://caffe.berkeleyvision.org/) targeting on sparse 
 ## HowTo and Features
 ### train sparse convolutional neural networks 
 1. Stabilizing sparsity
-  - weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after update weights
+  - weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
 2. New [caffe.proto](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto) configurations
-  - *block_group_decay* in *SolverParameter*: weight decay by group lasso regularization on each group(block) of in weight matrix, block are configured by *block_group_lasso* in each *ParamSpec* (e.g. weights);
-  - *connectivity_mode* in *LayerParameter* can permanently prune zero-weighted connections;
-  - local *regularization_type* ("L1/L2") is supported for each *ParamSpec* (e.g. weights)
+  - `block_group_decay` in `SolverParameter`: weight decay by group lasso regularization on each group(block) of in weight matrix, block are configured by `block_group_lasso` in each `ParamSpec` (e.g. weights);
+  - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections;
+  - local `regularization_type` ("L1/L2") is supported for each `ParamSpec` (e.g. weights)
 3. In CPU mode, use Intel mkl blas.
 
 ### deploy sparse convolutional neural networks 
-  - [conv_mode](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto#L637) in *ConvolutionParameter* configures the computation modality of convolution (GEMM, CSR, Concatenation, etc.). Following is an example to configure deploy.prototxt so that the matrix multiplication is operated by sparse weight matrix * dense feature map matrix.
+  - [conv_mode](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the computation modality of convolution (GEMM, CSR, Concatenation, etc.). Following is an example to configure deploy.prototxt so that the matrix multiplication is operated by sparse weight matrix * dense feature map matrix.
 ```
 layer {
   name: "conv2"
