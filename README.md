@@ -1,7 +1,8 @@
-# see branch [scnn] (https://github.com/wenwei202/caffe/tree/scnn)
+# See branch [scnn] (https://github.com/wenwei202/caffe/tree/scnn)
 
 
-# Caffe
+
+## Caffe
 
 [![Build Status](https://travis-ci.org/BVLC/caffe.svg?branch=master)](https://travis-ci.org/BVLC/caffe)
 [![License](https://img.shields.io/badge/license-BSD-blue.svg)](LICENSE)
