@@ -32,7 +32,7 @@ layer {
 ```
 
 
-Please cite our NIPS 2016 publication and Caffe if it helps your research:
+Please cite our NIPS 2016 paper and Caffe if it helps you:
 
     @InProceedings{WEN_NIPS2016,
       Title = {Learning Structured Sparsity in Deep Neural Networks},
