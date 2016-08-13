@@ -1,6 +1,12 @@
 # Caffe for Sparse Convolutional Neural Networks
 
-This is a fork of [Caffe](http://caffe.berkeleyvision.org/) targeting on sparse convolutional neural networks to speedup DNN evaluation in computation- and memory-limited devices.
+This is a fork of [Caffe](http://caffe.berkeleyvision.org/) targeting on sparse convolutional neural networks with *structured sparisty* to speedup DNN evaluation in computation- and memory-limited devices.
+
+Technical details are in our NIPS 2016 paper.
+Our *SSL (Structured Sparsity Learning)* method can dynamically learn a compact structure (less filters, less channels, smaller filter shapes and less layers) of deep neural networks, achieving speedups of AlexNet by 3.1X in GPUs and 5.1X in CPUs, using off-the-shelf GEMM in BLAS (e.g. MKL in CPUs and cuBLAS in nvidia GPUs). Alternatively, a variant of our method can improve accuracy of AlexNet by ~1%. Moreover, our results can also reduce the number of layers in Deep Residual Networks (ResNets) meanwhile improving its accuracy.
+
+## Motivation
+Deep neural networks can be very sparse (>90%), using L1 regularization or connection pruning. However, 
 
 ## HowTo and Features
 ### train sparse convolutional neural networks 
@@ -48,3 +54,19 @@ Please cite our NIPS 2016 paper and Caffe if it helps you:
       Title = {Caffe: Convolutional Architecture for Fast Feature Embedding},
       Year = {2014}
     }
+
+### Notes
+Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer, by a layer-by-layer fashion. The speedup of the total time may be different, because
+  1. The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
+  2. After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
+
+However, the lowering and pooling can also be optimized by programming tricks. Please refer to our another paper and [intel branch](https://github.com/wenwei202/caffe/tree/intel) to overcome those problems:
+
+    @article{jia2014caffe,
+      Author = {Park, Jongsoo and Li, R. Sheng and Wen, Wei and Li, Hai and Chen, Yiran and Dubey, Pradeep},
+      Journal = {arXiv preprint arXiv:1608.01409},
+      Title = {Holistic SparseCNN: Forging the Trident of Accuracy, Speed, and Size},
+      Year = {2016}
+    }
+
+  
