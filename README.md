@@ -60,7 +60,7 @@ Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional l
   1. The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
   2. After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
 
-However, the lowering and pooling can also be optimized by programming tricks. Please refer to our another paper and [intel branch](https://github.com/wenwei202/caffe/tree/intel) to overcome those problems:
+However, the lowering and pooling can also be optimized by programming tricks. Please refer to our paper of [Holistic SparseCNN](https://arxiv.org/abs/1608.01409) and [intel branch](https://github.com/wenwei202/caffe/tree/intel) to overcome those problems:
 
     @article{jia2014caffe,
       Author = {Park, Jongsoo and Li, R. Sheng and Wen, Wei and Li, Hai and Chen, Yiran and Dubey, Pradeep},
