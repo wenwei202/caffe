@@ -32,8 +32,16 @@ layer {
 ```
 
 
-Please cite Caffe and our publication if it helps your research:
+Please cite our NIPS 2016 publication and Caffe if it helps your research:
 
+    @InProceedings{WEN_NIPS2016,
+      Title = {Learning Structured Sparsity in Deep Neural Networks},
+      Author = {Wen, Wei and Wu, Chunpeng and Wang, Yandan and Chen, Yiran and Li, Hai},
+      bookTitle = {Advances in Neural Information Processing Systems},
+      pages = {?--?},
+      Year = {2016}
+    }
+    
     @article{jia2014caffe,
       Author = {Jia, Yangqing and Shelhamer, Evan and Donahue, Jeff and Karayev, Sergey and Long, Jonathan and Girshick, Ross and Guadarrama, Sergio and Darrell, Trevor},
       Journal = {arXiv preprint arXiv:1408.5093},
