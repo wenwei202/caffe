@@ -8,6 +8,8 @@ Our *SSL (Structured Sparsity Learning)* method can dynamically learn a compact 
 ## Motivation
 Deep neural networks can be very sparse (>90%), after optimization by L1 regularization or connection pruning. Although the model size can be compressed, the computation cannot be sped up because of the poor cache locality and jumping memory access pattern.
 
+![Alt text](/models/bvlc_reference_caffenet/speedups.png?raw=true "Speedup vs. sparsity")
+
 The following figure shows the speedups are very limited (sometimes even slows down), althrough the sparsity can be as high as >90%. Our *SSL* method can train DNNs with structured sparsity, which results in very good locality and memory access pattern.
 
 ## HowTo and Features
