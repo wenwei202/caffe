@@ -12,6 +12,9 @@ Deep neural networks can be very sparse (>90%), after optimization by L1 regular
 
 The following figure shows the speedups are very limited (sometimes even slows down), althrough the sparsity can be as high as >90%. Our *SSL* method can train DNNs with structured sparsity, which results in very good locality and memory access pattern.
 
+## Caffemodel
+Uploaded in [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learning-structured-sparsity-in-deep-neural-networks).
+
 ## HowTo and Features
 ### train sparse convolutional neural networks 
 1. Stabilizing sparsity
