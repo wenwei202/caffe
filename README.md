@@ -44,12 +44,11 @@ layer {
 
 Please cite our NIPS 2016 paper and Caffe if it helps you:
 
-    @InProceedings{WEN_NIPS2016,
-      Title = {Learning Structured Sparsity in Deep Neural Networks},
-      Author = {Wen, Wei and Wu, Chunpeng and Wang, Yandan and Chen, Yiran and Li, Hai},
-      bookTitle = {Advances in Neural Information Processing Systems},
-      pages = {?--?},
-      Year = {2016}
+    @incollection{Wen_NIPS2016,
+    Title = {Learning Structured Sparsity in Deep Neural Networks},
+    Author = {Wen, Wei and Wu, Chunpeng and Wang, Yandan and Chen, Yiran and Li, Hai},
+    bookTitle = {Advances in Neural Information Processing Systems},
+    Year = {2016}
     }
     
     @article{jia2014caffe,
