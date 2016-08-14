@@ -16,7 +16,7 @@ The above figure shows the speedups are very limited (sometimes even slows down)
 Uploaded in [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learning-structured-sparsity-in-deep-neural-networks).
 
 ## HowTo and Features
-### train sparse convolutional neural networks 
+### Train sparsity-structured convolutional neural networks 
 1. Stabilizing sparsity
   - weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
 2. New [caffe.proto](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto) configurations
@@ -25,7 +25,7 @@ Uploaded in [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learn
   - local `regularization_type` ("L1/L2") is supported for each `ParamSpec` (e.g. weights)
 3. In CPU mode, use Intel mkl blas.
 
-### deploy sparse convolutional neural networks 
+### Deploy sparsity-structured convolutional neural networks 
   - [conv_mode](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the computation modality of convolution (GEMM, CSR, Concatenation, etc.). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by sparse weight matrix * dense feature map matrix.
 ```
 layer {
