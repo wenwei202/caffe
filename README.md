@@ -1,4 +1,4 @@
-# Caffe for Sparse Convolutional Neural Networks
+# Sparse deep neural networks with structured sparsity
 
 This is a fork of [Caffe](http://caffe.berkeleyvision.org/) targeting on sparse convolutional neural networks with *structured sparisty* to speedup DNN evaluation in computation- and memory-limited devices.
 
