@@ -6,7 +6,9 @@ Technical details are in our NIPS 2016 paper.
 Our *SSL (Structured Sparsity Learning)* method can dynamically learn a compact structure (less filters, less channels, smaller filter shapes and less layers) of deep neural networks, achieving speedups of AlexNet by 3.1X in GPUs and 5.1X in CPUs, using off-the-shelf GEMM in BLAS (e.g. MKL in CPUs and cuBLAS in nvidia GPUs). Alternatively, a variant of our method can improve accuracy of AlexNet by ~1%. Moreover, our results can also reduce the number of layers in Deep Residual Networks (ResNets) meanwhile improving its accuracy.
 
 ## Motivation
-Deep neural networks can be very sparse (>90%), using L1 regularization or connection pruning. However, 
+Deep neural networks can be very sparse (>90%), after optimization by L1 regularization or connection pruning. Although the model size can be compressed, the computation cannot be sped up because of the poor cache locality and jumping memory access pattern.
+
+The following figure shows the speedups are very limited (sometimes even slows down), althrough the sparsity can be as high as >90%. Our *SSL* method can train DNNs with structured sparsity, which results in very good locality and memory access pattern.
 
 ## HowTo and Features
 ### train sparse convolutional neural networks 
