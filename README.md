@@ -10,7 +10,7 @@ Deep neural networks can be very sparse (>90%), after optimization by L1 regular
 
 ![Alt text](/models/bvlc_reference_caffenet/speedups.png?raw=true "Speedup vs. sparsity")
 
-The following figure shows the speedups are very limited (sometimes even slows down), althrough the sparsity can be as high as >90%. Our *SSL* method can train DNNs with structured sparsity, which results in very good locality and memory access pattern.
+The above figure shows the speedups are very limited (sometimes even slows down), althrough the sparsity can be as high as >90%. Our *SSL* method can train DNNs with structured sparsity, which results in very good locality and memory access pattern.
 
 ## Caffemodel
 Uploaded in [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learning-structured-sparsity-in-deep-neural-networks).
