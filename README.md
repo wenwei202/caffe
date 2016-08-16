@@ -22,7 +22,7 @@ You can use our trained caffemodel in the model zoo, or train it by yourselves.
 1. Stabilizing sparsity
   - weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
 2. New [caffe.proto](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto) configurations, please refer to comments in `caffe.proto` for more details
-  - `block_group_decay` in `SolverParameter`: weight decay of group lasso regularization on each group(block) in weight matrix, block are configured by `block_group_lasso` in each `ParamSpec` (e.g. weights);
+  - `block_group_decay` in `SolverParameter`: weight decay of group lasso regularization on each group(block) in weight matrix, block are configured by `BlockGroupLassoSpec block_group_lasso` in each `ParamSpec` (e.g. weights);
   - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections;
   - local `regularization_type` ("L1/L2") is supported for each `ParamSpec` (e.g. weights)
 3. In CPU mode, use Intel mkl blas.
