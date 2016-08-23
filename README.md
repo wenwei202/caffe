@@ -70,6 +70,7 @@ layer {
     group: 2
     conv_mode: LOWERED_CSRMM # sparse weight matrix in CSR format * lowered feature maps
     # conv_mode: LOWERED_GEMM # default original matrix multiplication 
+    # conv_mode: LOWERED_CCNMM # removing all-zero rows & columns and ConCateNating remaining ones, then do gemm. In GPU mode, the lowering operation is temporally implemented with CPU subroutines. 
   }
 }
 ```
