@@ -32,8 +32,6 @@ You can use our trained caffemodel in the model zoo, or train it by yourselves.
   param { # weights
     lr_mult: 1
     decay_mult: 0
-    # kernel_shape_decay_mult: 1 # the decay multiplier of group lasso regularization on each column
-    # breadth_decay_mult: 1 # the decay multiplier of group lasso regularization on each row
     block_group_lasso { # specify the group lasso regularization on 2D blocks
       xdimen: 5 # the block size along the x (column) dimension
       ydimen: 10 # the block size along the y (row) dimension
