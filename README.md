@@ -106,4 +106,6 @@ However, the lowering and pooling can also be optimized by programming tricks. P
       Year = {2016}
     }
 
-  
+### Bugs
+
+
