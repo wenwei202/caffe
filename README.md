@@ -56,7 +56,7 @@ You can use our trained caffemodel in the model zoo, or train it by yourselves.
 
 ### Test/Evaluate sparsity-structured convolutional neural networks 
   - As atlas and openblas does not officially support sparse blas, please use mkl BLAS if you want to use the Compressed Sparse Row feature in CPU mode.
-  - [conv_mode](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the computation modality of convolution (GEMM, CSR, Concatenation, etc.). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by sparse weight matrix * dense feature map matrix.
+  - [conv_mode](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the computation modality of convolution (GEMM, CSR, Concatenation, etc.). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by sparse weight matrix * dense feature map matrix (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
 ```
 layer {
   name: "conv2"
