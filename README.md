@@ -21,7 +21,7 @@ You can use our trained caffemodel in the model zoo, or train it by yourselves.
 
 1. Stabilizing sparsity
   - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
-2. New [caffe.proto](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto) configurations, please refer to comments in `caffe.proto` for more details
+2. New [caffe.proto](/src/caffe/proto/caffe.proto) configurations, please refer to comments in `caffe.proto` for more details
   - Training DNNs with SSL is straightforward, you only need to configure the dimensions and decays of blocks (groups) in the weight matrixes. Blocks are configured by `BlockGroupLassoSpec block_group_lasso` in each `ParamSpec` (e.g. weights). Following is an example to enable group lasso regularization on tiled 10x5 blocks in the weight matrix of conv2 layer:
   ```
   layer {
