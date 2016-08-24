@@ -74,7 +74,10 @@ layer {
   }
 }
 ```
-
+ - Config the database, network and caffemodel paths in `examples/caffenet_classifier.py` and run it to start profile. Make sure you correctly configured the `conv_mode` in each convolutional layer in the `deploy.prototxt`. Then, you will get the profiling results showing which modality of convolution is using and what is the computation time for each layer:
+   - `Dense Scheme Timing` -> `LOWERED_GEMM`
+   - `Compressed Row Storage Timing` -> `LOWERED_CSRMM`
+   - `Concatenation Timing` -> `LOWERED_CCNMM`
 
 Please cite our NIPS 2016 paper and Caffe if it helps you:
 
