@@ -32,7 +32,8 @@ caffe.set_device(0)
 caffe.set_mode_gpu()
 #caffe.set_mode_cpu()
 
-net = caffe.Net(caffe_root + 'models/bvlc_reference_caffenet/deploy_csrmm.prototxt',
+net = caffe.Net(#caffe_root + 'models/bvlc_reference_caffenet/deploy_csrmm.prototxt',
+                caffe_root + 'models/bvlc_reference_caffenet/deploy.prototxt',
                 caffe_root + 'models/bvlc_reference_caffenet/caffenet_SSL_0.4469.caffemodel',
              caffe.TEST)
 
