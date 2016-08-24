@@ -48,13 +48,13 @@ You can use our trained caffemodel in the model zoo, or train it by yourselves.
 }
   ```
   - `block_group_decay` in `SolverParameter`: do NOT forget to configure global weight decay of group lasso regularization in the solver prototxt by setting `block_group_decay` (default value is 0)
-  - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto#L362).
-  - local [regularization_type](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto#L316) ("L1/L2") is supported for each `ParamSpec` (e.g. weights) in each layer.
+  - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L362).
+  - local [regularization_type](/src/caffe/proto/caffe.proto#L316) ("L1/L2") is supported for each `ParamSpec` (e.g. weights) in each layer.
 
 
 ### Test/Evaluate sparsity-structured convolutional neural networks 
   - As atlas and openblas does not officially support sparse blas, please use mkl BLAS if you want to use the Compressed Sparse Row feature in CPU mode.
-  - [conv_mode](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the computation modality of convolution (GEMM, CSR, Concatenation, etc.). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by sparse weight matrix * dense feature map matrix (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
+  - [conv_mode](/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the computation modality of convolution (GEMM, CSR, Concatenation, etc.). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by sparse weight matrix * dense feature map matrix (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
 ```
 layer {
   name: "conv2"
