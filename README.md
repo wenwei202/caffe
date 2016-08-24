@@ -107,5 +107,5 @@ However, the lowering and pooling can also be optimized by programming tricks. P
     }
 
 ### Bugs
-
+`make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)
 
