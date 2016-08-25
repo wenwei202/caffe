@@ -31,6 +31,21 @@ The output and snapshot data will be stored in folder named as examples/cifar10/
 An example to start training:
 ```
 cd $CAFFE_ROOT
-./examples/cifar10/train_script.sh 0.001 0.0 0.003 0.003 0.0 0 template_group_solver.prototxt yourbaseline.caffemodel
+./examples/cifar10/train_script.sh 0.001 0.0 0.003 0.003 0.0 0 \
+template_group_solver.prototxt \
+yourbaseline.caffemodel
 ```
-3. Finetuning the model regularized by structrued sparsity
+### Finetuning the model regularized by SSL
+Similar to SSL, but use different network prototxt and solver template.
+
+1. Write a network prototxt, which can freeze the compress structure learned by SSL, e.g. [cifar10_full_train_test_ft.prototxt](/examples/cifar10/cifar10_full_train_test_ft.prototxt#L41):
+```
+  connectivity_mode: DISCONNECTED_GRPWISE # disconnect connections that belong to all-zero rows or columns
+```
+2. Launch `train_script.sh` to start training
+```
+cd $CAFFE_ROOT
+./examples/cifar10/train_script.sh 0.0001 0.004 0.0 0.0 0.0 0 \
+template_finetune_solver.prototxt \
+yourSSL.caffemodel
+```
