@@ -1,5 +1,5 @@
 ---
-title: CIFAR-10 tutorial
+title: CIFAR-10 experiments of SSL
 category: example
 description: Train and test Caffe on CIFAR-10 data.
 include_in_docs: true
