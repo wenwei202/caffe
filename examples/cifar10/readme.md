@@ -61,3 +61,21 @@ The process is similar.
 **Tool 2.** Data augmentation (Padding cifar10 images)
 
 Configure [PAD](/examples/cifar10/create_padded_cifar10.sh#L7) and run `create_padded_cifar10.sh`. Note `create_padded_cifar10.sh` will remove `cifar10_train_lmdb` and `cifar10_train_lmdb`, but you can run `create_cifar10.sh` to generate them again.
+
+### Train, SSL regularize and fine-tune ResNets
+** Step 1.** Train ResNets baseline 
+```
+cd $CAFFE_ROOT
+./examples/cifar10/train_script.sh 0.1 0.0001 0.0 0.0 0.0 0 \
+template_resnet_solver.prototxt 
+```
+** Step 2.** Regularize the depth of ResNets baseline 
+Create a network prototxt `cifar10_resnet_n3_depth.prototxt`, where group lasso regularizations are enforced  on the convolutional layers between each pair of shortcut endpoints, then
+```
+cd $CAFFE_ROOT
+./examples/cifar10/train_script.sh 0.1 0.0001 0.0 0.0 0.007 0 \
+template_resnet_depth_solver.prototxt \
+yourResNetsBaseline.caffemodel
+```
+** Step 2.** Finetune SSL regularized ResNets
+
