@@ -1,6 +1,6 @@
 # ABOUT 
 ## Learning Structured Sparsity in Deep Neural Networks
-See branch [scnn] (https://github.com/wenwei202/caffe/tree/scnn)
+See the source code of our NIPS2016 paper in branch [scnn] (https://github.com/wenwei202/caffe/tree/scnn)
 
 ## Caffe version
 Master branch is from caffe @ commit [04aa36e](https://github.com/BVLC/caffe/tree/04aa36e2712fb7a5e4f96afa55856e419a9f4021)
