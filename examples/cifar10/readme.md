@@ -25,13 +25,12 @@ priority: 5
 <device_id> \ # GPU device ID, -1 for CPU
 <template_solver.prototxt> \ # the template solver prototxt including all other hyper-parameters. The path is relative to examples/cifar10/
 [finetuned.caffemodel/.solverstate] # optional, the .caffemodel to be fine-tuned or the .solverstate to recover paused training process. The path is relative to examples/cifar10/
-The output and snapshot data will be stored in folder named as examples/cifar10/<HYPERPARAMETER_LIST_DATE>
 ```
-Example:
+The output and snapshot data will be stored in folder named as examples/cifar10/<HYPERPARAMETER_LIST_DATE>. Please also configure the `file_prefix` in `train_script.sh` to name the snapshotted models.
+
+An example to start training:
 ```
 cd $CAFFE_ROOT
 ./examples/cifar10/train_script.sh 0.001 0.0 0.003 0.003 0.0 0 template_group_solver.prototxt yourbaseline.caffemodel
 ```
-3. 
-
-
+3. Finetuning the model regularized by structrued sparsity
