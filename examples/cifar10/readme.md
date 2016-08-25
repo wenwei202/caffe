@@ -87,3 +87,5 @@ template_resnet_finetune_solver.prototxt \
 your-depth-Regularized-ResNets.caffemodel
 ```
 
+## Notes
+Please explore the hyperparameters of weight decays (by group lasso regularizations) to make the trade-off between accuracy and sparsity. Examples above are good start points to explore.
