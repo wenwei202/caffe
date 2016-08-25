@@ -17,7 +17,7 @@ Caffemodels of AlexNet learned by SSL are uploaded to [Caffe Model Zoo](https://
 
 Please check [examples/cifar10](/examples/cifar10/readme.md) for the detailed tutorial to use the code.
 
-## HowTo and Features
+## Overview of Features
 ### Train sparsity-structured convolutional neural networks 
 You can use our trained caffemodel in the model zoo, or train it by yourselves.
 
