@@ -70,12 +70,20 @@ cd $CAFFE_ROOT
 template_resnet_solver.prototxt 
 ```
 ** Step 2.** Regularize the depth of ResNets baseline 
-Create a network prototxt `cifar10_resnet_n3_depth.prototxt`, where group lasso regularizations are enforced  on the convolutional layers between each pair of shortcut endpoints, then
+
+Create a network prototxt (e.g. `cifar10_resnet_n3_depth.prototxt`), where group lasso regularizations are enforced  on the convolutional layers between each pair of shortcut endpoints, then
 ```
 cd $CAFFE_ROOT
 ./examples/cifar10/train_script.sh 0.1 0.0001 0.0 0.0 0.007 0 \
 template_resnet_depth_solver.prototxt \
 yourResNetsBaseline.caffemodel
 ```
-** Step 2.** Finetune SSL regularized ResNets
+** Step 3.** Finetune depth-regularized ResNets
+Create a network prototxt similar to `cifar10_resnet_n3_ft.prototxt` by setting `connectivity_mode: DISCONNECTED_GRPWISE`, then
+```
+cd $CAFFE_ROOT
+./examples/cifar10/train_script.sh 0.01 0.0001 0.0 0.0 0.0 0 \
+template_resnet_finetune_solver.prototxt \
+your-depth-Regularized-ResNets.caffemodel
+```
 
