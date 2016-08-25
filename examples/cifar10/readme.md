@@ -103,6 +103,7 @@ template_resnet_depth_solver.prototxt \
 yourResNetsBaseline.caffemodel
 ```
 ** Step 3.** Finetune depth-regularized ResNets
+
 Create or generate a network prototxt similar to `cifar10_resnet_n3_ft.prototxt` by setting `connectivity_mode: DISCONNECTED_GRPWISE`, 
 ```
 cd $CAFFE_ROOT/examples/
@@ -123,4 +124,4 @@ your-depth-Regularized-ResNets.caffemodel
 ```
 
 ## Notes
-Please explore the hyperparameters of weight decays (by group lasso regularizations) to make the trade-off between accuracy and sparsity. Examples above are good start points to explore.
+Please explore the hyperparameters of weight decays (by group lasso regularizations) to make the trade-off between accuracy and sparsity. Examples above are good start points.
