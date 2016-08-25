@@ -1,6 +1,3 @@
-# reduce learning rate after 120 epochs (60000 iters) by factor 0f 10
-# then another factor of 10 after 10 more epochs (5000 iters)
-
 # The train/test net protocol buffer definition
 net: "examples/cifar10/cifar10_resnet_n3.prototxt"
 
