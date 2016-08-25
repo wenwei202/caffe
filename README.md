@@ -1,16 +1,16 @@
 # Sparse deep neural networks with structured sparsity
 
-This is a detached source code of [Caffe](http://caffe.berkeleyvision.org/) targeting on sparse convolutional neural networks with *structured sparisty* to speedup the evaluation of Deep Neural Networks (DNN).
+This is a detached source code of [Caffe](http://caffe.berkeleyvision.org/) targeting on sparse deep neural networks with *structured sparisty* to speedup the evaluation of Deep Neural Networks (DNN).
 
 Technical details are in our [NIPS 2016 paper](http://arxiv.org/abs/1608.03665): **Learning Structured Sparsity in Deep Neural Networks**.
-Our *SSL (Structured Sparsity Learning)* method utilizes group Lasso regularization to dynamically learn a compact DNN structure (less filters, less channels, smaller filter shapes and less layers), achieving speedups of AlexNet by 3.1X in GPUs and 5.1X in CPUs, measured by the off-the-shelf GEMM in BLAS (e.g. MKL in CPUs and cuBLAS in nvidia GPUs). Alternatively, a variant of our method can improve accuracy of AlexNet by ~1%. Moreover, our results can also reduce the number of layers in Deep Residual Networks (ResNets) meanwhile improving its accuracy.
+Our *SSL (Structured Sparsity Learning)* method utilizes group Lasso regularization to dynamically learn a compact DNN structure (less filters, less channels,smaller filter shapes, less neurons and less layers), achieving speedups of convolutional layers in AlexNet by 3.1X in GPUs and 5.1X in CPUs, measured by the off-the-shelf GEMM in BLAS (e.g. MKL in CPUs and cuBLAS in nvidia GPUs). Alternatively, a variant of our method can improve accuracy of AlexNet by ~1%. Moreover, our results can also reduce the number of layers in Deep Residual Networks (ResNets) meanwhile improving its accuracy.
 
 ## Motivation
 Deep neural networks can be very sparse (>90%), after optimization by L1 regularization or connection pruning. The model size can be compressed using those sparsifying methods, however, the computation cannot be sped up because of the poor cache locality and jumping memory access pattern resulted from the random pattern of the sparsity.
 
 ![Alt text](/models/bvlc_reference_caffenet/speedups.png?raw=true "Speedup vs. sparsity")
 
-The above figure shows the speedups are very limited (sometimes even slows down) althrough the sparsity can be as high as >90%. Our *SSL* method can train DNNs with structured sparsity, which results in very good locality and memory access pattern. For example, SSL can directly reduce the dimensions of weight matrixes.
+The above figure shows the speedups are very limited (sometimes even slows down) althrough the sparsity can be as high as >90%. Our *SSL* method can train DNNs with structured sparsity, which results in very good locality and memory access pattern. For example, SSL can directly reduce the dimensions of weight matrixes in both convolutional layers and fully-connected layers.
 
 ## Caffemodel and examples
 Caffemodels of AlexNet learned by SSL are uploaded to [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learning-structured-sparsity-in-deep-neural-networks).
