@@ -56,10 +56,8 @@ yourSSL.caffemodel
 ## ResNets
 The process is similar. 
 ### Some tools
-**Step 1.** ResNets generator - a python tool to generate prototxt for ResNets. Please find it [in our repo](https://github.com/wenwei202/Caffe-Net-Generator).
+**Tool 1.** ResNets generator - a python tool to generate prototxt for ResNets. Please find it [in our repo](https://github.com/wenwei202/Caffe-Net-Generator).
 
-**Step 2.** Data augmentation (Padding cifar10 images)
+**Tool 2.** Data augmentation (Padding cifar10 images)
 
 Configure [PAD](/examples/cifar10/create_padded_cifar10.sh#L7) and run `create_padded_cifar10.sh`. Note `create_padded_cifar10.sh` will remove `cifar10_train_lmdb` and `cifar10_train_lmdb`, but you can run `create_cifar10.sh` to generate them again.
-
-**Step 3.** 
