@@ -35,14 +35,17 @@ cd $CAFFE_ROOT
 template_group_solver.prototxt \
 yourbaseline.caffemodel
 ```
-### Finetuning the model regularized by SSL
+`template_group_solver.prototxt` is a template solver whose net is `cifar10_full_train_test_kernel_shape.prototxt`. `train_script.sh` will generate `examples/cifar10/<HYPERPARAMETER_LIST_DATE>/solver.prototxt` based on input arguments.
+### Finetune the model regularized by SSL
 Similar to SSL, but use different network prototxt and solver template.
 
-1. Write a network prototxt, which can freeze the compress structure learned by SSL, e.g. [cifar10_full_train_test_ft.prototxt](/examples/cifar10/cifar10_full_train_test_ft.prototxt#L41):
+**Step 1.** Write a network prototxt, which can freeze the compact structure learned by SSL, e.g. [cifar10_full_train_test_ft.prototxt](/examples/cifar10/cifar10_full_train_test_ft.prototxt#L41):
 ```
   connectivity_mode: DISCONNECTED_GRPWISE # disconnect connections that belong to all-zero rows or columns
 ```
-2. Launch `train_script.sh` to start training
+You can also use `connectivity_mode: DISCONNECTED_ELTWISE` to freeze all weights whose values are zeros.
+
+ **Step 2.** Launch `train_script.sh` to start fine-tuning
 ```
 cd $CAFFE_ROOT
 ./examples/cifar10/train_script.sh 0.0001 0.004 0.0 0.0 0.0 0 \
