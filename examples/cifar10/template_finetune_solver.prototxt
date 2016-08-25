@@ -16,6 +16,8 @@ regularization_type: "L2"
 # The learning rate policy
 lr_policy: "multistep"
 gamma: 0.1
+
+# Adjust stepvalues according to convergence in each step
 stepvalue: 50000
 stepvalue: 100000
 max_iter: 150000
