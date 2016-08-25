@@ -57,7 +57,7 @@ Training by SSL is simple, we add new features in [caffe.proto](/src/caffe/proto
 
 ### Test/Evaluate sparsity-structured deep neural networks 
 Testing the SSL learned DNN is also simple by configuring prototxt (i.e. `conv_mode`). Note that ATLAS and OpenBLAS do not officially support sparse BLAS, please use mkl BLAS if you want to use the Compressed Sparse Row feature in CPU mode.
-  - [conv_mode](/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the computation modality of convolution (GEMM, CSR or Concatenation). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by (sparse weight matrix) * (dense feature map matrix) (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
+  - [conv_mode](/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the implementations of convolution (GEMM, CSR or Concatenation+GEMM). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by (sparse weight matrix) * (dense feature map matrix) (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
 ```
 layer {
   name: "conv2"
@@ -75,7 +75,7 @@ layer {
   }
 }
 ```
- - Config the database, network and caffemodel paths in `examples/caffenet_classifier.py` and run it to start profile. Make sure you correctly configured the `conv_mode` in each convolutional layer in the `deploy.prototxt`. Then, you will get the profiling results showing which modality of convolution is using and what is the computation time for each layer:
+ - Configure the paths of database, network and caffemodel  in [examples/caffenet_classifier.py](/examples/caffenet_classifier.py) and run it to start profile. Make sure you correctly configured the `conv_mode` in each convolutional layer in the `deploy.prototxt`. Then, you will get the profiling results showing which implementation of convolution is using and what is the computation time for each layer:
    - `Dense Scheme Timing` -> `LOWERED_GEMM`
    - `Compressed Row Storage Timing` -> `LOWERED_CSRMM`
    - `Concatenation Timing` -> `LOWERED_CCNMM`
