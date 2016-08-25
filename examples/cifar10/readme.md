@@ -6,6 +6,28 @@ include_in_docs: true
 priority: 5
 ---
 
-File list:
+# Experiments on CIFAR-10
+## ConvNets
+### Baseline
+1. `cifar10_full_train_test.prototxt`: the network configuration, dropout on `ip1` is added.
+2. `cifar10_full_multistep_solver.prototxt` is the corresponding solver.
 
-1. `cifar10_full_train_test.prototxt`: the baseline, dropout on `ip1` is added.
+### SSL to learn high row-sparsity and column-sparsity
+1. `cifar10_full_train_test_kernel_shape.prototxt`: the network configuration enabling group lasso regularization on each row/kernel (by setting `breadth_decay_mult`) and each column/kernelShape (by setting `kernel_shape_decay_mult`)
+2. Because we need to explore the hyperparameter space (of decay/coefficient of group lasso regularization), we ease the exploration by [train_script.sh](/examples/cifar10/train_script.sh) whose arguments are those hyperparameters:
+```
+./examples/cifar10/train_script.sh \
+<base_lr> \ # base learning rate
+<weight_decay> \ # traditional weight decay coefficient [L2|L1 is specified in template solver prototxt]
+<kernel_shape_decay >\ # group decay coefficient on columns. DEPRECATED in CPU mode (fill 0.0 here) and use block_group_decay instead
+<breadth_decay> \ # group decay coefficient on rows. DEPRECATED in CPU mode (fill 0.0 here) and use block_group_decay instead
+<block_group_decay> \ # group decay coefficient on blocks tiled in the weight matrix
+<device_id> \ # GPU device ID, -1 for CPU
+<template_solver.prototxt> \ # the template solver prototxt including all other hyper-parameters
+[finetuned.caffemodel/.solverstate] # optional, the .caffemodel to be fine-tuned or the .solverstate to recover paused training process
+The output and snapshot data will be stored in folder named as examples/cifar10/<HYPERPARAMETER_LIST_DATE>
+```
+
+3. 
+
+
