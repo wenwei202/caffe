@@ -37,7 +37,7 @@ yourbaseline.caffemodel
 ```
 `template_group_solver.prototxt` is a template solver whose net is `cifar10_full_train_test_kernel_shape.prototxt`. `train_script.sh` will generate `examples/cifar10/<HYPERPARAMETER_LIST_DATE>/solver.prototxt` based on input arguments.
 ### Finetune the model regularized by SSL
-Similar to SSL, but use different network prototxt and solver template.
+Similar to SSL training, but use different network prototxt and solver template.
 
 **Step 1.** Write a network prototxt, which can freeze the compact structure learned by SSL, e.g. [cifar10_full_train_test_ft.prototxt](/examples/cifar10/cifar10_full_train_test_ft.prototxt#L41):
 ```
