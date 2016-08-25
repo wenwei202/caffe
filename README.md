@@ -22,7 +22,7 @@ You can use our trained caffemodel in the model zoo, or train it by yourselves.
 1. Stabilizing sparsity
   - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
 2. New [caffe.proto](/src/caffe/proto/caffe.proto) configurations, please refer to comments in `caffe.proto` for more details
-  - Training DNNs with SSL is straightforward, you only need to configure the dimensions and decays of blocks (groups) in the weight matrixes. Blocks are configured by `BlockGroupLassoSpec block_group_lasso` in each `ParamSpec` (e.g. weights). Following is an example to enable group lasso regularization on tiled 10x5 blocks in the weight matrix of conv2 layer:
+  - Training DNNs with SSL is straightforward, you only need to configure the dimensions and weight decays of blocks (groups) in the weight matrixes. Blocks are configured by `BlockGroupLassoSpec block_group_lasso` in each `ParamSpec` (e.g. weights). Following is an example to enable group lasso regularization on tiled 10x5 blocks in the weight matrix of conv2 layer:
   ```
   layer {
   name: "conv2"
@@ -48,14 +48,14 @@ You can use our trained caffemodel in the model zoo, or train it by yourselves.
 }
   ```
   - `block_group_decay` in `SolverParameter`: do NOT forget to configure global weight decay of group lasso regularization in the solver prototxt by setting `block_group_decay` (default value is 0)
-  - Group Lasso regularization on each row or column can be specified by `block_group_lasso`. However, we also implemented (`kernel_shape_decay_mult` & `breadth_decay_mult` in `ParamSpec`) and (`breadth_decay` & `kernel_shape_decay` in `SolverParameter`) to configure the coefficent of group Lasso regularization on row and column respectively. 
+  - Group Lasso regularization on each row or column can be specified by `block_group_lasso`. However, we also implemented (`kernel_shape_decay_mult` & `breadth_decay_mult` in `ParamSpec`) and (`kernel_shape_decay` & `breadth_decay`  in `SolverParameter`) to configure the coefficent of group Lasso regularization on row and column respectively. 
   - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L362).
   - local [regularization_type](/src/caffe/proto/caffe.proto#L316) ("L1/L2") is supported for each `ParamSpec` (e.g. weights) in each layer.
 
 
 ### Test/Evaluate sparsity-structured convolutional neural networks 
   - As atlas and openblas does not officially support sparse blas, please use mkl BLAS if you want to use the Compressed Sparse Row feature in CPU mode.
-  - [conv_mode](/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the computation modality of convolution (GEMM, CSR, Concatenation, etc.). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by sparse weight matrix * dense feature map matrix (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
+  - [conv_mode](/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the computation modality of convolution (GEMM, CSR or Concatenation). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by (sparse weight matrix) * (dense feature map matrix) (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
 ```
 layer {
   name: "conv2"
