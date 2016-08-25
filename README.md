@@ -18,12 +18,12 @@ Caffemodels of AlexNet learned by SSL are uploaded to [Caffe Model Zoo](https://
 Please check [examples/cifar10](/examples/cifar10/readme.md) for the detailed tutorial to use the code.
 
 ## Overview of Features
-### Train sparsity-structured convolutional neural networks 
+Please refer to our [NIPS 2016 paper](http://arxiv.org/abs/1608.03665) for technical details.
+### Train sparsity-structured deep neural networks 
 You can use our trained caffemodel in the model zoo, or train it by yourselves.
+In brief, SSL enforces group Lasso regularization on every sub-block (e.g. row, column or 2D tile) of the weight matrix. After SSL, a big portion of sub-blocks will be enforced to all-zeros. Note that the *block* and *group* are interchangeable in this context.
 
-1. Stabilizing sparsity
-  - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
-2. New [caffe.proto](/src/caffe/proto/caffe.proto) configurations, please refer to comments in `caffe.proto` for more details
+New [caffe.proto](/src/caffe/proto/caffe.proto) configurations, please refer to comments in `caffe.proto` for more details
   - Training DNNs with SSL is straightforward, you only need to configure the dimensions and weight decays of blocks (groups) in the weight matrixes. Blocks are configured by `BlockGroupLassoSpec block_group_lasso` in each `ParamSpec` (e.g. weights). Following is an example to enable group lasso regularization on tiled 10x5 blocks in the weight matrix of conv2 layer:
   ```
   layer {
@@ -96,8 +96,11 @@ Please cite our NIPS 2016 paper and Caffe if it helps you:
       Year = {2014}
     }
 
-### Notes
-Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer, by a layer-by-layer fashion. The speedup of the total time may be different, because
+## Notes
+1. Stabilizing sparsity
+  - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
+  
+2. Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer, by a layer-by-layer fashion. The speedup of the total time may be different, because
   1. The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
   2. After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
 
