@@ -56,8 +56,22 @@ yourSSL.caffemodel
 ## ResNets
 The process is similar. 
 ### Some tools
-**Tool 1.** ResNets generator - a python tool to generate prototxt for ResNets. Please find it [in our repo](https://github.com/wenwei202/Caffe-Net-Generator).
-
+**Tool 1.** ResNets generator - a python tool to generate prototxt for ResNets. Please find it [in our repo](/examples/resnet_generator.py).
+```
+cd $CAFFE_ROOT/examples/
+# --n: number of groups, please refer to the above paper
+# --net_template: prototxt template specifies the data layer
+# --connectivity_mode: 0 - CONNECTED; 1 - DISCONNECTED_ELTWISE; 2 - DISCONNECTED_GRPWISE
+# --no-learndepth: DO NOT learn the depth of resnets
+# --learndepth: DO learn the depth of resnets by SSL
+python resnet_generator.py \
+--n 3 \
+--net_template resnet_template.prototxt \
+--connectivity_mode 0 \
+--no-learndepth
+```
+The usage of `connectivity_mode` is explained in [caffe.proto](/src/caffe/proto/caffe.proto#L362).
+Generated prototxt is `cifar10_resnet_n3.prototxt`
 **Tool 2.** Data augmentation (Padding cifar10 images)
 
 Configure [PAD](/examples/cifar10/create_padded_cifar10.sh#L7) and run `create_padded_cifar10.sh`. Note `create_padded_cifar10.sh` will remove `cifar10_train_lmdb` and `cifar10_train_lmdb`, but you can run `create_cifar10.sh` to generate them again.
@@ -71,7 +85,17 @@ template_resnet_solver.prototxt
 ```
 ** Step 2.** Regularize the depth of ResNets baseline 
 
-Create a network prototxt (e.g. `cifar10_resnet_n3_depth.prototxt`), where group lasso regularizations are enforced  on the convolutional layers between each pair of shortcut endpoints, then
+Create or generate a network prototxt (e.g. `cifar10_resnet_n3_depth.prototxt`), where group lasso regularizations are enforced  on the convolutional layers between each pair of shortcut endpoints, 
+```
+cd $CAFFE_ROOT/examples/
+python resnet_generator.py \
+--n 3 \
+--net_template resnet_template.prototxt \
+--connectivity_mode 0 \
+--learndepth
+mv cifar10_resnet_n3.prototxt cifar10_resnet_n3_depth.prototxt
+```
+then
 ```
 cd $CAFFE_ROOT
 ./examples/cifar10/train_script.sh 0.1 0.0001 0.0 0.0 0.007 0 \
@@ -79,7 +103,18 @@ template_resnet_depth_solver.prototxt \
 yourResNetsBaseline.caffemodel
 ```
 ** Step 3.** Finetune depth-regularized ResNets
-Create a network prototxt similar to `cifar10_resnet_n3_ft.prototxt` by setting `connectivity_mode: DISCONNECTED_GRPWISE`, then
+Create or generate a network prototxt similar to `cifar10_resnet_n3_ft.prototxt` by setting `connectivity_mode: DISCONNECTED_GRPWISE`, 
+```
+cd $CAFFE_ROOT/examples/
+python resnet_generator.py \
+--n 3 \
+--net_template resnet_template.prototxt \
+--connectivity_mode 2 \
+--no-learndepth
+mv cifar10_resnet_n3.prototxt cifar10_resnet_n3_ft.prototxt
+```
+
+then
 ```
 cd $CAFFE_ROOT
 ./examples/cifar10/train_script.sh 0.01 0.0001 0.0 0.0 0.0 0 \
