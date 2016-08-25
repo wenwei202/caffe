@@ -48,6 +48,7 @@ You can use our trained caffemodel in the model zoo, or train it by yourselves.
 }
   ```
   - `block_group_decay` in `SolverParameter`: do NOT forget to configure global weight decay of group lasso regularization in the solver prototxt by setting `block_group_decay` (default value is 0)
+  - Group Lasso regularization on each row or column can be specified by `block_group_lasso`. However, we also implemented (`kernel_shape_decay_mult` & `breadth_decay_mult` in `ParamSpec`) and (`breadth_decay` & `kernel_shape_decay` in `SolverParameter`) to configure the coefficent of group Lasso regularization on row and column respectively. 
   - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L362).
   - local [regularization_type](/src/caffe/proto/caffe.proto#L316) ("L1/L2") is supported for each `ParamSpec` (e.g. weights) in each layer.
 
