@@ -25,7 +25,7 @@ In brief, SSL enforces group Lasso regularization on every sub-block (e.g. row, 
 
 New [caffe.proto](/src/caffe/proto/caffe.proto) configurations, please refer to comments in `caffe.proto` for more details
   - Training DNNs with SSL is straightforward, you only need to configure the dimensions and weight decays of blocks (groups) in the weight matrixes. Blocks are configured by `BlockGroupLassoSpec block_group_lasso` in each `ParamSpec` (e.g. weights). Following is an example to enable group lasso regularization on tiled 10x5 blocks in the weight matrix of conv2 layer:
-  ```
+```
   layer {
   name: "conv2"
   type: "Convolution"
@@ -48,7 +48,7 @@ New [caffe.proto](/src/caffe/proto/caffe.proto) configurations, please refer to 
     ... # other parameters
   }
 }
-  ```
+```
   - `block_group_decay` in `SolverParameter`: do NOT forget to configure global weight decay of group lasso regularization in the solver prototxt by setting `block_group_decay` (default value is 0)
   - Group Lasso regularization on each row or column can be specified by `block_group_lasso`. However, we also implemented (`kernel_shape_decay_mult` & `breadth_decay_mult` in `ParamSpec`) and (`kernel_shape_decay` & `breadth_decay`  in `SolverParameter`) to configure the coefficent of group Lasso regularization on row and column respectively. 
   - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L362).
