@@ -14,7 +14,7 @@ priority: 5
 
 ### SSL to learn high row-sparsity and column-sparsity
 1. `cifar10_full_train_test_kernel_shape.prototxt`: the network configuration enabling group lasso regularization on each row/kernel (by setting `breadth_decay_mult`) and each column/kernelShape (by setting `kernel_shape_decay_mult`)
-2. Because we need to explore the hyperparameter space (of decay/coefficient of group lasso regularization), we ease the exploration by [train_script.sh](/examples/cifar10/train_script.sh) whose arguments are those hyperparameters:
+2. Because we need to explore the hyperparameter space (of weight decays, learning rate, etc.), we ease the exploration by [train_script.sh](/examples/cifar10/train_script.sh), whose arguments are hyperparameters we have interest in:
 ```
 ./examples/cifar10/train_script.sh \
 <base_lr> \ # base learning rate
@@ -23,11 +23,15 @@ priority: 5
 <breadth_decay> \ # group decay coefficient on rows. DEPRECATED in CPU mode (fill 0.0 here) and use block_group_decay instead
 <block_group_decay> \ # group decay coefficient on blocks tiled in the weight matrix
 <device_id> \ # GPU device ID, -1 for CPU
-<template_solver.prototxt> \ # the template solver prototxt including all other hyper-parameters
-[finetuned.caffemodel/.solverstate] # optional, the .caffemodel to be fine-tuned or the .solverstate to recover paused training process
+<template_solver.prototxt> \ # the template solver prototxt including all other hyper-parameters. The path is relative to examples/cifar10/
+[finetuned.caffemodel/.solverstate] # optional, the .caffemodel to be fine-tuned or the .solverstate to recover paused training process. The path is relative to examples/cifar10/
 The output and snapshot data will be stored in folder named as examples/cifar10/<HYPERPARAMETER_LIST_DATE>
 ```
-
+Example:
+```
+cd $CAFFE_ROOT
+./examples/cifar10/train_script.sh 0.001 0.0 0.003 0.003 0.0 0 template_group_solver.prototxt yourbaseline.caffemodel
+```
 3. 
 
 
