@@ -13,7 +13,7 @@ priority: 5
 2. `cifar10_full_multistep_solver.prototxt` is the corresponding solver.
 
 ### SSL to learn high row-sparsity and column-sparsity
-1. `cifar10_full_train_test_kernel_shape.prototxt`: the network configuration enabling group lasso regularization on each row/filter (by setting `breadth_decay_mult`) and each column/kernelShape (by setting `kernel_shape_decay_mult`)
+1. `cifar10_full_train_test_kernel_shape.prototxt`: the network configuration enabling group lasso regularization on each row/filter (by setting `breadth_decay_mult`) and each column/FilterShape (by setting `kernel_shape_decay_mult`)
 2. Because we need to explore the hyperparameter space (of weight decays, learning rate, etc.), we ease the exploration by [train_script.sh](/examples/cifar10/train_script.sh), whose arguments are hyperparameters we have interest in:
 ```
 ./examples/cifar10/train_script.sh \
