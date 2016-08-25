@@ -59,11 +59,11 @@ The process is similar.
 **Tool 1.** ResNets generator - a python tool to generate prototxt for ResNets. Please find it [in our repo](/examples/resnet_generator.py).
 ```
 cd $CAFFE_ROOT/examples/
-# --n: number of groups, please refer to the above paper
-# --net_template: prototxt template specifies the data layer
+# --n: number of groups, please refer to the https://arxiv.org/abs/1512.03385
+# --net_template: network template specifying the data layer
 # --connectivity_mode: 0 - CONNECTED; 1 - DISCONNECTED_ELTWISE; 2 - DISCONNECTED_GRPWISE
-# --no-learndepth: DO NOT learn the depth of resnets
-# --learndepth: DO learn the depth of resnets by SSL
+# --no-learndepth: DO NOT use SSL to learn the depth of resnets
+# --learndepth: DO use SSL to learn the depth of resnets
 python resnet_generator.py \
 --n 3 \
 --net_template resnet_template.prototxt \
