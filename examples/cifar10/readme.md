@@ -26,9 +26,9 @@ priority: 5
 <template_solver.prototxt> \ # the template solver prototxt including all other hyper-parameters. The path is relative to examples/cifar10/
 [finetuned.caffemodel/.solverstate] # optional, the .caffemodel to be fine-tuned or the .solverstate to recover paused training process. The path is relative to examples/cifar10/
 ```
-The output and snapshot data will be stored in folder named as examples/cifar10/<HYPERPARAMETER_LIST_DATE>. Please also configure the `file_prefix` in `train_script.sh` to name the snapshotted models.
+The output and snapshot data will be stored in folder named as `examples/cifar10/<HYPERPARAMETER_LIST_DATE>`. Optionally, you can configure the `file_prefix` in `train_script.sh` to change the name of snapshotted models.
 
-An example to start training:
+An example to start SSL training:
 ```
 cd $CAFFE_ROOT
 ./examples/cifar10/train_script.sh 0.001 0.0 0.003 0.003 0.0 0 \
