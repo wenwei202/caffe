@@ -130,4 +130,6 @@ your-depth-Regularized-ResNets.caffemodel
 ```
 
 ## Notes
-Please explore the hyperparameters of weight decays (by group lasso regularizations) to make the trade-off between accuracy and sparsity. Examples above are good start points.
+1. Please explore the hyperparameters of weight decays (by group lasso regularizations) to make the trade-off between accuracy and sparsity. Examples above are good start points.
+2. Ignore the huge "Total regularization terms". This is because the internal parameters of Scale layer of Batch Normalization layer are summed.
+
