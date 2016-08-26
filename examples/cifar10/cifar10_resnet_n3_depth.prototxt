@@ -46,7 +46,6 @@ layer {
   param {
     lr_mult: 2
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 16
     bias_term: true
@@ -108,8 +107,11 @@ layer {
   top: "res_grp1_1_conv1"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 144
+      ydimen: 16
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 16
     bias_term: false
@@ -168,8 +170,11 @@ layer {
   top: "res_grp1_1_conv2"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 144
+      ydimen: 16
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 16
     bias_term: false
@@ -235,8 +240,11 @@ layer {
   top: "res_grp1_2_conv1"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 144
+      ydimen: 16
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 16
     bias_term: false
@@ -295,8 +303,11 @@ layer {
   top: "res_grp1_2_conv2"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 144
+      ydimen: 16
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 16
     bias_term: false
@@ -362,8 +373,11 @@ layer {
   top: "res_grp1_3_conv1"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 144
+      ydimen: 16
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 16
     bias_term: false
@@ -422,8 +436,11 @@ layer {
   top: "res_grp1_3_conv2"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 144
+      ydimen: 16
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 16
     bias_term: false
@@ -489,8 +506,11 @@ layer {
   top: "res_grp2_1_conv1"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 144
+      ydimen: 32
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 32
     bias_term: false
@@ -549,8 +569,11 @@ layer {
   top: "res_grp2_1_conv2"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 288
+      ydimen: 32
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 32
     bias_term: false
@@ -604,7 +627,6 @@ layer {
   param {
     lr_mult: 1
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 32
     bias_term: false
@@ -636,8 +658,11 @@ layer {
   top: "res_grp2_2_conv1"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 288
+      ydimen: 32
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 32
     bias_term: false
@@ -696,8 +721,11 @@ layer {
   top: "res_grp2_2_conv2"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 288
+      ydimen: 32
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 32
     bias_term: false
@@ -763,8 +791,11 @@ layer {
   top: "res_grp2_3_conv1"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 288
+      ydimen: 32
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 32
     bias_term: false
@@ -823,8 +854,11 @@ layer {
   top: "res_grp2_3_conv2"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 288
+      ydimen: 32
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 32
     bias_term: false
@@ -890,8 +924,11 @@ layer {
   top: "res_grp3_1_conv1"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 288
+      ydimen: 64
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 64
     bias_term: false
@@ -950,8 +987,11 @@ layer {
   top: "res_grp3_1_conv2"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 576
+      ydimen: 64
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 64
     bias_term: false
@@ -1005,7 +1045,6 @@ layer {
   param {
     lr_mult: 1
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 64
     bias_term: false
@@ -1037,8 +1076,11 @@ layer {
   top: "res_grp3_2_conv1"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 576
+      ydimen: 64
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 64
     bias_term: false
@@ -1097,8 +1139,11 @@ layer {
   top: "res_grp3_2_conv2"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 576
+      ydimen: 64
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 64
     bias_term: false
@@ -1164,8 +1209,11 @@ layer {
   top: "res_grp3_3_conv1"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 576
+      ydimen: 64
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 64
     bias_term: false
@@ -1224,8 +1272,11 @@ layer {
   top: "res_grp3_3_conv2"
   param {
     lr_mult: 1
+    block_group_lasso {
+      xdimen: 576
+      ydimen: 64
+    }
   }
-  connectivity_mode: DISCONNECTED_GRPWISE
   convolution_param {
     num_output: 64
     bias_term: false
