@@ -1,3 +1,7 @@
+########################################################
+# This is just an example to show how to configure group Lasso regularization
+########################################################
+
 name: "LeNet"
 layer {
   name: "mnist"
@@ -48,16 +52,11 @@ layer {
       xdimen: 25
       ydimen: 5
       block_decay_mult: 1.0
-#      xdimen: 1
-#      ydimen: 20
-#      block_decay_mult: 1.0
     }
   }
   param {
     lr_mult: 2
     decay_mult: 1.0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   convolution_param {
     num_output: 20
@@ -97,9 +96,6 @@ layer {
       xdimen: 25
       ydimen: 5
       block_decay_mult: 1.0
-#      xdimen: 1
-#      ydimen: 50
-#      block_decay_mult: 1.0
     }
   }
   param {
@@ -145,16 +141,11 @@ layer {
       xdimen: 10
       ydimen: 10
       block_decay_mult: 1.0
-#      xdimen: 1
-#      ydimen: 500
-#      block_decay_mult: 1.0
     }
   }
   param {
     lr_mult: 2
     decay_mult: 1.0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 500
@@ -186,16 +177,11 @@ layer {
       xdimen: 10
       ydimen: 10
       block_decay_mult: 1.0
-#      xdimen: 1
-#      ydimen: 10
-#      block_decay_mult: 1.0
     }
   }
   param {
     lr_mult: 2
     decay_mult: 1.0
-    kernel_shape_decay_mult: 0.0
-    breadth_decay_mult: 0.0
   }
   inner_product_param {
     num_output: 10
