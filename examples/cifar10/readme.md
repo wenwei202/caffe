@@ -63,7 +63,7 @@ The process is similar.
 ### Some tools
 **Tool 1.** ResNets generator - a python tool to generate prototxt for ResNets. Please find it [in our repo](/examples/resnet_generator.py).
 ```
-cd $CAFFE_ROOT/examples/
+cd $CAFFE_ROOT
 # --n: number of groups, please refer to the https://arxiv.org/abs/1512.03385
 # --net_template: network template specifying the data layer
 # --connectivity_mode: 0 - CONNECTED; 1 - DISCONNECTED_ELTWISE; 2 - DISCONNECTED_GRPWISE
