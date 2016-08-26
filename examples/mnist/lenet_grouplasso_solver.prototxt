@@ -8,55 +8,16 @@ test_iter: 100
 test_interval: 500
 # The base learning rate, momentum and the weight decay of the network.
 base_lr: 0.01
-#base_lr: 0.001
 momentum: 0.9
 
-#weight_decay: 0.0005
-
-#weight_decay: 0.001
-#group_weight_decay: 0.001
-
-#weight_decay: 0.001
-#group_weight_decay: 0.005
-
-#weight_decay: 0.002
-#group_weight_decay: 0.01
-
-#weight_decay: 0.005
-#group_weight_decay: 0.03
-
-#weight_decay: 0.003
-#group_weight_decay: 0.02
-
-#weight_decay: 0.01
-#group_weight_decay: 0.01
-
-#weight_decay: 0.002
-#group_weight_decay: 0.02
-
-# presented in intel slides
-#weight_decay: 0.001
-#group_weight_decay: 0.01
-
-#98.46% finetune from lenet 5x 22x
-#breadth_decay: 0.01
-#kernel_shape_decay: 0.01
-#weight_decay: 0.0005
-
-#93%
-#breadth_decay: 0.008
-#kernel_shape_decay: 0.008
-#weight_decay: 0.0005
-#regularization_type: "L2"
 breadth_decay: 0.005
 kernel_shape_decay: 0.005
 weight_decay: 0.0
 regularization_type: "L2"
 
 # The learning rate policy
-#lr_policy: "inv"
 gamma: 0.1
-#power: 0.75
+
 lr_policy: "multistep"
 stepvalue: 6000
 stepvalue: 8000
