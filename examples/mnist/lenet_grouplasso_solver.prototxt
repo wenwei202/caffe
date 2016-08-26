@@ -1,3 +1,7 @@
+###############################################################################
+# This is just an example to show how to configure group Lasso regularization #
+###############################################################################
+
 # The train/test net protocol buffer definition
 net: "examples/mnist/lenet_train_test.prototxt"
 # test_iter specifies how many forward passes the test should carry out.
@@ -10,9 +14,13 @@ test_interval: 500
 base_lr: 0.01
 momentum: 0.9
 
+# coefficient of group Lasso regularization on rows
 breadth_decay: 0.005
+# coefficient of group Lasso regularization on columns
 kernel_shape_decay: 0.005
+# coefficient of traditional regularization (L1/L2) on weights
 weight_decay: 0.0
+
 regularization_type: "L2"
 
 # The learning rate policy
