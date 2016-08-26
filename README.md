@@ -100,7 +100,9 @@ Please cite our NIPS 2016 paper and Caffe if it helps you:
 1. Stabilizing sparsity
   - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
   
-2. Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer, by a layer-by-layer fashion. The speedup of the total time may be different, because
+2. Caffe version
+  - scnn branch is forked from caffe @ commit [04aa36e](https://github.com/BVLC/caffe/tree/04aa36e2712fb7a5e4f96afa55856e419a9f4021)
+3. Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer, by a layer-by-layer fashion. The speedup of the total time may be different, because
   1. The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
   2. After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
 
