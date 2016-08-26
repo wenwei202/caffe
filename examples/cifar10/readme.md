@@ -26,7 +26,6 @@ priority: 5
 <template_solver.prototxt> \ # the template solver prototxt including all other hyper-parameters. The path is relative to examples/cifar10/
 [finetuned.caffemodel/.solverstate] # optional, the .caffemodel to be fine-tuned or the .solverstate to recover training process. The path is relative to examples/cifar10/
 ```
-The output and snapshot will be stored in folder named `examples/cifar10/<HYPERPARAMETER_LIST_DATE>` (e.g. `examples/cifar10/0.001_0.0_0.003_0.003_0.0_Fri_Aug_26_14-40-34_PDT_2016` ). Optionally, you can configure the `file_prefix` in `train_script.sh` to change the name of snapshotted models.
 
 An example to start SSL training:
 ```
@@ -35,7 +34,13 @@ cd $CAFFE_ROOT
 template_group_solver.prototxt \
 yourbaseline.caffemodel
 ```
-`template_group_solver.prototxt` is a template solver whose net is `cifar10_full_train_test_kernel_shape.prototxt`. `train_script.sh` will generate `examples/cifar10/<HYPERPARAMETER_LIST_DATE>/solver.prototxt` based on input arguments.
+`template_group_solver.prototxt` is a template solver whose net is `cifar10_full_train_test_kernel_shape.prototxt`. 
+
+The output and snapshot will be stored in folder named `examples/cifar10/<HYPERPARAMETER_LIST_DATE>` (e.g. `examples/cifar10/0.001_0.0_0.003_0.003_0.0_Fri_Aug_26_14-40-34_PDT_2016` ). Optionally, you can configure the `file_prefix` in `train_script.sh` to change the name of snapshotted models.
+
+`train_script.sh` will generate `examples/cifar10/<HYPERPARAMETER_LIST_DATE>/solver.prototxt` based on input arguments, and the log info will be outputed into file `examples/cifar10/<HYPERPARAMETER_LIST_DATE>/train.info`
+
+
 ### Finetune the model regularized by SSL
 Similar to SSL training, but use different network prototxt and solver template.
 
