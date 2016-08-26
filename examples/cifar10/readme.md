@@ -69,9 +69,9 @@ cd $CAFFE_ROOT/examples/
 # --connectivity_mode: 0 - CONNECTED; 1 - DISCONNECTED_ELTWISE; 2 - DISCONNECTED_GRPWISE
 # --no-learndepth: DO NOT use SSL to learn the depth of resnets
 # --learndepth: DO use SSL to learn the depth of resnets
-python resnet_generator.py \
+python examples/resnet_generator.py \
 --n 3 \
---net_template resnet_template.prototxt \
+--net_template examples/cifar10/resnet_template.prototxt \
 --connectivity_mode 0 \
 --no-learndepth
 ```
