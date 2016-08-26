@@ -63,7 +63,7 @@ The process is similar.
 ### Some tools
 **Tool 1.** ResNets generator - a python tool to generate prototxt for ResNets. Please find it [in our repo](/examples/resnet_generator.py).
 ```
-cd $CAFFE_ROOT/examples/
+cd $CAFFE_ROOT
 # --n: number of groups, please refer to the https://arxiv.org/abs/1512.03385
 # --net_template: network template specifying the data layer
 # --connectivity_mode: 0 - CONNECTED; 1 - DISCONNECTED_ELTWISE; 2 - DISCONNECTED_GRPWISE
@@ -77,6 +77,7 @@ python examples/resnet_generator.py \
 ```
 The usage of `connectivity_mode` is explained in [caffe.proto](/src/caffe/proto/caffe.proto#L362).
 Generated prototxt is `cifar10_resnet_n3.prototxt`
+
 **Tool 2.** Data augmentation (Padding cifar10 images)
 
 Configure [PAD](/examples/cifar10/create_padded_cifar10.sh#L7) and run `create_padded_cifar10.sh`. Note `create_padded_cifar10.sh` will remove `cifar10_train_lmdb` and `cifar10_train_lmdb`, but you can run `create_cifar10.sh` to generate them again.
@@ -92,13 +93,13 @@ template_resnet_solver.prototxt
 
 Create or generate a network prototxt (e.g. `cifar10_resnet_n3_depth.prototxt`), where group lasso regularizations are enforced  on the convolutional layers between each pair of shortcut endpoints, 
 ```
-cd $CAFFE_ROOT/examples/
-python resnet_generator.py \
+cd $CAFFE_ROOT
+python examples/resnet_generator.py \
 --n 3 \
---net_template resnet_template.prototxt \
+--net_template examples/cifar10/resnet_template.prototxt \
 --connectivity_mode 0 \
 --learndepth
-mv cifar10_resnet_n3.prototxt cifar10_resnet_n3_depth.prototxt
+mv examples/cifar10/cifar10_resnet_n3.prototxt examples/cifar10/cifar10_resnet_n3_depth.prototxt
 ```
 then
 ```
@@ -111,13 +112,13 @@ yourResNetsBaseline.caffemodel
 
 Create or generate a network prototxt similar to `cifar10_resnet_n3_ft.prototxt` by setting `connectivity_mode: DISCONNECTED_GRPWISE`, 
 ```
-cd $CAFFE_ROOT/examples/
-python resnet_generator.py \
+cd $CAFFE_ROOT
+python examples/resnet_generator.py \
 --n 3 \
---net_template resnet_template.prototxt \
+--net_template examples/cifar10/resnet_template.prototxt \
 --connectivity_mode 2 \
 --no-learndepth
-mv cifar10_resnet_n3.prototxt cifar10_resnet_n3_ft.prototxt
+mv examples/cifar10/cifar10_resnet_n3.prototxt examples/cifar10/cifar10_resnet_n3_ft.prototxt
 ```
 
 then
