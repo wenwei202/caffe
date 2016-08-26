@@ -1,6 +1,6 @@
-########################################################
-# This is just an example to show how to configure group Lasso regularization
-########################################################
+###############################################################################
+# This is just an example to show how to configure group Lasso regularization #
+###############################################################################
 
 name: "LeNet"
 layer {
