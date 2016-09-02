@@ -121,4 +121,5 @@ However, the lowering and pooling can also be optimized by programming tricks. P
 ### Issues
 1. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)
 2. cudnn: version of cudnn 4 is supported, not cudnn 5
+3. More in [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
 
