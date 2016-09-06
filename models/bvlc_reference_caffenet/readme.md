@@ -1,4 +1,4 @@
-# Example of finetuning caffenet by SSL on fully-connected layers
+# Example of training caffenet by SSL on fully-connected layers
 ## Files
 1. `train_val_fc.prototxt`: network prototxt with `kernel_shape_decay_mult` and `breadth_decay_mult` added into fully-connected layers (fc6, fc7 and fc8);
 2. `template_group_solver.prototxt`: the template of solver;
