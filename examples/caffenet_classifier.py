@@ -125,10 +125,11 @@ for key, value in lmdb_cursor:
         out = net.forward()
         endtime = time.time()
         # save blobs
-        blob_cells = {}
-        for blob_name in net.blobs.keys():
-            blob_cells[blob_name] = net.blobs[blob_name].data
-        savemat('blobs.mat',blob_cells)
+        if image_count<5:
+            blob_cells = {}
+            for blob_name in net.blobs.keys():
+                blob_cells[blob_name] = net.blobs[blob_name].data
+            savemat('blobs{}.mat'.format(image_count),blob_cells)
         #plabel = int(out['prob'][0].argmax(axis=0))
         plabel = out['prob'][:].argmax(axis=1)
         plabel_top5 = argsort(out['prob'][:],axis=1)[:,-1:-6:-1]
