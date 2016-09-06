@@ -2,7 +2,7 @@
 set -e
 set -x
 
-folder="models/bvlc_reference_caffenet"
+folder="models/ssl_caffenet"
 file_prefix="caffenet_train"
 model_path="models/bvlc_reference_caffenet"
 
