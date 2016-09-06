@@ -2,9 +2,9 @@
 set -e
 set -x
 
-folder="models/ssl_caffenet"
-file_prefix="caffenet_train"
-model_path="models/bvlc_reference_caffenet"
+folder="models/bvlc_reference_caffenet/"
+file_prefix="caffenet_ssl"
+model_path="models/bvlc_reference_caffenet/"
 
 if [ "$#" -lt 7 ]; then
 	echo "Illegal number of parameters"
