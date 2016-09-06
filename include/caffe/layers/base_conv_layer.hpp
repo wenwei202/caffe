@@ -189,7 +189,9 @@ class BaseConvolutionLayer : public Layer<Dtype> {
     Blob<int> index_pointers_buffer_;
     Blob<int> nonzero_per_rowcol_buffer_;
   #endif
-
+#ifdef USE_SNAPSHOT_FEATURE
+    int num_forward_image_;
+#endif
     //Three blobs for sparse weight storage in CSC/CSR format
     //bool is_sparse_format_weights_; //if use the sparse storage format of weights
     Blob<Dtype> nz_weight_values_;//nonzero elements

@@ -5,6 +5,7 @@
 #include "caffe/layers/base_conv_layer.hpp"
 #include "caffe/util/im2col.hpp"
 #include "caffe/util/math_functions.hpp"
+#include "caffe/util/mmio.hpp"
 
 namespace caffe {
 
@@ -359,6 +360,10 @@ void BaseConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
   dense_feature_map_mask_.Reshape(1,1,1,channels_);
   //squeezed_weight_buffer_.Reshape(this->blobs_[0]->shape(0),this->blobs_[0]->shape(1),this->blobs_[0]->shape(2),this->blobs_[0]->shape(3));
   //squeezed_weight_groups_.resize(group_);
+
+#ifdef USE_SNAPSHOT_FEATURE
+  num_forward_image_ = 0;
+#endif
 }
 
 template <typename Dtype>
@@ -511,10 +516,10 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
   int weight_offset_sum = 0;
   Timer total_timer;
   total_timer.Start();
+  const int M = conv_out_channels_ /group_;
+  const int N = conv_out_spatial_dim_;
+  const int K = kernel_dim_;
   for (int g = 0; g < group_; ++g) {
-	  const int M = conv_out_channels_ /group_;
-	  const int N = conv_out_spatial_dim_;
-	  const int K = kernel_dim_;
 	  const int row_offset = conv_out_channels_ /group_ + 1;
 	  switch(this->layer_param_.convolution_param().conv_mode()){
 	  case caffe::ConvolutionParameter_ConvMode_LOWERED_CSRMM :
@@ -639,9 +644,39 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 				  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
 				  (Dtype)0., output + output_offset_ * g);
 		LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Dense Scheme Timing)";
+#ifdef USE_SNAPSHOT_FEATURE
+	  if(num_forward_image_ < 5){
+		ostringstream filename_stream;
+		//sprintf(filename,"%s.feature%d",this->layer_param().name().c_str(),num_forward_image_);
+		filename_stream << this->layer_param().name() << "_group"<<g<<".feature" << num_forward_image_;
+		MM_typecode matcode;
+		FILE * fp = fopen(filename_stream.str().c_str(), "w+");
+		mm_initialize_typecode(&matcode);
+		mm_set_matrix(&matcode);
+		mm_set_array(&matcode);
+		mm_set_real(&matcode);
+		mm_set_general(&matcode);
+
+		mm_write_banner(fp, matcode);
+		//int M = this->shape(0);//column of the stored matrix
+		//int N = this->count()/M;
+		mm_write_mtx_array_size(fp, K, N);
+		/* NOTE: matrix market files use 1-based indices, i.e. first element
+		 of a vector has index 1, not 0.  */
+		for (int col=0; col<N; col++) {
+			for (int row=0; row<K; row++) {
+				fprintf(fp, "%20g\n", (double)(*(col_buff + + col_offset_ * g + row * N + col)) );
+			}
+		}
+		fclose(fp);
+	  }
+#endif
 		break;
 	  }
   }
+#ifdef USE_SNAPSHOT_FEATURE
+	  num_forward_image_ += 1;
+#endif
 
   if (this->layer_param_.convolution_param().conv_mode() == caffe::ConvolutionParameter_ConvMode_DIRECT_SCONV) {
     delete[] input_padded;

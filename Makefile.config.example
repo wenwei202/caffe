@@ -1,6 +1,9 @@
 ## Refer to http://caffe.berkeleyvision.org/installation.html
 # Contributions simplifying and improving our build system are welcome!
 
+# snapshot feature maps inputted to conv and fc layers
+# USE_SNAPSHOT_FEATURE := 1
+
 # cuDNN acceleration switch (uncomment to build with cuDNN).
 # USE_CUDNN := 1
 

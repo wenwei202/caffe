@@ -3,6 +3,7 @@
 #include "caffe/filler.hpp"
 #include "caffe/layers/inner_product_layer.hpp"
 #include "caffe/util/math_functions.hpp"
+#include "caffe/util/mmio.hpp"
 
 namespace caffe {
 template <typename Dtype>
@@ -68,6 +69,9 @@ void InnerProductLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
     }
   }  // parameter initialization
   this->param_propagate_down_.resize(this->blobs_.size(), true);
+#ifdef USE_SNAPSHOT_FEATURE
+  num_forward_image_ = 0;
+#endif
 }
 
 template <typename Dtype>
@@ -110,6 +114,29 @@ void InnerProductLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
         bias_multiplier_.cpu_data(),
         this->blobs_[1]->cpu_data(), (Dtype)1., top_data);
   }
+#ifdef USE_SNAPSHOT_FEATURE
+	  if(num_forward_image_ < 5){
+		ostringstream filename_stream;
+		filename_stream << this->layer_param().name() <<".feature" << num_forward_image_;
+		MM_typecode matcode;
+		FILE * fp = fopen(filename_stream.str().c_str(), "w+");
+		mm_initialize_typecode(&matcode);
+		mm_set_matrix(&matcode);
+		mm_set_array(&matcode);
+		mm_set_real(&matcode);
+		mm_set_general(&matcode);
+
+		mm_write_banner(fp, matcode);
+		mm_write_mtx_array_size(fp, M_, K_);
+		for (int col=0; col<K_; col++) {
+			for (int row=0; row<M_; row++) {
+				fprintf(fp, "%20g\n", (double)(*(bottom_data + row * K_ + col)) );
+			}
+		}
+		fclose(fp);
+		num_forward_image_ += 1;
+	  }
+#endif
 }
 
 template <typename Dtype>
