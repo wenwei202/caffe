@@ -534,7 +534,9 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 				  nz_weight_index_pointers_.cpu_data() + row_offset * g + 1,
 				  col_buff + col_offset_ * g,
 				  (Dtype)0.,output + output_offset_ * g);
+#ifdef USE_PROFILE_DISPLAY
 		  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Compressed Row Storage Timing)";
+#endif
 		  break;
 	  case caffe::ConvolutionParameter_ConvMode_LOWERED_CCNMM :{
 		  //LOG(INFO)<<"Computing ConvolutionParameter_ConvMode_LOWERED_CCNMM";
@@ -552,7 +554,9 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 				  (Dtype)1., squeezed_weight_buffer_.cpu_data() + weight_offset_sum,
 				  left_cols , col_buff + col_buf_offset_sum,
 				conv_out_spatial_dim_, (Dtype)0., output + output_offset_sum, conv_out_spatial_dim_);
+#ifdef USE_PROFILE_DISPLAY
 		  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Concatenation Timing)";
+#endif
 		  col_buf_offset_sum += left_cols * conv_out_spatial_dim_;
 		  output_offset_sum += left_rows * conv_out_spatial_dim_;
 		  weight_offset_sum += left_rows*left_cols;
@@ -643,7 +647,9 @@ void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
 		caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, M, N, K,
 				  (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
 				  (Dtype)0., output + output_offset_ * g);
+#ifdef USE_PROFILE_DISPLAY
 		LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Dense Scheme Timing)";
+#endif
 #ifdef USE_SNAPSHOT_FEATURE
 	  if(num_forward_image_ < 5){
 		ostringstream filename_stream;
@@ -803,7 +809,9 @@ void BaseConvolutionLayer<Dtype>::forward_gpu_gemm(const Dtype* input,
 						(Dtype)0.,
 						output + output_offset_ * g,
 						transposed_output_buffer_.mutable_gpu_data());
+#ifdef USE_PROFILE_DISPLAY
 				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Compressed Row Storage Timing)";
+#endif
 				break;
 			}
 			case caffe::ConvolutionParameter_ConvMode_LOWERED_CCNMM :{
@@ -821,7 +829,9 @@ void BaseConvolutionLayer<Dtype>::forward_gpu_gemm(const Dtype* input,
 						 (Dtype)1., squeezed_weight_buffer_.gpu_data() + weight_offset_sum,
 						 col_buff + col_buf_offset_sum,
 						 (Dtype)0., output + output_offset_sum);
+#ifdef USE_PROFILE_DISPLAY
 				  LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Concatenation Timing)";
+#endif
 				  col_buf_offset_sum += left_cols * conv_out_spatial_dim_;
 				  output_offset_sum += left_rows * conv_out_spatial_dim_;
 				  weight_offset_sum += left_rows*left_cols;
@@ -841,7 +851,9 @@ void BaseConvolutionLayer<Dtype>::forward_gpu_gemm(const Dtype* input,
 					group_, conv_out_spatial_dim_, kernel_dim_,
 						 (Dtype)1., weights + weight_offset_ * g, col_buff + col_offset_ * g,
 						 (Dtype)0., output + output_offset_ * g);
+#ifdef USE_PROFILE_DISPLAY
 				LOG(INFO)<<this->layer_param().name()<<"\t group "<<g<<": "<<timer.MicroSeconds()<<" us (Dense Scheme Timing)";
+#endif
 				break;
 			}
 	  }

@@ -185,7 +185,6 @@ LIBRARIES += glog gflags protobuf boost_system boost_filesystem m hdf5_hl hdf5
 USE_LEVELDB ?= 1
 USE_LMDB ?= 1
 USE_OPENCV ?= 1
-USE_SNAPSHOT_FEATURE ?= 1
 
 ifeq ($(USE_LEVELDB), 1)
 	LIBRARIES += leveldb snappy
@@ -335,6 +334,9 @@ endif
 # configure IO libraries
 ifeq ($(USE_SNAPSHOT_FEATURE), 1)
 	COMMON_FLAGS += -DUSE_SNAPSHOT_FEATURE
+endif
+ifeq ($(USE_PROFILE_DISPLAY), 1)
+	COMMON_FLAGS += -DUSE_PROFILE_DISPLAY
 endif
 ifeq ($(USE_OPENCV), 1)
 	COMMON_FLAGS += -DUSE_OPENCV

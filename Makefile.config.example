@@ -4,6 +4,9 @@
 # snapshot feature maps inputted to conv and fc layers
 # USE_SNAPSHOT_FEATURE := 1
 
+# display profiling results
+# USE_PROFILE_DISPLAY := 1
+
 # cuDNN acceleration switch (uncomment to build with cuDNN).
 # USE_CUDNN := 1
 
