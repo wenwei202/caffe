@@ -3,6 +3,7 @@
 1. `train_val_fc.prototxt`: network prototxt with `kernel_shape_decay_mult` and `breadth_decay_mult` added into fully-connected layers (fc6, fc7 and fc8);
 2. `template_group_solver.prototxt`: the template of solver;
 3. `train_script.sh`: the script to launch training.
+
 ## To run
 ```
 cd $CAFFE_ROOT

@@ -75,10 +75,15 @@ layer {
   }
 }
 ```
- - Configure the paths of database, network and caffemodel  in [examples/caffenet_classifier.py](/examples/caffenet_classifier.py) and run it to start profile. Make sure you correctly configured the `conv_mode` in each convolutional layer in the `deploy.prototxt`. Then, you will get the profiling results showing which implementation of convolution is using and what is the computation time for each layer:
-   - `Dense Scheme Timing` -> `LOWERED_GEMM`
-   - `Compressed Row Storage Timing` -> `LOWERED_CSRMM`
-   - `Concatenation Timing` -> `LOWERED_CCNMM`
+ - Open `USE_PROFILE_DISPLAY := 1` in `Makefile.config`. Configure the paths of database, network and caffemodel  in [examples/caffenet_classifier.py](/examples/caffenet_classifier.py) and run it to start profile. Make sure you correctly configured the `conv_mode` in each convolutional layer in the `deploy.prototxt`. Then, you will get the profiling results showing which implementation of convolution is using and what is the computation time for each layer, similar to:
+ - 
+ ```
+ I0907 14:37:47.134873 26836 base_conv_layer.cpp:651] conv2	 group 0: 320 us (Dense Scheme Timing)
+ ```
+ 
+  - `Dense Scheme Timing` -> `LOWERED_GEMM`
+  - `Compressed Row Storage Timing` -> `LOWERED_CSRMM`
+  - `Concatenation Timing` -> `LOWERED_CCNMM`
 
 
 Note that the weight matrixes of convolutional and fully-connected layers are snapshotted as `$CAFFE_ROOT/layername.weight`, the format obeys [Matrix Market](http://math.nist.gov/MatrixMarket/). You can use interfaces of [C](http://math.nist.gov/MatrixMarket/mmio-c.html), Fortran and [Matlab](http://math.nist.gov/MatrixMarket/mmio/matlab/mmiomatlab.html) to read those weight matrixes.
