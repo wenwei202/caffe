@@ -286,24 +286,56 @@ Dtype SGDSolver<Dtype>::Regularize(int param_id) {
 #ifndef CPU_ONLY
     if (local_decay) {
       if (regularization_type == "L2") {
-        // add weight decay
-        caffe_gpu_axpy(net_params[param_id]->count(),
-            local_decay,
-            net_params[param_id]->gpu_data(),
-            net_params[param_id]->mutable_gpu_diff());
-        //calcuate the l2 regularization term
-		caffe_gpu_dot(net_params[param_id]->count(),net_params[param_id]->gpu_data(),net_params[param_id]->gpu_data(),&regularization_term);
-		regularization_term *= local_decay/(Dtype)2.0;
+    	  if(params_individual_decays[param_id]){
+    		  //gradient:  w*lamda_w
+    		  caffe_copy(net_params[param_id]->count(),
+    				  net_params[param_id]->gpu_data(),
+    				  temp_[param_id]->mutable_gpu_data());
+    		  caffe_gpu_eltwise_multi(net_params[param_id]->count(),
+    				  params_individual_decays[param_id]->gpu_data(),
+    				  temp_[param_id]->mutable_gpu_data());
+    		  caffe_gpu_axpy(net_params[param_id]->count(),
+    		  				local_decay,
+    		  				temp_[param_id]->gpu_data(),
+    		  				net_params[param_id]->mutable_gpu_diff());
+    		  //term: 0.5*w*w*lamda_w
+    		  caffe_gpu_dot(net_params[param_id]->count(),
+    				  net_params[param_id]->gpu_data(),
+    				  temp_[param_id]->gpu_data(),
+    				  &regularization_term);
+    	  }else{
+			// add weight decay
+			caffe_gpu_axpy(net_params[param_id]->count(),
+				local_decay,
+				net_params[param_id]->gpu_data(),
+				net_params[param_id]->mutable_gpu_diff());
+			//calcuate the l2 regularization term
+			caffe_gpu_dot(net_params[param_id]->count(),net_params[param_id]->gpu_data(),net_params[param_id]->gpu_data(),&regularization_term);
+    	}
+    	regularization_term *= local_decay/(Dtype)2.0;
       } else if (regularization_type == "L1") {
         caffe_gpu_sign(net_params[param_id]->count(),
             net_params[param_id]->gpu_data(),
             temp_[param_id]->mutable_gpu_data());
+        if(params_individual_decays[param_id]){
+        	//gradient: sign(w)*lamda_w
+        	caffe_gpu_eltwise_multi(net_params[param_id]->count(),
+			  params_individual_decays[param_id]->gpu_data(),
+			  temp_[param_id]->mutable_gpu_data());
+        }
         caffe_gpu_axpy(net_params[param_id]->count(),
             local_decay,
             temp_[param_id]->gpu_data(),
             net_params[param_id]->mutable_gpu_diff());
         //calcuate the l1 regularization term
-		caffe_gpu_asum(net_params[param_id]->count(),net_params[param_id]->gpu_data(),&regularization_term);
+        if(params_individual_decays[param_id]){
+        	caffe_gpu_eltwise_multi(net_params[param_id]->count(),
+        			  net_params[param_id]->gpu_data(),
+					  temp_[param_id]->mutable_gpu_data());
+        	caffe_gpu_asum(net_params[param_id]->count(),temp_[param_id]->gpu_data(),&regularization_term);
+        }else{
+        	caffe_gpu_asum(net_params[param_id]->count(),net_params[param_id]->gpu_data(),&regularization_term);
+        }
 		regularization_term *= local_decay;
       } else {
         LOG(FATAL) << "Unknown regularization type: " << regularization_type;
