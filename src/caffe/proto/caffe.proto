@@ -314,6 +314,9 @@ message ParamSpec {
   
   // To specify local regularization type ("L1"/"L2") 
   optional string regularization_type = 8 [default = ""];
+  
+  // The binary proto file specifying the local weight decay multipliers for individual weights. 
+  optional string decay_proto = 9 [default = ""];
 }
 
 // Specifies shape and decay multiplier of a block, on which group lasso regularization is enforced.

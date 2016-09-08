@@ -201,36 +201,80 @@ Dtype SGDSolver<Dtype>::Regularize(int param_id) {
   Dtype weight_decay = this->param_.weight_decay();
   string regularization_type = this->param_.regularization_type();
   string local_regularization_type = net_params_local_regular_types[param_id];
+  const vector<  shared_ptr<Blob<Dtype> >  >& params_individual_decays = this->net_->params_individual_weight_decay();
   if(!local_regularization_type.empty()){
 	  regularization_type = local_regularization_type;
   }
   Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
   Dtype regularization_term = Dtype(0);
+  if(params_individual_decays[param_id]){
+	  CHECK_EQ(net_params[param_id]->count(), params_individual_decays[param_id]->count());
+  }
+//  for (int i=0;i<params_individual_decays.size();i++){
+//	  LOG(INFO)<<i<<" " <<params_individual_decays[i];
+//	  if(params_individual_decays[i]){
+//		  LOG(INFO)<<params_individual_decays[i]->count();
+//	  }
+//  }
   switch (Caffe::mode()) {
   case Caffe::CPU: {
     if (local_decay) {
       if (regularization_type == "L2") {
-        // add weight decay
-        caffe_axpy(net_params[param_id]->count(),
-            local_decay,
-            net_params[param_id]->cpu_data(),
-            net_params[param_id]->mutable_cpu_diff());
-        //calcuate the l2 regularization term
-		regularization_term = caffe_cpu_dot(
-				net_params[param_id]->count(),
+    	  if(params_individual_decays[param_id]){
+    		    caffe_mul(net_params[param_id]->count(),
+    				  net_params[param_id]->cpu_data(),
+    				  params_individual_decays[param_id]->cpu_data(),
+    				  temp_[param_id]->mutable_cpu_data()
+    				  );
+    		  	// add weight decay
+				caffe_axpy(net_params[param_id]->count(),
+					local_decay,
+					temp_[param_id]->cpu_data(),
+					net_params[param_id]->mutable_cpu_diff());
+				//calcuate the l2 regularization term
+				regularization_term = caffe_cpu_dot(
+						net_params[param_id]->count(),
+						temp_[param_id]->cpu_data(),
+						net_params[param_id]->cpu_data());
+    	  }else{
+			// add weight decay
+			caffe_axpy(net_params[param_id]->count(),
+				local_decay,
 				net_params[param_id]->cpu_data(),
-				net_params[param_id]->cpu_data());
+				net_params[param_id]->mutable_cpu_diff());
+			//calcuate the l2 regularization term
+			regularization_term = caffe_cpu_dot(
+					net_params[param_id]->count(),
+					net_params[param_id]->cpu_data(),
+					net_params[param_id]->cpu_data());
+    	  }
 		regularization_term *= local_decay/(Dtype)2.0;
       } else if (regularization_type == "L1") {
         caffe_cpu_sign(net_params[param_id]->count(),
             net_params[param_id]->cpu_data(),
             temp_[param_id]->mutable_cpu_data());
+        if(params_individual_decays[param_id]){
+        	caffe_mul(net_params[param_id]->count(),
+        		  temp_[param_id]->cpu_data(),
+				  params_individual_decays[param_id]->cpu_data(),
+				  temp_[param_id]->mutable_cpu_data()
+				);
+        }
         caffe_axpy(net_params[param_id]->count(),
             local_decay,
             temp_[param_id]->cpu_data(),
             net_params[param_id]->mutable_cpu_diff());
         //calcuate the l1 regularization term
-		regularization_term = caffe_cpu_asum(net_params[param_id]->count(),net_params[param_id]->cpu_data());
+        if(params_individual_decays[param_id]){
+        	caffe_mul(net_params[param_id]->count(),
+				  net_params[param_id]->cpu_data(),
+				  params_individual_decays[param_id]->cpu_data(),
+				  temp_[param_id]->mutable_cpu_data()
+				);
+        	regularization_term = caffe_cpu_asum(net_params[param_id]->count(),temp_[param_id]->cpu_data());
+        } else {
+        	regularization_term = caffe_cpu_asum(net_params[param_id]->count(),net_params[param_id]->cpu_data());
+        }
 		regularization_term *= local_decay;
       } else {
         LOG(FATAL) << "Unknown regularization type: " << regularization_type;

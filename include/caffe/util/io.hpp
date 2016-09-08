@@ -91,7 +91,7 @@ inline void WriteProtoToBinaryFile(
 }
 
 bool ReadFileToDatum(const string& filename, const int label, Datum* datum);
-
+bool IfFileExists (const std::string& name);
 inline bool ReadFileToDatum(const string& filename, Datum* datum) {
   return ReadFileToDatum(filename, -1, datum);
 }
