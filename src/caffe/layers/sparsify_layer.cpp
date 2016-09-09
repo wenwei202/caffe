@@ -54,7 +54,9 @@ void SparsifyLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
   if(this->layer_param_.display()){
 	  Dtype total_gradients =
 			  caffe_cpu_asum(top[0]->count(), top[0]->cpu_diff());
-	  LOG(INFO) << "Average abs gradient = " << total_gradients / top[0]->count();
+	  LOG(INFO) << "Average abs gradient of layer "
+			  << this->layer_param_.name()
+			  <<" = " << total_gradients / top[0]->count();
   }
 }
 
