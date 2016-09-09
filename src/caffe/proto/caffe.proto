@@ -345,6 +345,9 @@ message LayerParameter {
   // included/excluded.
   repeated NetStateRule include = 8;
   repeated NetStateRule exclude = 9;
+  
+  // Display info
+  optional bool display = 12 [default = false];
 
   // Parameters for data pre-processing.
   optional TransformationParameter transform_param = 100;
@@ -1004,8 +1007,6 @@ message SparsifyParameter {
   // To learn sparse inputs (e.g. sparse representations)
   optional float coef = 2 [default = 0];
   
-  // If display statistics
-  optional bool display = 3 [default = false];
 }
 
 message ReshapeParameter {

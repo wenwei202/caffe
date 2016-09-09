@@ -29,7 +29,7 @@ void SparsifyLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
 			else top_data[i] = bottom_data[i];
 		}
 	}
-	if(sparsify_param_.display()){
+	if(this->layer_param_.display()){
 		LOG(INFO) << "Sparsity of inputs of layer "
 				<< this->layer_param_.name()
 				<< " = " << bottom[0]->GetSparsity(sparsify_param_.thre());
@@ -51,7 +51,7 @@ void SparsifyLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     }
   }
 
-  if(sparsify_param_.display()){
+  if(this->layer_param_.display()){
 	  Dtype total_gradients =
 			  caffe_cpu_asum(top[0]->count(), top[0]->cpu_diff());
 	  LOG(INFO) << "Average abs gradient = " << total_gradients / top[0]->count();

@@ -33,7 +33,7 @@ void SparsifyLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
 		CUDA_POST_KERNEL_CHECK;
 	}
 
-	if(sparsify_param_.display()){
+	if(this->layer_param_.display()){
 		LOG(INFO) << "Sparsity of inputs of layer "
 				<< this->layer_param_.name()
 				<< " = " << bottom[0]->GetSparsity(sparsify_param_.thre());
@@ -64,7 +64,7 @@ void SparsifyLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
 	  CUDA_POST_KERNEL_CHECK;
   }
 
-  if(sparsify_param_.display()){
+  if(this->layer_param_.display()){
   	  Dtype total_gradients;
   	  caffe_gpu_asum(top[0]->count(),top[0]->gpu_diff(),&total_gradients);
   	  LOG(INFO) << "Average abs gradient of layer "
