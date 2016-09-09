@@ -306,7 +306,7 @@ message ParamSpec {
 // NOTE
 // Update the next available ID when you add a new LayerParameter field.
 //
-// LayerParameter next available layer-specific ID: 147 (last added: recurrent_param)
+// LayerParameter next available layer-specific ID: 148 (last added: sparsify_param)
 message LayerParameter {
   optional string name = 1; // the layer name
   optional string type = 2; // the layer type
@@ -403,6 +403,7 @@ message LayerParameter {
   optional ThresholdParameter threshold_param = 128;
   optional TileParameter tile_param = 138;
   optional WindowDataParameter window_data_param = 129;
+  optional SparsifyParameter sparsify_param = 147;
 }
 
 // Message that stores parameters used to apply transformation
@@ -991,6 +992,20 @@ message ReLUParameter {
     CUDNN = 2;
   }
   optional Engine engine = 2 [default = DEFAULT];
+}
+
+// Message that stores parameters used by SparsifyLayer
+message SparsifyParameter {
+  // For Forward: The absolute threshold value to inhibit inputs from forwarding
+  // To zerout small activations
+  optional float thre = 1 [default = 0];
+  
+  // For Backward: The decay coefficient of inputs (e.g. the feature maps from previous the conv layer)
+  // To learn sparse inputs (e.g. sparse representations)
+  optional float coef = 2 [default = 0];
+  
+  // If display statistics
+  optional bool display = 3 [default = false];
 }
 
 message ReshapeParameter {

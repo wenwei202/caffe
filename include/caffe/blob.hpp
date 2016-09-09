@@ -265,6 +265,8 @@ class Blob {
 
   bool ShapeEquals(const BlobProto& other);
 
+  Dtype GetSparsity(Dtype thre = 0);
+
  protected:
   shared_ptr<SyncedMemory> data_;
   shared_ptr<SyncedMemory> diff_;
