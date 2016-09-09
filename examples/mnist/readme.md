@@ -287,3 +287,6 @@ MNIST is a small dataset, so training with GPU does not really introduce too muc
 
 ### How to reduce the learning rate at fixed steps?
 Look at lenet_multistep_solver.prototxt
+
+### File list
+`lenet_train_test_sfm.prototxt`: example to use `SparsifyLayer`
