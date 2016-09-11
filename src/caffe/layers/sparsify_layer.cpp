@@ -32,9 +32,9 @@ void SparsifyLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
 		}
 	}
 	if(this->layer_param_.display()){
-		LOG(INFO) << "Sparsity of inputs of layer "
+		LOG(INFO) << "Sparsity of output of layer "
 				<< this->layer_param_.name()
-				<< " = " << bottom[0]->GetSparsity(thre);
+				<< " = " << top[0]->GetSparsity(thre);
 	}
 }
 
@@ -45,11 +45,14 @@ void SparsifyLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
   if (propagate_down[0]) {
     const Dtype* bottom_data = bottom[0]->cpu_data();
     const Dtype* top_diff = top[0]->cpu_diff();
+    const Dtype* top_data = top[0]->cpu_data();
     Dtype* bottom_diff = bottom[0]->mutable_cpu_diff();
     const int count = bottom[0]->count();
     for (int i = 0; i < count; ++i) {
-      bottom_diff[i] = top_diff[i] +
-    		  ( (bottom_data[i] > 0) - (bottom_data[i] < 0) ) * coef_;
+      // The intrinsic threholding and L1 regularization on features
+      bottom_diff[i] = ( top_diff[i] + ( (top_data[i] > 0) - (top_data[i] < 0) ) * coef_ ) // L1 regularization on features
+    		  * (top_data[i]!=0); //intrinsic threholding, bottom blob may be changed if the layer is in-place, so we use top bottom
+
     }
   }
 

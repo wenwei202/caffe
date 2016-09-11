@@ -36,18 +36,18 @@ void SparsifyLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
 	}
 
 	if(this->layer_param_.display()){
-		LOG(INFO) << "Sparsity of inputs of layer "
+		LOG(INFO) << "Sparsity of outputs of layer "
 				<< this->layer_param_.name()
-				<< " = " << bottom[0]->GetSparsity(sparsify_param_.thre());
+				<< " = " << top[0]->GetSparsity(sparsify_param_.thre());
 	}
 }
 
 template <typename Dtype>
 __global__ void SparsifyBackward(const int n, const Dtype* in_diff,
-    const Dtype* in_data, Dtype* out_diff, Dtype coef) {
+    const Dtype* out_data, Dtype* out_diff, Dtype coef) {
   CUDA_KERNEL_LOOP(index, n) {
-    out_diff[index] = in_diff[index]
-        + coef * ( (in_data[index] > 0) - (in_data[index] < 0) );
+    out_diff[index] = (in_diff[index] + coef * ( (out_data[index] > 0) - (out_data[index] < 0) ))
+    		* (out_data[index]!=0);
   }
 }
 
@@ -57,12 +57,13 @@ void SparsifyLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     const vector<Blob<Dtype>*>& bottom) {
   if (propagate_down[0]) {
 	  const Dtype* bottom_data = bottom[0]->gpu_data();
+	  const Dtype* top_data = top[0]->gpu_data();
 	  const Dtype* top_diff = top[0]->gpu_diff();
 	  Dtype* bottom_diff = bottom[0]->mutable_gpu_diff();
 	  const int count = bottom[0]->count();
 	  // NOLINT_NEXT_LINE(whitespace/operators)
 	  SparsifyBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
-		  count, top_diff, bottom_data, bottom_diff, coef_);
+		  count, top_diff, top_data, bottom_diff, coef_);
 	  CUDA_POST_KERNEL_CHECK;
   }
 
