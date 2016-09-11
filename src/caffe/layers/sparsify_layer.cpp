@@ -21,18 +21,20 @@ void SparsifyLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
 	const Dtype* bottom_data = bottom[0]->cpu_data();
 	Dtype* top_data = top[0]->mutable_cpu_data();
 	CHECK_EQ(bottom[0]->count(),top[0]->count());
-	if(0 == sparsify_param_.thre()){
+	Dtype thre = sparsify_param_.thre();
+	if(0 == thre){
 		caffe_copy(bottom[0]->count(), bottom_data, top_data);
 	} else {
 		for(int i=0; i<bottom[0]->count(); i++){
-			if(fabs(bottom_data[i])<=sparsify_param_.thre()) top_data[i] = 0;
-			else top_data[i] = bottom_data[i];
+			if(fabs(bottom_data[i])<=thre) top_data[i] = 0;
+			else if (bottom_data[i] > thre ) top_data[i] = bottom_data[i] - thre;
+			else top_data[i] = bottom_data[i] + thre;
 		}
 	}
 	if(this->layer_param_.display()){
 		LOG(INFO) << "Sparsity of inputs of layer "
 				<< this->layer_param_.name()
-				<< " = " << bottom[0]->GetSparsity(sparsify_param_.thre());
+				<< " = " << bottom[0]->GetSparsity(thre);
 	}
 }
 

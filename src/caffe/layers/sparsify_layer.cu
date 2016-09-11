@@ -11,8 +11,10 @@ __global__ void SparsifyForward(const int n,
   CUDA_KERNEL_LOOP(index, n) {
 	  if( (in_data[index]<=thre) && (in_data[index]>=-thre) ){
 		  out_data[index] = 0;
-	  } else {
-		  out_data[index] = in_data[index];
+	  } else if (in_data[index]>thre) {
+		  out_data[index] = in_data[index] - thre;
+	  } else{
+		  out_data[index] = in_data[index] + thre;
 	  }
   }
 }
