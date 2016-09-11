@@ -1001,6 +1001,7 @@ message ReLUParameter {
 message SparsifyParameter {
   // For Forward: The absolute threshold value to inhibit inputs from forwarding
   // To zerout small activations
+  // Recommendation: Use ThresholdLayer before and set thre = 0
   optional float thre = 1 [default = 0];
   
   // For Backward: The decay coefficient of inputs (e.g. the feature maps from previous the conv layer)

@@ -57,16 +57,6 @@ layer {
   }
 }
 layer {
-  name: "sp_conv1"
-  type: "Sparsify"
-  bottom: "conv1"
-  top: "conv1"
-  sparsify_param {
-    coef: 0.000001
-    thre: 0.1
-  }
-}
-layer {
   name: "pool1"
   type: "Pooling"
   bottom: "conv1"
@@ -75,6 +65,16 @@ layer {
     pool: MAX
     kernel_size: 2
     stride: 2
+  }
+}
+layer {
+  name: "sp_pool1"
+  type: "Sparsify"
+  bottom: "pool1"
+  top: "pool1"
+  sparsify_param {
+    coef: 0.000001
+    thre: 0.1
   }
 }
 layer {
