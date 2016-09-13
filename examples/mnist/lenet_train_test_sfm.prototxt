@@ -68,13 +68,22 @@ layer {
   }
 }
 layer {
+  name: "sr_pool1"
+  type: "SymmetricRectify"
+  bottom: "pool1"
+  top: "pool1"
+  symmetric_rectify_param {
+    channel_shared: false
+  }
+}
+layer {
   name: "sp_pool1"
   type: "Sparsify"
   bottom: "pool1"
   top: "pool1"
   sparsify_param {
-    coef: 0.000001
-    thre: 0.1
+    coef: 0.0000001
+#    thre: 0.1
   }
 }
 layer {
@@ -101,13 +110,22 @@ layer {
   }
 }
 layer {
+  name: "sr_conv2"
+  type: "SymmetricRectify"
+  bottom: "conv2"
+  top: "conv2"
+  symmetric_rectify_param {
+    channel_shared: false
+  }
+}
+layer {
   name: "sp_conv2"
   type: "Sparsify"
   bottom: "conv2"
   top: "conv2"
   sparsify_param {
-    coef: 0.00001
-    thre: 0.1
+    coef: 0.000001
+#    thre: 0.1
   }
 }
 layer {
@@ -149,13 +167,22 @@ layer {
   top: "ip1"
 }
 layer {
+  name: "sr_relu1"
+  type: "SymmetricRectify"
+  bottom: "ip1"
+  top: "ip1"
+  symmetric_rectify_param {
+    channel_shared: true
+  }
+}
+layer {
   name: "sp_relu1"
   type: "Sparsify"
   bottom: "ip1"
   top: "ip1"
   sparsify_param {
-    coef: 0.0001
-    thre: 0.1
+    coef: 0.00001
+#    thre: 0.1
   }
 }
 layer {
