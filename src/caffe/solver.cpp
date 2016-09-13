@@ -219,20 +219,21 @@ void Solver<Dtype>::Step(int iters) {
     // accumulate the loss and gradient
     Dtype loss = 0;
     for (int i = 0; i < param_.iter_size(); ++i) {
-      loss += net_->ForwardBackward();
       if(0==i && display){
-    	//enable layer-wise display
+		//enable layer-wise display
 		for (int i=0;i<net_->layers().size();i++){
 		  shared_ptr< Layer<Dtype> > layer = net_->layers()[i];
 		  layer->SetDisplay(true);
 		}
-      } else {
-    	//disable layer-wise display
+	  } else {
+		//disable layer-wise display
 		for (int i=0;i<net_->layers().size();i++){
 		  shared_ptr< Layer<Dtype> > layer = net_->layers()[i];
 		  layer->SetDisplay(false);
 		}
-      }
+	  }
+      loss += net_->ForwardBackward();
+
     }
     loss /= param_.iter_size();
     // average the loss across iterations for smoothed reporting

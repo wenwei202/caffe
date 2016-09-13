@@ -306,7 +306,7 @@ message ParamSpec {
 // NOTE
 // Update the next available ID when you add a new LayerParameter field.
 //
-// LayerParameter next available layer-specific ID: 148 (last added: sparsify_param)
+// LayerParameter next available layer-specific ID: 149 (last added: symmetric_rectify_param)
 message LayerParameter {
   optional string name = 1; // the layer name
   optional string type = 2; // the layer type
@@ -407,6 +407,7 @@ message LayerParameter {
   optional TileParameter tile_param = 138;
   optional WindowDataParameter window_data_param = 129;
   optional SparsifyParameter sparsify_param = 147;
+  optional SymmetricRectifyParameter symmetric_rectify_param = 148;
 }
 
 // Message that stores parameters used to apply transformation
@@ -1001,7 +1002,7 @@ message ReLUParameter {
 message SparsifyParameter {
   // For Forward: The absolute threshold value to inhibit inputs from forwarding
   // To zerout small activations
-  // Recommendation: Use ThresholdLayer before and set thre = 0
+  // Recommendation: Use SymmetricRectifyLayer in the front and set thre = 0
   optional float thre = 1 [default = 0];
   
   // For Backward: The decay coefficient of inputs (e.g. the feature maps from previous the conv layer)
@@ -1412,5 +1413,17 @@ message PReLUParameter {
   // Initial value of a_i. Default is a_i=0.25 for all i.
   optional FillerParameter filler = 1;
   // Whether or not slope paramters are shared across channels.
+  optional bool channel_shared = 2 [default = false];
+}
+
+message SymmetricRectifyParameter {
+  // Symmetric rectifying
+  // y = x - thre_i; if x > thre_i
+  //   = x + thre_i; if x < -thre_i
+  //   = 0 otherwise.
+
+  // Initial value of thre_i. Default is thre_i=0.0001 for all channel i.
+  optional FillerParameter filler = 1;
+  // Whether or not threshold paramters are shared across channels.
   optional bool channel_shared = 2 [default = false];
 }

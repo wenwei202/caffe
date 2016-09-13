@@ -43,15 +43,14 @@ void SparsifyLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     const vector<bool>& propagate_down,
     const vector<Blob<Dtype>*>& bottom) {
   if (propagate_down[0]) {
-    const Dtype* bottom_data = bottom[0]->cpu_data();
     const Dtype* top_diff = top[0]->cpu_diff();
     const Dtype* top_data = top[0]->cpu_data();
     Dtype* bottom_diff = bottom[0]->mutable_cpu_diff();
     const int count = bottom[0]->count();
     for (int i = 0; i < count; ++i) {
-      // The intrinsic threholding and L1 regularization on features
-      bottom_diff[i] = ( top_diff[i] + ( (top_data[i] > 0) - (top_data[i] < 0) ) * coef_ ) // L1 regularization on features
-    		  * (top_data[i]!=0); //intrinsic threholding, bottom blob may be changed if the layer is in-place, so we use top bottom
+      // The intrinsic symmetric rectifying and L1 regularization on outputs
+      bottom_diff[i] = ( top_diff[i] + ( (top_data[i] > 0) - (top_data[i] < 0) ) * coef_ ) // L1 regularization on outputs
+    		  * (top_data[i]!=0); //intrinsic symmetric rectifying, bottom blob may be changed if the layer is in-place, so we use top bottom
 
     }
   }

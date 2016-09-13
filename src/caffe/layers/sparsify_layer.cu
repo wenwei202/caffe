@@ -46,6 +46,7 @@ template <typename Dtype>
 __global__ void SparsifyBackward(const int n, const Dtype* in_diff,
     const Dtype* out_data, Dtype* out_diff, Dtype coef) {
   CUDA_KERNEL_LOOP(index, n) {
+	// The intrinsic symmetric rectifying and L1 regularization on outputs
     out_diff[index] = (in_diff[index] + coef * ( (out_data[index] > 0) - (out_data[index] < 0) ))
     		* (out_data[index]!=0);
   }
