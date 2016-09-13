@@ -152,7 +152,6 @@ void SymmetricRectifyLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
   if (propagate_down[0]) {
     Dtype* bottom_diff = bottom[0]->mutable_cpu_diff();
     for (int i = 0; i < count; ++i) {
-      //int c = (i / dim) % channels / div_factor;
       bottom_diff[i] = top_diff[i] * (fabs(top_data[i])>0);
     }
   }

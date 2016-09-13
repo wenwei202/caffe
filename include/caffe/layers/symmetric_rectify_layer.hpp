@@ -62,7 +62,7 @@ class SymmetricRectifyLayer : public NeuronLayer<Dtype> {
   bool channel_shared_;
   Blob<Dtype> multiplier_;  // dot multiplier for backward computation of params
   Blob<Dtype> backward_buff_;  // temporary buffer for backward computation
-  Blob<Dtype> bottom_memory_;  // memory for in-place computation
+  //Blob<Dtype> bottom_memory_;  // memory for in-place computation
 };
 
 }  // namespace caffe
