@@ -95,3 +95,7 @@ To compare CPU vs. GPU training speed, simply change one line in all the `cifar*
     solver_mode: CPU
 
 and you will be using CPU for training.
+
+File list
+---------
+`cifar10_full_train_test_sfm.prototxt`: an example of using `SymmetricRectifyLayer` and `SparsifyLayer`.
