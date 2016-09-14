@@ -128,5 +128,5 @@ However, the lowering and pooling can also be optimized by programming tricks. P
 1. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)
 2. cudnn: version of cudnn 4 is supported, not cudnn 5
 3. More in [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
-4. To profile, use `deploy.prototxt` in Python and use `train_val.prototxt` in `caffe time ...`, otherwise, the there might be some bugs in original Caffe.
+4. To profile, use `deploy.prototxt` in Python and use `train_val.prototxt` in `caffe time ...`, otherwise, the there might be some bugs in original Caffe. Note that training using `LOWERED_CSRMM` or `LOWERED_CCNMM` is forbidden. `caffe time` calls backward function of each layer, to use `caffe time` to profile, comment backward related codes in `tools/caffe.cpp:time()` function.
 
