@@ -22,9 +22,18 @@ __global__ void SymmetricRectifyForward(const int n, const int channels, const i
 
 // CUDA kernel for blob
 template <typename Dtype>
-__global__ void SymmetricRectifyBlob(const int n, Dtype* thre_data) {
+__global__ void SymmetricRectifyZeroutBlob(const int n, Dtype* thre_data) {
   CUDA_KERNEL_LOOP(index, n) {
     if( thre_data[index]<0 ) thre_data[index] = 0;
+  }
+}
+
+// CUDA kernel for blob
+template <typename Dtype>
+__global__ void SymmetricRectifyRegularizeBlob(const int n, const Dtype thre_decay,
+		const Dtype* thre_data, Dtype* thre_diff) {
+  CUDA_KERNEL_LOOP(index, n) {
+	  thre_diff[index] += ((thre_data[index]<0) - (thre_data[index]>0)) * thre_decay;
   }
 }
 
@@ -68,7 +77,7 @@ void SymmetricRectifyLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& botto
   //  caffe_copy(count, bottom_data, bottom_memory_.mutable_gpu_data());
   //}
   const int blob_count = this->blobs_[0]->count();
-  SymmetricRectifyBlob<Dtype><<<CAFFE_GET_BLOCKS(blob_count), CAFFE_CUDA_NUM_THREADS>>>(
+  SymmetricRectifyZeroutBlob<Dtype><<<CAFFE_GET_BLOCKS(blob_count), CAFFE_CUDA_NUM_THREADS>>>(
 		  blob_count, this->blobs_[0]->mutable_gpu_data());
   CUDA_POST_KERNEL_CHECK;
 
@@ -108,6 +117,7 @@ void SymmetricRectifyLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
   // keep top_diff unchanged.
   if (this->param_propagate_down_[0]) {
     Dtype* thre_diff = this->blobs_[0]->mutable_gpu_diff();
+    const Dtype* thre_data = this->blobs_[0]->gpu_data();
     int cdim = channels * dim;
 
     // compute element-wise diff
@@ -128,6 +138,13 @@ void SymmetricRectifyLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
         backward_buff_.gpu_diff(), multiplier_.gpu_data(), 1.,
         thre_diff);
     }
+
+    const int blob_count = this->blobs_[0]->count();
+    SymmetricRectifyRegularizeBlob<Dtype><<<CAFFE_GET_BLOCKS(blob_count), CAFFE_CUDA_NUM_THREADS>>>(
+		  blob_count,
+		  this->layer_param().symmetric_rectify_param().thre_decay(),
+		  thre_data, thre_diff);
+    CUDA_POST_KERNEL_CHECK;
   }
   // Propagate to bottom
   if (propagate_down[0]) {

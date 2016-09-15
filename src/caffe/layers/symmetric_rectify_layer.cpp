@@ -142,10 +142,15 @@ void SymmetricRectifyLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
   // keep top_diff unchanged.
   if (this->param_propagate_down_[0]) {
     Dtype* thre_diff = this->blobs_[0]->mutable_cpu_diff();
+    const Dtype* thre_data = this->blobs_[0]->cpu_data();
     for (int i = 0; i < count; ++i) {
       int c = (i / dim) % channels / div_factor;
-      //thre_diff[c] += top_diff[i] * bottom_data[i] * (bottom_data[i] <= 0);
       thre_diff[c] += top_diff[i] * ( (top_data[i] < 0) - (top_data[i] > 0) );
+    }
+    for (int c_i = 0; c_i < this->blobs_[0]->count(); c_i++){
+      //biasing threshold to larger value for higher sparsity
+	  thre_diff[c_i] += ((thre_data[c_i]<0) - (thre_data[c_i]>0))
+			  * this->layer_param().symmetric_rectify_param().thre_decay();
     }
   }
   // Propagate to bottom
