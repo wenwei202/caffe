@@ -2,7 +2,7 @@ __author__ = 'caffe'
 
 import numpy as np
 import matplotlib.pyplot as plt
-
+from pittnuts import *
 
 # take an array of shape (n, height, width) or (n, height, width, channels)
 # and visualize each (height, width) thing in a grid of size approx. sqrt(n) by sqrt(n)
@@ -20,3 +20,9 @@ def vis_square(data, padsize=1, padval=0):
     data = data.reshape((n * data.shape[1], n * data.shape[3]) + data.shape[4:])
 
     plt.imshow(data)
+
+def get_blob_sparsity(net):
+    sparsity = {}
+    for blob_name in net.blobs.keys():
+         sparsity[blob_name] = get_sparsity(net.blobs[blob_name].data)
+    return sparsity

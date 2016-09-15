@@ -66,6 +66,11 @@ if __name__ == "__main__":
     batch_size = net.blobs['data'].num
     label = zeros((batch_size,1))
     image_count = 0
+
+    sparsity = {}
+    for blob_name in net.blobs.keys():
+         sparsity[blob_name] = 0
+
     for key, value in lmdb_cursor:
         datum = caffe.proto.caffe_pb2.Datum()
         datum.ParseFromString(value)
@@ -79,6 +84,8 @@ if __name__ == "__main__":
             starttime = time.time()
             out = net.forward()
             endtime = time.time()
+            for blob_name in net.blobs.keys():
+                sparsity[blob_name] += get_blob_sparsity(net)[blob_name]
             plabel = out['prob'][:].argmax(axis=1)
             plabel_top5 = argsort(out['prob'][:],axis=1)[:,-1:-6:-1]
             assert (plabel==plabel_top5[:,0]).all()
@@ -96,4 +103,10 @@ if __name__ == "__main__":
             sys.stdout.flush()
         image_count += 1
 
-#    plt.show()
+    # statistics
+    print("blobs {}\nparams {}".format(net.blobs.keys(), net.params.keys()))
+    print ("Average sparsity of blobs:")
+    for blob_name in net.blobs.keys():
+        sparsity[blob_name] = sparsity[blob_name]/count
+        print blob_name, "\t", sparsity[blob_name]
+
