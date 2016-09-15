@@ -149,7 +149,7 @@ void SymmetricRectifyLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     }
     for (int c_i = 0; c_i < this->blobs_[0]->count(); c_i++){
       //biasing threshold to larger value for higher sparsity
-	  thre_diff[c_i] += ((thre_data[c_i]<0) - (thre_data[c_i]>0))
+	  thre_diff[c_i] += ((thre_data[c_i]<0) - (thre_data[c_i]>=0))
 			  * this->layer_param().symmetric_rectify_param().thre_decay();
     }
   }

@@ -20,10 +20,14 @@ if __name__ == "__main__":
     parser.add_argument('--network', type=str, required=True)
     parser.add_argument('--caffemodel', type=str, required=True)
     parser.add_argument('--device', type=int, required=False)
+    parser.add_argument('--display', dest='display', action='store_true')
+    parser.add_argument('--no-display', dest='display', action='store_false')
+    parser.set_defaults(display=False)
     args = parser.parse_args()
     network = args.network
     caffemodel = args.caffemodel
     device = args.device
+    display = args.display
     if device == None:
         device = 0
 
@@ -84,8 +88,9 @@ if __name__ == "__main__":
             starttime = time.time()
             out = net.forward()
             endtime = time.time()
-            for blob_name in net.blobs.keys():
-                sparsity[blob_name] += get_blob_sparsity(net)[blob_name]
+            if display:
+                for blob_name in net.blobs.keys():
+                    sparsity[blob_name] += get_blob_sparsity(net)[blob_name]
             plabel = out['prob'][:].argmax(axis=1)
             plabel_top5 = argsort(out['prob'][:],axis=1)[:,-1:-6:-1]
             assert (plabel==plabel_top5[:,0]).all()
@@ -104,9 +109,10 @@ if __name__ == "__main__":
         image_count += 1
 
     # statistics
-    print("blobs {}\nparams {}".format(net.blobs.keys(), net.params.keys()))
-    print ("Average sparsity of blobs:")
-    for blob_name in net.blobs.keys():
-        sparsity[blob_name] = sparsity[blob_name]/count
-        print blob_name, "\t", sparsity[blob_name]
+    if display:
+        print("blobs {}\nparams {}".format(net.blobs.keys(), net.params.keys()))
+        print ("Average sparsity of blobs:")
+        for blob_name in net.blobs.keys():
+            sparsity[blob_name] = sparsity[blob_name]/count
+            print blob_name, "\t", sparsity[blob_name]
 

@@ -33,7 +33,7 @@ template <typename Dtype>
 __global__ void SymmetricRectifyRegularizeBlob(const int n, const Dtype thre_decay,
 		const Dtype* thre_data, Dtype* thre_diff) {
   CUDA_KERNEL_LOOP(index, n) {
-	  thre_diff[index] += ((thre_data[index]<0) - (thre_data[index]>0)) * thre_decay;
+	  thre_diff[index] += ((thre_data[index]<0) - (thre_data[index]>=0)) * thre_decay;
   }
 }
 
