@@ -93,3 +93,6 @@ LOCK
 LOG*
 CURRENT
 MANIFEST-*
+
+#training logs
+*_EDT_2016
