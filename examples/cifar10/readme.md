@@ -99,3 +99,20 @@ and you will be using CPU for training.
 File list
 ---------
 `cifar10_full_train_test_sfm.prototxt`: an example of using `SymmetricRectifyLayer` and `SparsifyLayer`.
+
+`cifar10_resnet_n3.prototxt`: deploy network for resnets-20 used in Python.
+
+`cifar10_resnet_train_test_n3.prototxt`: train and validation network for resnets-20
+
+`train_script.sh`: script to explore the hyper-parameters.
+```
+./examples/cifar10/train_script.sh \
+0.001 \ # base learning rate
+0.00000000045 \ # feature decay
+0 \ # device id, -1 for cpu
+examples/cifar10/template_cifar10_full_multistep_solver_sfm.prototx \ # template of the solver
+examples/cifar10/template_cifar10_full_train_test_sfm.prototxt # template of the network
+
+```
+
+
