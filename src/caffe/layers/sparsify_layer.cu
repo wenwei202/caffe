@@ -44,11 +44,15 @@ void SparsifyLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
 
 template <typename Dtype>
 __global__ void SparsifyBackward(const int n, const Dtype* in_diff,
-    const Dtype* out_data, Dtype* out_diff, Dtype coef) {
+    const Dtype* out_data, Dtype* out_diff, const Dtype coef, const Dtype thre) {
   CUDA_KERNEL_LOOP(index, n) {
-	// The intrinsic symmetric rectifying and L1 regularization on outputs
-    out_diff[index] = (in_diff[index] + coef * ( (out_data[index] > 0) - (out_data[index] < 0) ))
-    		* (out_data[index]!=0);
+	  if(0==thre){
+		out_diff[index] = (in_diff[index] + coef * ( (out_data[index] > 0) - (out_data[index] < 0) ));
+	  } else {
+		// The intrinsic symmetric rectifying and L1 regularization on outputs
+		out_diff[index] = (in_diff[index] + coef * ( (out_data[index] > 0) - (out_data[index] < 0) ))
+				* (out_data[index]!=0);
+	  }
   }
 }
 
@@ -56,6 +60,7 @@ template <typename Dtype>
 void SparsifyLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
     const vector<bool>& propagate_down,
     const vector<Blob<Dtype>*>& bottom) {
+  Dtype thre = sparsify_param_.thre();
   if (propagate_down[0]) {
 	  const Dtype* bottom_data = bottom[0]->gpu_data();
 	  const Dtype* top_data = top[0]->gpu_data();
@@ -64,7 +69,7 @@ void SparsifyLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
 	  const int count = bottom[0]->count();
 	  // NOLINT_NEXT_LINE(whitespace/operators)
 	  SparsifyBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
-		  count, top_diff, top_data, bottom_diff, coef_);
+		  count, top_diff, top_data, bottom_diff, coef_, thre);
 	  CUDA_POST_KERNEL_CHECK;
   }
 
