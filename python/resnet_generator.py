@@ -9,7 +9,11 @@ import re
 import pittnuts
 import os
 
-def add_conv_layer(net_msg,name,bottom,num_output,pad,kernel_size,stride,bias_term=True,learn_depth=False,input_channel=1,connectivity_mode=0):
+g_sparsify_relu = False
+g_regularize_conv = False
+
+def add_conv_layer(net_msg,name,bottom,num_output,pad,kernel_size,stride,
+                   bias_term=True,learn_depth=False,input_channel=1,connectivity_mode=0):
     conv_layer = net_msg.layer.add()
     conv_layer.name = name
     conv_layer.type = 'Convolution'
@@ -48,6 +52,8 @@ def add_relu_layer(net_msg,name,bottom):
     relulayer.type = 'ReLU'
     relulayer.bottom._values.append(bottom)
     relulayer.top._values.append(name)
+    if g_sparsify_relu:
+        add_sfm_layer(net_msg,name)
 
 def add_eltwise_add_layer(net_msg,name,bottom1,bottom2):
     eltlayer = net_msg.layer.add()
@@ -145,13 +151,41 @@ def add_loss_layer(net_msg,bottom):
     loss_layer.bottom._values.append('label')
     loss_layer.top._values.append('loss')
 
+def add_sfm_layer(net_msg,bottom):
+    sym_rectify_layer = net_msg.layer.add()
+    sym_rectify_layer.name = 'sr_'+bottom
+    sym_rectify_layer.type = 'SymmetricRectify'
+    sym_rectify_layer.bottom._values.append(bottom)
+    sym_rectify_layer.top._values.append(bottom)
+    sym_rectify_layer.symmetric_rectify_param.channel_shared = False
+    sym_rectify_layer.symmetric_rectify_param.thre_decay = 0.0
+    sparsify_layer = net_msg.layer.add()
+    sparsify_layer.name = 'sp_' + bottom
+    sparsify_layer.type = 'Sparsify'
+    sparsify_layer.bottom._values.append(bottom)
+    sparsify_layer.top._values.append(bottom)
+    sparsify_layer.sparsify_param.coef = 1.0e-8
+
+
+def add_sparsify_layer(net_msg,bottom):
+    sparsify_layer = net_msg.layer.add()
+    sparsify_layer.name = 'sp_' + bottom
+    sparsify_layer.type = 'Sparsify'
+    sparsify_layer.bottom._values.append(bottom)
+    sparsify_layer.top._values.append(bottom)
+    sparsify_layer.sparsify_param.coef = 1.0e-8
+
 def add_1st_res_layers(net_msg,name,bottom,learn_depth=False,connectivity_mode=0):
     # first layer
     add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode)
+    if g_regularize_conv:
+        add_sparsify_layer(net_msg,name+'_conv1')
     add_BN_layer(net_msg,name=name+'_bn1',bottom=name+'_conv1')
     add_relu_layer(net_msg,name=name+'_relu1',bottom=name+'_bn1')
     #second conv
     add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode)
+    if g_regularize_conv:
+        add_sparsify_layer(net_msg,name+'_conv2')
     add_BN_layer(net_msg,name=name+'_bn2',bottom=name+'_conv2')
     #add layer
     add_eltwise_add_layer(net_msg,name+'_add',bottom,name+'_bn2')
@@ -164,10 +198,14 @@ def add_2nd_res_layers(net_msg,name,bottom,downsample=False,learn_depth=False,co
         add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=2,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode)
     else:
         add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode)
+    if g_regularize_conv:
+        add_sparsify_layer(net_msg,name+'_conv1')
     add_BN_layer(net_msg,name=name+'_bn1',bottom=name+'_conv1')
     add_relu_layer(net_msg,name=name+'_relu1',bottom=name+'_bn1')
     #second conv
     add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode)
+    if g_regularize_conv:
+        add_sparsify_layer(net_msg,name+'_conv2')
     add_BN_layer(net_msg,name=name+'_bn2',bottom=name+'_conv2')
     #add layer
     if downsample:
@@ -185,10 +223,14 @@ def add_3rd_res_layers(net_msg,name,bottom,downsample=False,learn_depth=False,co
         add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=2,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode)
     else:
         add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=64,connectivity_mode=connectivity_mode)
+    if g_regularize_conv:
+        add_sparsify_layer(net_msg,name+'_conv1')
     add_BN_layer(net_msg,name=name+'_bn1',bottom=name+'_conv1')
     add_relu_layer(net_msg,name=name+'_relu1',bottom=name+'_bn1')
     #second conv
     add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=64,connectivity_mode=connectivity_mode)
+    if g_regularize_conv:
+        add_sparsify_layer(net_msg,name+'_conv2')
     add_BN_layer(net_msg,name=name+'_bn2',bottom=name+'_conv2')
     #add layer
     if downsample:
@@ -205,22 +247,33 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--net_template', type=str, required=True)
     parser.add_argument('--n', type=int, required=True)
-    parser.add_argument('--connectivity_mode', type=int, required=True)
+    #parser.add_argument('--connectivity_mode', type=int, required=True)
     #parser.add_argument('--learn_depth', type=bool, required=False)
     parser.add_argument('--learndepth', dest='learndepth', action='store_true')
     parser.add_argument('--no-learndepth', dest='learndepth', action='store_false')
     parser.set_defaults(learndepth=False)
+    parser.add_argument('--sparsify', dest='sparsify', action='store_true')
+    parser.add_argument('--no-sparsify', dest='sparsify', action='store_false')
+    parser.set_defaults(sparsify=False)
+    parser.add_argument('--regularize', dest='regularize', action='store_true')
+    parser.add_argument('--no-regularize', dest='regularize', action='store_false')
+    parser.set_defaults(regularize=False)
+
     args = parser.parse_args()
     net_template = args.net_template
     n = args.n
     learn_depth = args.learndepth
-    connectivity_mode = args.connectivity_mode
+    g_sparsify_relu = args.sparsify
+    g_regularize_conv = args.regularize
+    connectivity_mode = 0#args.connectivity_mode
 
     caffe.set_mode_cpu()
     net_parser = caffeparser.CaffeProtoParser(net_template)
     net_msg = net_parser.readProtoNetFile()
 
     add_conv_layer(net_msg,name='conv1',bottom='data',num_output=16,pad=1,kernel_size=3,stride=1,connectivity_mode=connectivity_mode)
+    if g_regularize_conv:
+        add_sparsify_layer(net_msg,'conv1')
     add_BN_layer(net_msg,name='conv1_bn',bottom='conv1')
     add_relu_layer(net_msg,name='conv1_relu',bottom='conv1_bn')
 
@@ -250,7 +303,7 @@ if __name__ == "__main__":
     add_loss_layer(net_msg=net_msg,bottom='ip1')
 
     file_split = os.path.splitext(net_template)
-    filepath = 'examples/cifar10/cifar10_resnet_n{}'.format(n)+file_split[1]
+    filepath = 'examples/cifar10/cifar10_resnet_train_test_n{}'.format(n)+file_split[1]
     file = open(filepath, "w")
     if not file:
         raise IOError("ERROR (" + filepath + ")!")
