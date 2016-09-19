@@ -46,8 +46,8 @@ echo "solver_mode: $solver_mode" >> $solverfile
 
 if [ "$#" -ge 6 ]; then
 	tunedmodel=$6
-	file_ext=$(echo ${tunedmodel} | rev | cut -d'.' -f 1 | rev)
-	if [ "$file_ext" = "caffemodel" ]; then
+	#file_ext=$(echo ${tunedmodel} | rev | cut -d'.' -f 1 | rev)
+	if [[ $tunedmodel == *"caffemodel"* ]]; then
 	  ./build/tools/caffe.bin train --solver=$solverfile --weights=$tunedmodel  > "${snapshot_path}/train.info" 2>&1
 	else
 	  ./build/tools/caffe.bin train --solver=$solverfile --snapshot=$tunedmodel > "${snapshot_path}/train.info" 2>&1
