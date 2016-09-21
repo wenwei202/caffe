@@ -185,8 +185,20 @@ class Net {
   inline const vector<float>& params_weight_decay() const {
     return params_weight_decay_;
   }
+  inline const vector<ForceRegular>& params_force_regularize() const {
+    return params_force_regularize_;
+  }
+  inline const vector<float>& params_force_mult() const {
+    return params_force_mult_;
+  }
   inline const vector<bool>& has_params_decay() const {
     return has_params_decay_;
+  }
+  inline const vector<bool>& has_force_regularize() const {
+    return has_force_regularize_;
+  }
+  inline const vector<bool>& has_force_mult() const {
+    return has_force_mult_;
   }
   const map<string, int>& param_names_index() const {
     return param_names_index_;
@@ -302,6 +314,12 @@ class Net {
   /// the weight decay multipliers for learnable_params_
   vector<float> params_weight_decay_;
   vector<bool> has_params_decay_;
+  /// the params of 2D force regularization
+  vector< ForceRegular > params_force_regularize_;
+  vector<bool> has_force_regularize_;
+  /// the params of force regularization on kernels
+  vector< float > params_force_mult_;
+  vector<bool> has_force_mult_;
   /// The bytes of memory used by this net
   size_t memory_used_;
   /// Whether to compute and display debug info for the net.

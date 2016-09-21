@@ -110,6 +110,7 @@ void SGDSolver<Dtype>::ApplyUpdate() {
        ++param_id) {
     Normalize(param_id);
     Regularize(param_id);
+    ForceRegularize(param_id);
     ComputeUpdateValue(param_id, rate);
   }
   this->net_->Update();
@@ -191,6 +192,52 @@ void SGDSolver<Dtype>::Regularize(int param_id) {
             net_params[param_id]->mutable_gpu_diff());
       } else {
         LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+      }
+    }
+#else
+    NO_GPU;
+#endif
+    break;
+  }
+  default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+}
+
+template <typename Dtype>
+void SGDSolver<Dtype>::ForceRegularize(int param_id) {
+  const vector<Blob<Dtype>*>& net_params = this->net_->learnable_params();
+  const vector<float>& net_params_force_mult = this->net_->params_force_mult();
+  Dtype force_decay = this->param_.force_decay();
+  string force_type = this->param_.force_type();
+  Dtype local_force_decay = force_decay * net_params_force_mult[param_id];
+  int num_columns = net_params[param_id]->count(1);
+  int num_rows = net_params[param_id]->shape(0);
+  switch (Caffe::mode()) {
+  case Caffe::CPU: {
+    if (local_force_decay) {
+      if (force_type == "Coulomb") {
+        // add force decay
+    	// caffe_cpu_axpby
+    	for (int i=0; i<num_rows; i++){
+    		for (int j=i+1; j<num_rows; j++){
+
+    		}
+    	}
+      } else {
+        LOG(FATAL) << "Unknown force type: " << force_type;
+      }
+    }
+    break;
+  }
+  case Caffe::GPU: {
+#ifndef CPU_ONLY
+    if (local_force_decay) {
+      if (force_type == "Coulomb") {
+        // add force decay
+
+      } else {
+        LOG(FATAL) << "Unknown force type: " << force_type;
       }
     }
 #else

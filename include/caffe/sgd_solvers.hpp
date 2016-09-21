@@ -29,6 +29,7 @@ class SGDSolver : public Solver<Dtype> {
   virtual void ApplyUpdate();
   virtual void Normalize(int param_id);
   virtual void Regularize(int param_id);
+  virtual void ForceRegularize(int param_id);
   virtual void ComputeUpdateValue(int param_id, Dtype rate);
   virtual void ClipGradients();
   virtual void SnapshotSolverState(const string& model_filename);
