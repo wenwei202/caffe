@@ -18,6 +18,8 @@
 
 #include "caffe/util/device_alternate.hpp"
 
+#define ZERO_THRESHOLD 0.0001
+
 // Convert macro to string
 #define STRINGIFY(m) #m
 #define AS_STRING(m) STRINGIFY(m)

@@ -207,6 +207,7 @@ void SGDSolver<Dtype>::Regularize(int param_id) {
 template <typename Dtype>
 void SGDSolver<Dtype>::ForceRegularize(int param_id) {
   const vector<Blob<Dtype>*>& net_params = this->net_->learnable_params();
+  if(net_params[param_id]->num_axes() < 2){ return ;}
   const vector<float>& net_params_force_mult = this->net_->params_force_mult();
   Dtype force_decay = this->param_.force_decay();
   string force_type = this->param_.force_type();
@@ -218,10 +219,36 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
     if (local_force_decay) {
       if (force_type == "Coulomb") {
         // add force decay
-    	// caffe_cpu_axpby
-    	for (int i=0; i<num_rows; i++){
+    	for (int i=0; i<num_rows-1; i++){
     		for (int j=i+1; j<num_rows; j++){
-
+    			// force regularization between every pair of kernels
+    			const Dtype * kernel0_data = net_params[param_id]->cpu_data() + i * num_columns;
+    			const Dtype * kernel1_data = net_params[param_id]->cpu_data() + j * num_columns;
+    			Dtype * kernel0_diff = net_params[param_id]->mutable_cpu_diff() + i * num_columns;
+    			Dtype * kernel1_diff = net_params[param_id]->mutable_cpu_diff() + j * num_columns;
+    			Dtype kernel0_length = caffe_cpu_dot(num_columns, kernel0_data, kernel0_data);
+    			Dtype kernel1_length = caffe_cpu_dot(num_columns, kernel1_data, kernel1_data);
+    			if( (kernel0_length<=ZERO_THRESHOLD*ZERO_THRESHOLD) ||
+    				(kernel1_length<=ZERO_THRESHOLD*ZERO_THRESHOLD)	){
+    				LOG(WARNING) << "Near zero kernels exist!";
+    				continue; // too small
+    			} else {
+    				kernel0_length = sqrt(kernel0_length);
+    				kernel1_length = sqrt(kernel1_length);
+    			}
+    			caffe_copy(num_columns,kernel1_data,temp_[param_id]->mutable_cpu_data());
+    			caffe_cpu_axpby(num_columns, (Dtype)(1.0)/kernel0_length, kernel0_data,
+    					(Dtype)(-1.0)/kernel1_length, temp_[param_id]->mutable_cpu_data());
+    			Dtype distance_coef = caffe_cpu_dot(num_columns,
+    					temp_[param_id]->cpu_data(),temp_[param_id]->cpu_data());
+    			if(distance_coef<=ZERO_THRESHOLD*ZERO_THRESHOLD){
+    				LOG(WARNING) << "Very close kernels exist!";
+    			}
+    			// scale and add gradients
+    			caffe_axpy(num_columns, local_force_decay * kernel0_length / distance_coef,
+						temp_[param_id]->cpu_data(), kernel0_diff);
+    			caffe_axpy(num_columns, - local_force_decay * kernel1_length / distance_coef,
+    					temp_[param_id]->cpu_data(), kernel1_diff);
     		}
     	}
       } else {
