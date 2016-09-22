@@ -244,7 +244,7 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
     			if(distance_coef<=ZERO_THRESHOLD*ZERO_THRESHOLD){
     				LOG(WARNING) << "Very close kernels exist!";
     			}
-    			// scale and add gradients
+    			// scale and add gradients to drag kernels together (local_force_decay>0)
     			caffe_axpy(num_columns, local_force_decay * kernel0_length / distance_coef,
 						temp_[param_id]->cpu_data(), kernel0_diff);
     			caffe_axpy(num_columns, - local_force_decay * kernel1_length / distance_coef,
