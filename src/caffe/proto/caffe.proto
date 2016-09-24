@@ -180,8 +180,8 @@ message SolverParameter {
   
   // The decay of force regularization.
   optional float force_decay = 42 [default = 0.0]; 
-  // type of force regularization
-  optional string force_type = 41 [default = "Coulomb"];
+  // type of force regularization - Gravity, Linear, Constant, Degradation
+  optional string force_type = 41 [default = "Degradation"];
   
   // the stepsize for learning rate policy "step"
   optional int32 stepsize = 13;

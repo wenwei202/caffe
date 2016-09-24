@@ -217,90 +217,71 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
   switch (Caffe::mode()) {
   case Caffe::CPU: {
     if (local_force_decay) {
-      if (force_type == "Coulomb") {
-        // add force decay
-    	for (int i=0; i<num_rows-1; i++){
-    		for (int j=i+1; j<num_rows; j++){
-    			// force regularization between every pair of kernels
-    			const Dtype * kernel0_data = net_params[param_id]->cpu_data() + i * num_columns;
-    			const Dtype * kernel1_data = net_params[param_id]->cpu_data() + j * num_columns;
-    			Dtype * kernel0_diff = net_params[param_id]->mutable_cpu_diff() + i * num_columns;
-    			Dtype * kernel1_diff = net_params[param_id]->mutable_cpu_diff() + j * num_columns;
-    			Dtype kernel0_length = caffe_cpu_dot(num_columns, kernel0_data, kernel0_data);
-    			Dtype kernel1_length = caffe_cpu_dot(num_columns, kernel1_data, kernel1_data);
-    			if( (kernel0_length<=ZERO_THRESHOLD*ZERO_THRESHOLD) ||
-    				(kernel1_length<=ZERO_THRESHOLD*ZERO_THRESHOLD)	){
-    				LOG(WARNING) << "Near zero kernels exist!";
-    				continue; // too small
-    			} else {
-    				kernel0_length = sqrt(kernel0_length);
-    				kernel1_length = sqrt(kernel1_length);
-    			}
-    			caffe_copy(num_columns,kernel1_data,temp_[param_id]->mutable_cpu_data());
-    			caffe_cpu_axpby(num_columns, (Dtype)(1.0)/kernel0_length, kernel0_data,
-    					(Dtype)(-1.0)/kernel1_length, temp_[param_id]->mutable_cpu_data());
-    			Dtype distance_coef = caffe_cpu_dot(num_columns,
-    					temp_[param_id]->cpu_data(),temp_[param_id]->cpu_data());
-    			if(distance_coef<=ZERO_THRESHOLD*ZERO_THRESHOLD){
-    				LOG(WARNING) << "Very close kernels exist!";
-    			}
+		// add force decay
+		for (int i=0; i<num_rows-1; i++){
+			for (int j=i+1; j<num_rows; j++){
+				// force regularization between every pair of kernels
+				const Dtype * kernel0_data = net_params[param_id]->cpu_data() + i * num_columns;
+				const Dtype * kernel1_data = net_params[param_id]->cpu_data() + j * num_columns;
+				Dtype * kernel0_diff = net_params[param_id]->mutable_cpu_diff() + i * num_columns;
+				Dtype * kernel1_diff = net_params[param_id]->mutable_cpu_diff() + j * num_columns;
+				Dtype kernel0_length = caffe_cpu_dot(num_columns, kernel0_data, kernel0_data);
+				Dtype kernel1_length = caffe_cpu_dot(num_columns, kernel1_data, kernel1_data);
+				kernel0_length = sqrt(kernel0_length);
+				kernel1_length = sqrt(kernel1_length);
+				if( (kernel0_length<=ZERO_THRESHOLD) ||
+					(kernel1_length<=ZERO_THRESHOLD)	){
+					LOG(WARNING) << "Near zero kernels exist! Skip!";
+					continue; // too small
+				}
+				caffe_copy(num_columns,kernel1_data,temp_[param_id]->mutable_cpu_data());
+				caffe_cpu_axpby(num_columns, (Dtype)(1.0)/kernel0_length, kernel0_data,
+						(Dtype)(-1.0)/kernel1_length, temp_[param_id]->mutable_cpu_data());
 
-    			// MUSH PROJECT TO THE TANGENT DIRECTION
-    			// ...
+				Dtype distance_coef = 1.0;
+				if("Degradation" != force_type) {
+					distance_coef = caffe_cpu_dot(num_columns,
+						temp_[param_id]->cpu_data(),temp_[param_id]->cpu_data());
+					distance_coef = sqrt(distance_coef);
+				}
+				if(distance_coef<=ZERO_THRESHOLD){
+					LOG(WARNING) << "Very close kernels exist! Skip!";
+					continue;
+				}
+				if (force_type == "Gravity") {
+					distance_coef = (Dtype)pow(distance_coef,3);
+				} else if (force_type == "Linear") {
+					distance_coef = (Dtype)pow(distance_coef,2);
+				} else if(force_type == "Constant") {//group Lasso
+					//distance_coef = distance_coef;
+				} else if (force_type == "Degradation"){//normalized (wik-wjk)^2
+					distance_coef = 1.0;
+				} else {
+					LOG(FATAL) << "Unknown force type: " << force_type;
+				}
 
-    			// scale and add gradients to drag kernels together (local_force_decay>0)
-    			caffe_axpy(num_columns, local_force_decay * kernel0_length / distance_coef,
+				// MUSH PROJECT TO THE TANGENT DIRECTION
+				Dtype projection_length = caffe_cpu_dot(num_columns, kernel0_data, temp_[param_id]->cpu_data())/kernel0_length;
+				caffe_axpy(num_columns, -projection_length/kernel0_length, kernel0_data,
+										 temp_[param_id]->mutable_cpu_data());
+
+				// scale and add gradients to drag kernels together (local_force_decay>0)
+				caffe_axpy(num_columns, local_force_decay * kernel0_length / distance_coef, // SHOULD WE divide kernel0_length?
 						temp_[param_id]->cpu_data(), kernel0_diff);
-    			caffe_axpy(num_columns, - local_force_decay * kernel1_length / distance_coef,
-    					temp_[param_id]->cpu_data(), kernel1_diff);
-    		}
-    	}
-      } else {
-        LOG(FATAL) << "Unknown force type: " << force_type;
-      }
+				caffe_axpy(num_columns, - local_force_decay * kernel1_length / distance_coef,
+						temp_[param_id]->cpu_data(), kernel1_diff);
+			}
+		}
     }
     break;
   }
   case Caffe::GPU: {
 #ifndef CPU_ONLY
     if (local_force_decay) {
+      // Calculate kernel length
+      // Normalize kernels
       if (force_type == "Coulomb") {
-          // add force decay
-      	for (int i=0; i<num_rows-1; i++){
-      		for (int j=i+1; j<num_rows; j++){
-      			// force regularization between every pair of kernels
-      			const Dtype * kernel0_data = net_params[param_id]->gpu_data() + i * num_columns;
-      			const Dtype * kernel1_data = net_params[param_id]->gpu_data() + j * num_columns;
-      			Dtype * kernel0_diff = net_params[param_id]->mutable_gpu_diff() + i * num_columns;
-      			Dtype * kernel1_diff = net_params[param_id]->mutable_gpu_diff() + j * num_columns;
-      			Dtype kernel0_length = 0.0;
-      			caffe_gpu_dot(num_columns, kernel0_data, kernel0_data, &kernel0_length);
-      			Dtype kernel1_length = 0.0;
-      			caffe_gpu_dot(num_columns, kernel1_data, kernel1_data, &kernel1_length);
-      			if( (kernel0_length<=ZERO_THRESHOLD*ZERO_THRESHOLD) ||
-      				(kernel1_length<=ZERO_THRESHOLD*ZERO_THRESHOLD)	){
-      				LOG(WARNING) << "Near zero kernels exist!";
-      				continue; // too small
-      			} else {
-      				kernel0_length = sqrt(kernel0_length);
-      				kernel1_length = sqrt(kernel1_length);
-      			}
-      			caffe_copy(num_columns,kernel1_data,temp_[param_id]->mutable_gpu_data());
-      			caffe_gpu_axpby(num_columns, (Dtype)(1.0)/kernel0_length, kernel0_data,
-      					(Dtype)(-1.0)/kernel1_length, temp_[param_id]->mutable_gpu_data());
-      			Dtype distance_coef = 1.0;
-      			caffe_gpu_dot(num_columns,temp_[param_id]->gpu_data(),
-      					temp_[param_id]->gpu_data(), &distance_coef);
-      			if(distance_coef<=ZERO_THRESHOLD*ZERO_THRESHOLD){
-      				LOG(WARNING) << "Very close kernels exist!";
-      			}
-      			// scale and add gradients to drag kernels together (local_force_decay>0)
-      			caffe_gpu_axpy(num_columns, local_force_decay * kernel0_length / distance_coef,
-  						temp_[param_id]->gpu_data(), kernel0_diff);
-      			caffe_gpu_axpy(num_columns, - local_force_decay * kernel1_length / distance_coef,
-      					temp_[param_id]->gpu_data(), kernel1_diff);
-      		}
-      	}
+
       } else {
         LOG(FATAL) << "Unknown force type: " << force_type;
       }
