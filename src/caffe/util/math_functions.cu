@@ -488,6 +488,156 @@ __global__ void block_length_kernel(const int n, const int c,
 	}
 }
 
+//Usage: dim3 block(c,1); dim3 thread(1,n); col_group_length_kernel<<<block,thread>>>(n,c,x,y,z);
+template  <typename Dtype>
+__global__ void col_group_length_kernel(const int n, const int c, const Dtype *x, Dtype* y, Dtype* z){
+	int n_offset = 0;
+	//initialize y
+	while(n_offset<n){
+		int idx1 = (n_offset+threadIdx.y)*c+blockIdx.x;
+		if(n_offset+threadIdx.y < n){//BUG: THE N MUST BE MULTIPLE TIMES OF BLOCKDIM.Y IN CURRENT IMPLEMENTATION !!!
+			y[idx1] = x[idx1]*x[idx1];
+		}
+		n_offset += blockDim.y;
+	}
+	__syncthreads();
+
+	//sum along columns
+	n_offset=0;
+	Dtype res = 0;
+	while(n_offset<n){
+		int len = (n_offset + blockDim.y)<n ? blockDim.y : (n-n_offset);//valid threads to process
+		while(len/2>0){
+			if(threadIdx.y<len/2){
+				int idx1 = (n_offset+threadIdx.y)*c+blockIdx.x;
+				int idx2 = (n_offset+threadIdx.y+(len+1)/2)*c+blockIdx.x;
+				y[idx1] += y[idx2];
+			}
+			__syncthreads();
+			len=(len+1)/2;
+		}
+
+		res += y[n_offset*c+blockIdx.x];
+		n_offset += blockDim.y;
+	}
+	__syncthreads();
+
+	if(res>0 && 0==threadIdx.y){
+		z[blockIdx.x] = Dtype(sqrt(res));
+	}else if(0==threadIdx.y) {
+		z[blockIdx.x] = Dtype(0);
+	}
+
+	//copy
+	n_offset=0;
+	while(n_offset<n){
+		int idx1 = (n_offset+threadIdx.y)*c + blockIdx.x;
+		if(n_offset+threadIdx.y < n){
+			if(res>0){
+				y[idx1] = Dtype(sqrt(res));
+			}else{
+				y[idx1] = Dtype(0);
+			}
+		}
+		n_offset += blockDim.y;
+	}
+}
+
+//Usage: dim3 block(1,n); dim3 thread(c,1); row_group_length_kernel<<<block,thread>>>(n,c,x,y,z);
+template  <typename Dtype>
+__global__ void row_group_length_kernel(const int n, const int c, const Dtype *x, Dtype* y, Dtype* z){
+	int c_offset = 0;
+	//initialize y
+	while(c_offset<c){
+		int idx1 = blockIdx.y * c + c_offset + threadIdx.x;
+		if(c_offset + threadIdx.x < c){//WITHOUT THIS: THE C MUST BE MULTIPLE TIMES OF BLOCKDIM.X IN CURRENT IMPLEMENTATION !!!
+			y[idx1] = x[idx1]*x[idx1];
+		}
+		c_offset += blockDim.x;
+	}
+	__syncthreads();
+
+	//sum along rows
+	c_offset=0;
+	Dtype res = 0;
+	while(c_offset<c){
+		int len = (c_offset + blockDim.x)<c ? blockDim.x : (c-c_offset);//valid threads to process
+		while(len/2>0){
+			if(threadIdx.x<len/2){
+				int idx1 = blockIdx.y * c + c_offset + threadIdx.x;
+				int idx2 = blockIdx.y * c + c_offset + threadIdx.x + (len+1)/2;
+				y[idx1] += y[idx2];
+			}
+			__syncthreads();
+			len=(len+1)/2;
+		}
+
+		res += y[blockIdx.y * c + c_offset];
+		c_offset += blockDim.x;
+	}
+	__syncthreads();
+
+	if(res>0 && 0==threadIdx.x){
+		z[blockIdx.y] = Dtype(sqrt(res));
+	}else if(0==threadIdx.x) {
+		z[blockIdx.y] = Dtype(0);
+	}
+
+	//copy
+	c_offset=0;
+	while(c_offset<c){
+		int idx1 = blockIdx.y * c + c_offset + threadIdx.x;
+		if(c_offset + threadIdx.x < c){
+			if(res){
+				y[idx1] = Dtype(sqrt(res));
+			}else{
+				y[idx1] = Dtype(0);
+			}
+		}
+		c_offset += blockDim.x;
+	}
+}
+/*
+template <>
+void caffe_gpu_bar_group_length<int>(const int n, const int c, const int* x, int* y, int* z, bool along_column_or_row){
+	NOT_IMPLEMENTED;
+}
+
+template <>
+void caffe_gpu_bar_group_length<unsigned int>(const int n, const int c, const unsigned int* x, unsigned int* y, unsigned int* z, bool along_column_or_row){
+	NOT_IMPLEMENTED;
+}
+*/
+template <>
+void caffe_gpu_bar_group_length<float>(const int n, const int c, const float* x, float* y, float* z, bool along_column_or_row){
+	int threads_per_block = Caffe::get_threads_per_block();
+	if(along_column_or_row){
+		dim3 block(c,1);
+		dim3 thread(1,n>threads_per_block ? threads_per_block:n );//CAFFE_CUDA_NUM_THREADS
+		col_group_length_kernel<<<block,thread>>>(n,c,x,y,z);
+	}else{
+		dim3 block(1,n);
+		dim3 thread(c>threads_per_block ? threads_per_block:c, 1);//CAFFE_CUDA_NUM_THREADS
+		row_group_length_kernel<<<block,thread>>>(n,c,x,y,z);
+	}
+	CUDA_POST_KERNEL_CHECK;
+}
+
+template <>
+void caffe_gpu_bar_group_length<double>(const int n, const int c, const double* x, double* y, double* z, bool along_column_or_row){
+	int threads_per_block = Caffe::get_threads_per_block();
+	if(along_column_or_row){
+		dim3 block(c,1);
+		dim3 thread(1,n>threads_per_block ? threads_per_block:n );//CAFFE_CUDA_NUM_THREADS
+		col_group_length_kernel<<<block,thread>>>(n,c,x,y,z);
+	}else{
+		dim3 block(1,n);
+		dim3 thread(c>threads_per_block ? threads_per_block:c, 1);//CAFFE_CUDA_NUM_THREADS
+		row_group_length_kernel<<<block,thread>>>(n,c,x,y,z);
+	}
+	CUDA_POST_KERNEL_CHECK;
+}
+
 template <>
 void caffe_gpu_block_length<float>(const int n, const int c,
 		const int blk_size_n, const int blk_size_c,

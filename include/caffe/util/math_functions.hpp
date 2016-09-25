@@ -246,6 +246,10 @@ void caffe_gpu_fabs(const int n, const Dtype* x, Dtype* y);
 template <typename Dtype>
 void caffe_gpu_scale(const int n, const Dtype alpha, const Dtype *x, Dtype* y);
 
+//get sqrt sum of weights within bars(column(true)/row(false)) @ z and copy them at each position @ y
+template <typename Dtype>
+void caffe_gpu_bar_group_length(const int n, const int c, const Dtype *x, Dtype* y, Dtype* z, bool along_column_or_row = true);
+
 //get sqrt sum of weights within blocks and copy them at each position
 template <typename Dtype>
 void caffe_gpu_block_length(const int n, const int c,

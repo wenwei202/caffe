@@ -74,7 +74,7 @@ def show_2Dfilter_pca(net,layername,showit=False):
                 plt.imshow(weights_pca[n, c], vmin=filt_min, vmax=filt_max, cmap=plt.get_cmap('Greys'), interpolation='none')
                 plt.tick_params(which='both', labelbottom='off', labelleft='off', bottom='off', top='off', left='off',right='off')
 
-def show_filter_channel_pca(net,layername):
+def show_filter_channel_pca(net,layername,display_channel=False):
     weights = net.params[layername][0].data
     if len(weights.shape) < 3:
         return
@@ -90,22 +90,12 @@ def show_filter_channel_pca(net,layername):
     weights_pca, eig_vecs, eig_values = pca(weights_pca)
     print_eig_info(eig_values)
     weights_pca = weights_pca.transpose().reshape(filter_num,chan_num,kernel_h,kernel_w)
-    # channel-wise
-    print layername+" analyzing channel-wise:"
-    weights_pca = weights_pca.transpose((1,0,2,3)).reshape((chan_num,  filter_num* kernel_size)).transpose()
-    weights_pca, eig_vecs, eig_values = pca(weights_pca)
-    print_eig_info(eig_values)
-
-    #weights_pca = weights_pca.transpose().reshape(chan_num, filter_num, kernel_h, kernel_w).transpose((1,0,2,3))
-    #filt_max = abs(weights_pca).max()
-    #filt_min = -filt_max
-    ##eig_vecs = eig_vecs.transpose().reshape(kernel_size,kernel_h,kernel_w)
-    #plt.figure()
-    #for c in range(min(20, chan_num)):
-    #    for n in range(filter_num):
-    #        plt.subplot(chan_num, filter_num, filter_num * c + n + 1)
-    #        plt.imshow(weights_pca[n, c], vmin=filt_min, vmax=filt_max, cmap=plt.get_cmap('Greys'), interpolation='none')
-    #        plt.tick_params(which='both', labelbottom='off', labelleft='off', bottom='off', top='off', left='off',right='off')
+    if display_channel:
+        # channel-wise
+        print layername+" analyzing channel-wise:"
+        weights_pca = weights_pca.transpose((1,0,2,3)).reshape((chan_num,  filter_num* kernel_size)).transpose()
+        weights_pca, eig_vecs, eig_values = pca(weights_pca)
+        print_eig_info(eig_values)
 
 def show_filter_shapes(net, layername):
     weights = net.params[layername][0].data
