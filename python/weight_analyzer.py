@@ -9,13 +9,15 @@ import caffeparser
 # --prototxt models/bvlc_reference_caffenet/deploy.prototxt --origimodel models/bvlc_reference_caffenet/caffenet_0.57368.caffemodel --tunedmodel models/bvlc_reference_caffenet/
 # --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_0.9912.caffemodel --tunedmodel examples/mnist/
 # --prototxt examples/cifar10/cifar10_full.prototxt --origimodel examples/cifar10/cifar10_full_iter_300000_0.8212.caffemodel --tunedmodel examples/cifar10/cifar10_full_grouplasso_iter_60000.caffemodel
-def print_eig_info(eig_values,percent=0.95):
+def print_eig_info(eig_values,style,percent=0.95):
     eig_sum = sum(eig_values)
     #print eig_values
     for i in range(1, eig_values.size):
         eig_values[i] = eig_values[i] + eig_values[i - 1]
     eig_values = eig_values / eig_sum
-    plt.plot(eig_values)
+    if ''==style:
+        style='-ro'
+    plt.plot(eig_values,style)
     for i in range(0, eig_values.size):
         if eig_values[i]>percent:
             print "{} / {} is more than {} of eigenvalue sum".format(i+1,eig_values.size,percent)
@@ -74,7 +76,7 @@ def show_2Dfilter_pca(net,layername,showit=False):
                 plt.imshow(weights_pca[n, c], vmin=filt_min, vmax=filt_max, cmap=plt.get_cmap('Greys'), interpolation='none')
                 plt.tick_params(which='both', labelbottom='off', labelleft='off', bottom='off', top='off', left='off',right='off')
 
-def show_filter_channel_pca(net,layername,display_channel=False):
+def show_filter_channel_pca(net,layername,style,display_channel=False):
     weights = net.params[layername][0].data
     if len(weights.shape) < 3:
         return
@@ -88,14 +90,14 @@ def show_filter_channel_pca(net,layername,display_channel=False):
     print layername+" analyzing filter-wise:"
     weights_pca = weights.reshape((filter_num, chan_num*kernel_size)).transpose()
     weights_pca, eig_vecs, eig_values = pca(weights_pca)
-    print_eig_info(eig_values)
+    print_eig_info(eig_values,style)
     weights_pca = weights_pca.transpose().reshape(filter_num,chan_num,kernel_h,kernel_w)
     if display_channel:
         # channel-wise
         print layername+" analyzing channel-wise:"
         weights_pca = weights_pca.transpose((1,0,2,3)).reshape((chan_num,  filter_num* kernel_size)).transpose()
         weights_pca, eig_vecs, eig_values = pca(weights_pca)
-        print_eig_info(eig_values)
+        print_eig_info(eig_values,style)
 
 def show_filter_shapes(net, layername):
     weights = net.params[layername][0].data
@@ -158,24 +160,15 @@ if __name__ == "__main__":
     #show_2Dfilter_pca(orig_net, 'conv4')
     #show_2Dfilter_pca(orig_net, 'conv5')
 
-    show_filter_channel_pca(orig_net, 'conv1')
-    show_filter_channel_pca(tuned_net, 'conv1')
-    show_filter_channel_pca(orig_net, 'conv2')
-    show_filter_channel_pca(tuned_net, 'conv2')
+    show_filter_channel_pca(orig_net, 'conv1','--r')
+    show_filter_channel_pca(tuned_net, 'conv1','-r')
+    show_filter_channel_pca(orig_net, 'conv2','--g')
+    show_filter_channel_pca(tuned_net, 'conv2','-g')
     #show_filter_channel_pca(orig_net, 'conv3')
     #show_filter_channel_pca(tuned_net, 'conv3')
 
-    weight_scope = get_max_weight(orig_net, tuned_net, 'conv1')
-    show_filters(orig_net,'conv1',-weight_scope, weight_scope)
-    show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
-    #show_filter_shapes(orig_net, 'conv1')
-    #show_filter_shapes(tuned_net, 'conv1')
-
-
-    #weight_scope = get_max_weight(orig_net, tuned_net, 'conv2')
-    #show_filters(orig_net, 'conv2', -weight_scope, weight_scope)
-    #show_filters(tuned_net, 'conv2', -weight_scope, weight_scope)
-    #show_filter_shapes(orig_net, 'conv2')
-    #show_filter_shapes(tuned_net, 'conv2')
+    #weight_scope = get_max_weight(orig_net, tuned_net, 'conv1')
+    #show_filters(orig_net,'conv1',-weight_scope, weight_scope)
+    #show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
 
     plt.show()

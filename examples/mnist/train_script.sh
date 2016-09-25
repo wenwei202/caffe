@@ -2,8 +2,8 @@
 set -e
 set -x
 
-folder="examples/cifar10/"
-file_prefix="cifar10_full"
+folder="examples/mnist/"
+file_prefix="lenet"
 #file_prefix="cifar10_resnet"
 
 if [ "$#" -lt 4 ]; then
