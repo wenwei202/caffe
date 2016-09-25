@@ -246,6 +246,12 @@ void caffe_gpu_fabs(const int n, const Dtype* x, Dtype* y);
 template <typename Dtype>
 void caffe_gpu_scale(const int n, const Dtype alpha, const Dtype *x, Dtype* y);
 
+//get sqrt sum of weights within blocks and copy them at each position
+template <typename Dtype>
+void caffe_gpu_block_length(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const Dtype *x, Dtype* y);
+
 #define DEFINE_AND_INSTANTIATE_GPU_UNARY_FUNC(name, operation) \
 template<typename Dtype> \
 __global__ void name##_kernel(const int n, const Dtype* x, Dtype* y) { \

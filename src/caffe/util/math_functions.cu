@@ -415,4 +415,114 @@ void caffe_gpu_rng_gaussian(const int n, const double mu, const double sigma,
       curandGenerateNormalDouble(Caffe::curand_generator(), r, n, mu, sigma));
 }
 
+
+
+#define XOFFSET(idx) ((idx)%blk_size_c)
+#define YOFFSET(idx) ((idx)/blk_size_c)
+//Usage: dim3 block(a,b); dim3 thread(get_threads_per_block,1); block_length_kernel<<<block,thread>>>(n,c,x,y);
+//one-D thread block processes two-D data block
+template  <typename Dtype>
+__global__ void block_length_kernel(const int n, const int c,
+										const Dtype *x, Dtype* y){
+	int c_offset = 0;
+	const int blk_size_n = n%gridDim.y ? n/gridDim.y+1 : n/gridDim.y;
+	const int blk_size_c = c%gridDim.x ? c/gridDim.x+1 : c/gridDim.x;
+	while(c_offset<blk_size_n*blk_size_c){
+		int offset_x = XOFFSET(c_offset + threadIdx.x);
+		int offset_y = YOFFSET(c_offset + threadIdx.x);
+		int x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset + threadIdx.x);
+		int y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset + threadIdx.x);
+		int idx1 = y_pos * c + x_pos;
+		if(offset_x < blk_size_c && offset_y < blk_size_n){//WITHOUT THIS: THE C MUST BE MULTIPLE TIMES OF BLOCKDIM.X IN CURRENT IMPLEMENTATION !!!
+			y[idx1] = x[idx1]*x[idx1];
+		}
+		c_offset += blockDim.x;
+	}
+	__syncthreads();
+
+	//sum along block
+	c_offset=0;
+	Dtype res = 0;
+	while(c_offset<blk_size_n*blk_size_c){
+		int len = (c_offset + blockDim.x)<blk_size_n*blk_size_c ? blockDim.x : (blk_size_n*blk_size_c-c_offset);//valid threads to process
+		while(len/2>0){
+			if(threadIdx.x<len/2){
+
+				int x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset + threadIdx.x);
+				int y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset + threadIdx.x);
+				int idx1 = y_pos * c + x_pos;
+				x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset + threadIdx.x + (len+1)/2);
+				y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset + threadIdx.x + (len+1)/2);
+				int idx2 = y_pos * c + x_pos;
+				//BUG: we must ALWAYS store this data. Use shared memory with size of blk_size_n*blk_size_c!!!
+				y[idx1] += y[idx2];
+			}
+			__syncthreads();
+			len=(len+1)/2;
+		}
+
+		int x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset);
+		int y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset);
+		int idx1 = y_pos * c + x_pos;
+		res += y[idx1];
+		c_offset += blockDim.x;
+	}
+	__syncthreads();
+
+	//copy
+	c_offset=0;
+	while(c_offset<blk_size_n*blk_size_c){
+		int offset_x = XOFFSET(c_offset + threadIdx.x);
+		int offset_y = YOFFSET(c_offset + threadIdx.x);
+		int x_pos = blockIdx.x * blk_size_c + XOFFSET(c_offset + threadIdx.x);
+		int y_pos = blockIdx.y * blk_size_n + YOFFSET(c_offset + threadIdx.x);
+		int idx1 = y_pos * c + x_pos;
+		if(offset_x < blk_size_c && offset_y < blk_size_n){
+			if(res){
+				y[idx1] = Dtype(sqrt(res));
+			}else{
+				y[idx1] = Dtype(0);
+			}
+		}
+	  	c_offset += blockDim.x;
+	}
+}
+
+template <>
+void caffe_gpu_block_length<float>(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const float *x, float* y){
+	CHECK_LE(blk_size_n,n);
+	CHECK_LE(blk_size_c,c);
+	CHECK_EQ(n%blk_size_n,0);
+	CHECK_EQ(c%blk_size_c,0);
+	int threads_per_block = Caffe::get_threads_per_block();
+	const int blk_num_n = (n+blk_size_n-1)/blk_size_n;
+	const int blk_num_c = (c+blk_size_c-1)/blk_size_c;
+	const int blk_size = blk_size_n*blk_size_c;
+	dim3 block(blk_num_c,blk_num_n);
+	dim3 thread(blk_size>threads_per_block?threads_per_block:blk_size, 1);
+	block_length_kernel<<<block,thread>>>(n, c,x,y);
+	CUDA_POST_KERNEL_CHECK;
+}
+
+template <>
+void caffe_gpu_block_length<double>(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const double *x, double* y){
+	NOT_IMPLEMENTED;
+}
+template <>
+void caffe_gpu_block_length<int>(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const int *x, int* y){
+	NOT_IMPLEMENTED;
+}
+template <>
+void caffe_gpu_block_length<unsigned int>(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const unsigned int *x, unsigned int* y){
+	NOT_IMPLEMENTED;
+}
+
 }  // namespace caffe
