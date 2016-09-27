@@ -130,5 +130,5 @@ if __name__ == "__main__":
             dst_net.params[key][keykey].data[:] = valval[:]
 
     file_split = os.path.splitext(caffemodel)
-    filepath = file_split[0] + '.lowrank' + file_split[1]
+    filepath = file_split[0] + '.lowrank.caffemodel'
     dst_net.save(filepath)
