@@ -62,7 +62,7 @@ if __name__ == "__main__":
             print "{}\t{}/{} filters".format(layer_name, rank,filter_num)
             weights_pca = weights_pca.transpose().reshape(filter_num, chan_num, kernel_h, kernel_w)
             low_rank_filters = weights_pca[0:rank]
-            linear_combinations = eig_vecs[0:rank].reshape(filter_num,rank,1,1)
+            linear_combinations = eig_vecs[:,0:rank].reshape(filter_num,rank,1,1)
 
             cur_layer_param = net_msg.layer._values.pop(layer_idx)
             # generate the low rank conv layer and remove bias
