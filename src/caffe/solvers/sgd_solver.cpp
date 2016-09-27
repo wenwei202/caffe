@@ -231,7 +231,7 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 				kernel1_length = sqrt(kernel1_length);
 				if( (kernel0_length<=ZERO_THRESHOLD) ||
 					(kernel1_length<=ZERO_THRESHOLD)	){
-					LOG(WARNING) << "Near zero kernels exist! Skip!";
+					//LOG(WARNING) << "Near zero kernels exist! Skip!";
 					continue; // too small
 				}
 				caffe_copy(num_columns,kernel1_data,temp_[param_id]->mutable_cpu_data());
@@ -245,7 +245,7 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 					distance_coef = sqrt(distance_coef);
 				}
 				if(distance_coef<=ZERO_THRESHOLD){
-					LOG(WARNING) << "Very close kernels exist! Skip!";
+					//LOG(WARNING) << "Very close kernels exist! Skip!";
 					continue;
 				}
 				if (force_type == "Gravity") {
@@ -292,7 +292,7 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 				kernel1_length = sqrt(kernel1_length);
 				if( (kernel0_length<=ZERO_THRESHOLD) ||
 					(kernel1_length<=ZERO_THRESHOLD)	){
-					LOG(WARNING) << "Near zero kernels exist! Skip!";
+					//LOG(WARNING) << "Near zero kernels exist! Skip!";
 					continue; // too small
 				}
 				caffe_copy(num_columns,kernel1_data,temp_[param_id]->mutable_cpu_data());
@@ -306,7 +306,7 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 					distance_coef = sqrt(distance_coef);
 				}
 				if(distance_coef<=ZERO_THRESHOLD){
-					LOG(WARNING) << "Very close kernels exist! Skip!";
+					//LOG(WARNING) << "Very close kernels exist! Skip!";
 					continue;
 				}
 				if (force_type == "Gravity") {
