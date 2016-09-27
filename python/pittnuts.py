@@ -19,7 +19,7 @@ def pca(X):
     avg = mean(X,axis=0)
     shift = abs(avg/std(X,axis=0))
     if shift.mean()>0.1:
-        warnings.warn("shift of mean/std: max=={:f}, mean=={:f}".format(shift.max(), shift.mean()),RuntimeWarning)
+        #warnings.warn("shift of mean/std: max=={:f}, mean=={:f}".format(shift.max(), shift.mean()),RuntimeWarning)
         pass
         #print shift.max(), shift.mean()
 
