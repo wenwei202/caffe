@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 import argparse
 import caffeparser
 # --prototxt models/bvlc_reference_caffenet/deploy.prototxt --origimodel models/bvlc_reference_caffenet/caffenet_0.57368.caffemodel --tunedmodel models/bvlc_reference_caffenet/
-# --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_0.9912.caffemodel --tunedmodel examples/mnist/
-# --prototxt examples/cifar10/cifar10_full.prototxt --origimodel examples/cifar10/cifar10_full_iter_300000_0.8212.caffemodel --tunedmodel examples/cifar10/cifar10_full_grouplasso_iter_60000.caffemodel
+# --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_0.9917.caffemodel --tunedmodel examples/mnist/lenet_iter_10000.caffemodel
+# --prototxt examples/mnist/lenet_.prototxt --origimodel examples/mnist/lenet_0.9917.caffemodel --tunedmodel examples/mnist/lenet_iter_10000.caffemodel
+# --prototxt examples/cifar10/cifar10_full.prototxt --origimodel examples/cifar10/cifar10_full_iter_240000_0.8201.caffemodel.h5 --tunedmodel examples/cifar10/cifar10_full_iter_240000.caffemodel.h5
 def print_eig_info(eig_values,style,percent=0.95):
     eig_sum = sum(eig_values)
     #print eig_values
@@ -63,7 +64,7 @@ def show_2Dfilter_pca(net,layername,showit=False):
 
     weights_pca = weights.reshape((chan_num*filter_num, kernel_size)).transpose()
     weights_pca, eig_vecs, eig_values = pca(weights_pca)
-    print_eig_info(eig_values)
+    #print_eig_info(eig_values)
     if showit:
         weights_pca = weights_pca.transpose().reshape(filter_num,chan_num,kernel_h,kernel_w)
         filt_max = abs(weights_pca).max()
@@ -150,8 +151,8 @@ if __name__ == "__main__":
     print("blobs {}\nparams {}".format(orig_net.blobs.keys(), orig_net.params.keys()))
     print("blobs {}\nparams {}".format(tuned_net.blobs.keys(), tuned_net.params.keys()))
 
-    #show_2Dfilter_pca(orig_net, 'conv1')
-    #show_2Dfilter_pca(tuned_net, 'conv1')
+    show_2Dfilter_pca(orig_net, 'conv1',True)
+    show_2Dfilter_pca(tuned_net, 'conv1',True)
     #show_2Dfilter_pca(orig_net, 'conv2')
     #show_2Dfilter_pca(tuned_net, 'conv2')
     #show_2Dfilter_pca(orig_net, 'conv1')
@@ -164,6 +165,8 @@ if __name__ == "__main__":
     show_filter_channel_pca(tuned_net, 'conv1','-r')
     show_filter_channel_pca(orig_net, 'conv2','--g')
     show_filter_channel_pca(tuned_net, 'conv2','-g')
+    #show_filter_channel_pca(orig_net, 'conv3', '--b')
+    #show_filter_channel_pca(tuned_net, 'conv3', '-b')
     #show_filter_channel_pca(orig_net, 'conv3')
     #show_filter_channel_pca(tuned_net, 'conv3')
 

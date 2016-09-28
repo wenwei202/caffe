@@ -7,9 +7,11 @@ import os
 import matplotlib.pyplot as plt
 import argparse
 import caffeparser
+import copy
 
 def rank_by_ratio(eig_values,ratio):
     assert ratio<=1 and ratio>0
+    eig_values = copy.copy(eig_values)
     eig_sum = sum(eig_values)
     for i in range(1, eig_values.size):
         eig_values[i] = eig_values[i] + eig_values[i - 1]
@@ -73,15 +75,18 @@ if __name__ == "__main__":
             kernel_size = kernel_h * kernel_w
             # decompose the weights
             weights_pca = weights.reshape((filter_num, chan_num * kernel_size)).transpose()
+            weights_mean = mean(weights_pca,axis=0)
             weights_pca, eig_vecs, eig_values = pca(weights_pca)
             if None != rankratio:
                 rank = rank_by_ratio(eig_values, rankratio)
             elif None != ranks:
                 rank = ranks[conv_idx]
             rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, rank,filter_num)
+            added_biases = dot(dot(weights_mean,eig_vecs[:,rank:]),eig_vecs[:,rank:].transpose())
             weights_pca = weights_pca.transpose().reshape(filter_num, chan_num, kernel_h, kernel_w)
             low_rank_filters = weights_pca[0:rank]
             linear_combinations = eig_vecs[:,0:rank].reshape(filter_num,rank,1,1)
+
 
             cur_layer_param = net_msg.layer._values.pop(layer_idx)
             # generate the low rank conv layer and remove bias
@@ -116,7 +121,7 @@ if __name__ == "__main__":
                 linear_layer.convolution_param.dilation._values[0] = 1
             if bias_flag:
                 new_parameters[linear_layer.name] = {0: linear_combinations[:],
-                                                     1: orig_net.params[layer_name][1].data[:]}
+                                                     1: orig_net.params[layer_name][1].data[:]+added_biases}
             else:
                 new_parameters[linear_layer.name] = {0: linear_combinations[:]}
 
