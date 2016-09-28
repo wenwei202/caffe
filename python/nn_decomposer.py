@@ -58,6 +58,7 @@ if __name__ == "__main__":
     layer_idx = -1
     new_parameters = {}
     conv_idx = -1
+    rank_info = ""
     for cur_layer in loop_layers:
         layer_idx += 1
         layer_name = cur_layer.name
@@ -77,7 +78,7 @@ if __name__ == "__main__":
                 rank = rank_by_ratio(eig_values, rankratio)
             elif None != ranks:
                 rank = ranks[conv_idx]
-            print "{}\t{}/{} filters".format(layer_name, rank,filter_num)
+            rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, rank,filter_num)
             weights_pca = weights_pca.transpose().reshape(filter_num, chan_num, kernel_h, kernel_w)
             low_rank_filters = weights_pca[0:rank]
             linear_combinations = eig_vecs[:,0:rank].reshape(filter_num,rank,1,1)
@@ -132,8 +133,8 @@ if __name__ == "__main__":
                 new_parameters[layer_name] = cur_param
 
     # save the new network proto
-    file_split = os.path.splitext(prototxt)
-    filepath_network = file_split[0] + '_lowrank' + file_split[1]
+    #file_split = os.path.splitext(prototxt)
+    filepath_network = prototxt+".lowrank.prototxt" #file_split[0] + '_lowrank' + file_split[1]
     file = open(filepath_network, "w")
     if not file:
         raise IOError("ERROR (" + filepath_network + ")!")
@@ -147,10 +148,11 @@ if __name__ == "__main__":
         for keykey,valval in val.iteritems():
             dst_net.params[key][keykey].data[:] = valval[:]
 
-    file_split = os.path.splitext(caffemodel)
-    filepath_caffemodel = file_split[0] + '.lowrank.caffemodel'
+    #file_split = os.path.splitext(caffemodel)
+    filepath_caffemodel = caffemodel + '.lowrank.caffemodel'
     dst_net.save(filepath_caffemodel)
 
+    print rank_info
     print "Saved as {}".format(filepath_network)
     print "Saved as {}".format(filepath_caffemodel)
     print "Done!"

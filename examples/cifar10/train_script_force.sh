@@ -20,7 +20,7 @@ current_time=$(date)
 current_time=${current_time// /_}
 current_time=${current_time//:/-}
 
-snapshot_path=$folder/${base_lr}_${force_decay}_${current_time}
+snapshot_path=$folder/${base_lr}_forcedecay_${force_decay}_${current_time}
 mkdir $snapshot_path
 
 solverfile=$snapshot_path/solver.prototxt
