@@ -2,9 +2,8 @@
 set -e
 set -x
 
-folder="examples/cifar10/"
-#file_prefix="cifar10_full"
-file_prefix="cifar10_resnet"
+folder="examples/mnist/"
+file_prefix="lenet"
 
 if [ "$#" -lt 5 ]; then
 	echo "Illegal number of parameters"

@@ -151,8 +151,8 @@ if __name__ == "__main__":
     print("blobs {}\nparams {}".format(orig_net.blobs.keys(), orig_net.params.keys()))
     print("blobs {}\nparams {}".format(tuned_net.blobs.keys(), tuned_net.params.keys()))
 
-    show_2Dfilter_pca(orig_net, 'conv1',True)
-    show_2Dfilter_pca(tuned_net, 'conv1',True)
+    #show_2Dfilter_pca(orig_net, 'conv1',True)
+    #show_2Dfilter_pca(tuned_net, 'conv1',True)
     #show_2Dfilter_pca(orig_net, 'conv2')
     #show_2Dfilter_pca(tuned_net, 'conv2')
     #show_2Dfilter_pca(orig_net, 'conv1')
