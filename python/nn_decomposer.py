@@ -77,15 +77,16 @@ if __name__ == "__main__":
             weights_pca = weights.reshape((filter_num, chan_num * kernel_size)).transpose()
             weights_mean = mean(weights_pca,axis=0)
             weights_pca, eig_vecs, eig_values = pca(weights_pca)
+            reconstruction_weight = copy.copy(weights_pca)
             if None != rankratio:
                 rank = rank_by_ratio(eig_values, rankratio)
             elif None != ranks:
                 rank = ranks[conv_idx]
             rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, rank,filter_num)
-            added_biases = dot(dot(weights_mean,eig_vecs[:,rank:]),eig_vecs[:,rank:].transpose())
-            weights_pca = weights_pca.transpose().reshape(filter_num, chan_num, kernel_h, kernel_w)
-            low_rank_filters = weights_pca[0:rank]
-            linear_combinations = eig_vecs[:,0:rank].reshape(filter_num,rank,1,1)
+            shift_vals = dot(weights_mean,eig_vecs[:,rank:])
+            weights_full = weights_pca.transpose().reshape((filter_num, chan_num, kernel_h, kernel_w))
+            low_rank_filters = weights_full[0:rank]
+            linear_combinations = eig_vecs[:,0:rank].reshape((filter_num,rank,1,1))
 
 
             cur_layer_param = net_msg.layer._values.pop(layer_idx)
@@ -121,11 +122,15 @@ if __name__ == "__main__":
                 linear_layer.convolution_param.dilation._values[0] = 1
             if bias_flag:
                 new_parameters[linear_layer.name] = {0: linear_combinations[:],
-                                                     1: orig_net.params[layer_name][1].data[:]+added_biases}
+                                                     1: orig_net.params[layer_name][1].data[:]}
             else:
                 new_parameters[linear_layer.name] = {0: linear_combinations[:]}
 
-
+            reconstruction_weight[:,rank:] = tile(shift_vals,(reconstruction_weight.shape[0],1))
+            reconstruction_weight = subtract(weights_pca, reconstruction_weight)
+            reconstruction_error = dot(reconstruction_weight.reshape((1,-1)),reconstruction_weight.reshape((-1,1)))
+            rank_info = rank_info + "reconstruction_error={}\n".format(reconstruction_error)
+            rank_info = rank_info + "sumofeig={}\n".format(sum(eig_values[rank:])*(reconstruction_weight.shape[0]-1))
             # insert and add idx
             net_msg.layer._values.insert(layer_idx,low_rank_layer)
             layer_idx += 1
