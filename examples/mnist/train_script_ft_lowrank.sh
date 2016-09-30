@@ -41,7 +41,7 @@ echo "solver_mode: $solver_mode" >> $solverfile
 # generate net and caffemodel
 python python/nn_decomposer.py --prototxt ${orig_net} --caffemodel ${orig_caffemodel} --rankratio ${rank_ratio} > "${snapshot_path}/train.info" 2>&1
 gen_net=${orig_net}.lowrank.prototxt
-gen_caffemodel=${orig_caffemodel}.lowrank.caffemodel
+gen_caffemodel=${orig_caffemodel}.lowrank.caffemodel.h5
 mv ${gen_net} $snapshot_path
 mv ${gen_caffemodel} $snapshot_path
 new_net=${snapshot_path}/$( basename $gen_net )

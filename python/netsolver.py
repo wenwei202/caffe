@@ -1,5 +1,3 @@
-# Thanks to the awesome tutorial: http://christopher5106.github.io/deep/learning/2015/09/04/Deep-learning-tutorial-on-Caffe-Technology.html
-
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -11,13 +9,23 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--solver', type=str, required=True, help="Solver prototxt")
     parser.add_argument('--weights', type=str, required=False, help="Caffemodel in hdf5 format")
+    parser.add_argument('--device', type=int, required=False,help="The GPU device id, -1 for CPU")
     args = parser.parse_args()
     solverfile = args.solver
     caffemodel = args.weights
 
-    #caffe.set_mode_cpu()
-    caffe.set_device(0)
-    caffe.set_mode_gpu()
+    device = args.device
+    if device == None:
+        device = 0
+
+    if device == -1:
+        caffe.set_mode_cpu()
+    elif device >= 0:
+        # GPU mode
+        caffe.set_device(device)
+        caffe.set_mode_gpu()
+    else:
+        caffe.set_mode_cpu()
 
     solver = caffe.get_solver(solverfile)
     if None != caffemodel:

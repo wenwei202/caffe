@@ -24,10 +24,10 @@ def rank_by_ratio(eig_values,ratio):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--prototxt', type=str, required=True)
-    parser.add_argument('--caffemodel', type=str, required=True)
-    parser.add_argument('--rankratio', type=float, required=False)
-    parser.add_argument('--ranks', type=str, required=False)
+    parser.add_argument('--prototxt', type=str, required=True,help="The original network structure.")
+    parser.add_argument('--caffemodel', type=str, required=True,help="The trained caffemodel to be decomposed.")
+    parser.add_argument('--rankratio', type=float, required=False,help="The ratio of reserved information based on eigenvalues.")
+    parser.add_argument('--ranks', type=str, required=False,help="The reserved rank in each conv layers.")
     args = parser.parse_args()
     prototxt = args.prototxt
     caffemodel = args.caffemodel
@@ -159,8 +159,8 @@ if __name__ == "__main__":
             dst_net.params[key][keykey].data[:] = valval[:]
 
     #file_split = os.path.splitext(caffemodel)
-    filepath_caffemodel = caffemodel + '.lowrank.caffemodel'
-    dst_net.save(filepath_caffemodel)
+    filepath_caffemodel = caffemodel + '.lowrank.caffemodel.h5'
+    dst_net.save_hdf5(filepath_caffemodel)
 
     print rank_info
     print "Saved as {}".format(filepath_network)
