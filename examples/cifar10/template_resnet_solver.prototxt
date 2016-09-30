@@ -30,6 +30,7 @@ max_iter: 64000
 
 # snapshot intermediate results
 snapshot: 8000
+snapshot_format: HDF5
 #snapshot_prefix: "examples/cifar10/cifar10_full_grouplasso"
 
 # solver mode: CPU or GPU
