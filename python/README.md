@@ -106,3 +106,21 @@ layer {
   }
 }
 ```
+## caffemodel_convertor.py - convert the format of caffemodel 
+Convert the format of model between `.caffemodel` and `.caffemodel.h5`
+
+e.g.
+```
+python python/caffemodel_convertor.py \
+--network examples/mnist/lenet_train_test.prototxt \
+--caffemodel examples/mnist/lenet_0.9917.caffemodel.h5
+```
+
+## netsolver.py - python solver 
+Similar to `caffe train`, e.g.
+```
+python python/netsolver.py \
+--solver models/bvlc_alexnet/solver.prototxt \
+--weights models/bvlc_alexnet/alexnet_0.57982.caffemodel.h5
+```
+The caffemodel must be hdf5 format, use `caffemodel_convertor.py` to convert `.caffemodel` file to `.caffemodel.h5` file.
