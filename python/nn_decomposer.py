@@ -1,5 +1,3 @@
-
-
 import caffe
 import re
 from pittnuts import *

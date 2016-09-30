@@ -112,7 +112,7 @@ def lowrank_netsolver(solverfile,caffemodel,ratio):
             print "Saved as {}".format(filepath_solver)
 
             # generate the caffemodel
-            solver = None
+            solver = None # a weird bug if do not release it
             gc.collect()
             dst_net = caffe.Net(str(filepath_network), caffe.TRAIN)
             for key, val in new_parameters.iteritems():
@@ -121,18 +121,18 @@ def lowrank_netsolver(solverfile,caffemodel,ratio):
             filepath_caffemodel = solver_msg.snapshot_prefix + rank_info+".caffemodel.h5"
             dst_net.save_hdf5(str(filepath_caffemodel))
             print "Saved as {}".format(filepath_caffemodel)
-            dst_net = None
+            dst_net = None # a weird bug if do not release it
             gc.collect()
 
             break
 
 
     if iter >= max_iter:
-        #solver.solve() # solve the final testing
+        if solver!=None :
+            solver.solve()
         print "Optimization done!"
         exit()
     else :
-        gc.collect()
         lowrank_netsolver(str(filepath_solver),str(filepath_caffemodel),ratio)
 
 if __name__ == "__main__":
