@@ -7,20 +7,7 @@ import os
 import matplotlib.pyplot as plt
 import argparse
 import caffeparser
-import copy
-
-def rank_by_ratio(eig_values,ratio):
-    assert ratio<=1 and ratio>0
-    eig_values = copy.copy(eig_values)
-    eig_sum = sum(eig_values)
-    for i in range(1, eig_values.size):
-        eig_values[i] = eig_values[i] + eig_values[i - 1]
-    eig_values = eig_values / eig_sum
-    # return the rank that keeps ratio information
-    for i in range(0, eig_values.size):
-        if eig_values[i]>=ratio:
-            return i+1
-    return eig_values.size
+import caffe_apps
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -69,28 +56,31 @@ if __name__ == "__main__":
             assert 1==cur_layer.convolution_param.group
             weights = orig_net.params[layer_name][0].data
             filter_num = weights.shape[0]
-            chan_num = weights.shape[1]
-            kernel_h = weights.shape[2]
-            kernel_w = weights.shape[3]
-            kernel_size = kernel_h * kernel_w
-            # decompose the weights
-            weights_pca = weights.reshape((filter_num, chan_num * kernel_size)).transpose()
-            weights_mean = mean(weights_pca,axis=0)
-            weights_pca, eig_vecs, eig_values = pca(weights_pca)
-            reconstruction_weight = copy.copy(weights_pca)
-            if None != rankratio:
-                rank = rank_by_ratio(eig_values, rankratio)
-            elif None != ranks:
-                rank = ranks[conv_idx]
-            rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, rank,filter_num)
-            shift_vals = dot(weights_mean,eig_vecs[:,rank:])
-            weights_full = weights_pca.transpose().reshape((filter_num, chan_num, kernel_h, kernel_w))
-            low_rank_filters = weights_full[0:rank]
-            linear_combinations = eig_vecs[:,0:rank].reshape((filter_num,rank,1,1))
-
+            # chan_num = weights.shape[1]
+            # kernel_h = weights.shape[2]
+            # kernel_w = weights.shape[3]
+            # kernel_size = kernel_h * kernel_w
+            # # decompose the weights
+            # weights_pca = weights.reshape((filter_num, chan_num * kernel_size)).transpose()
+            # weights_mean = mean(weights_pca,axis=0)
+            # weights_pca, eig_vecs, eig_values = pca(weights_pca)
+            # reconstruction_weight = copy.copy(weights_pca)
+            # if None != rankratio:
+            #     rank = caffe_apps.rank_by_ratio(eig_values, rankratio)
+            # elif None != ranks:
+            #     rank = ranks[conv_idx]
+            # rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, rank,filter_num)
+            # shift_vals = dot(weights_mean,eig_vecs[:,rank:])
+            # weights_full = weights_pca.transpose().reshape((filter_num, chan_num, kernel_h, kernel_w))
+            # low_rank_filters = weights_full[0:rank]
+            # linear_combinations = eig_vecs[:,0:rank].reshape((filter_num,rank,1,1))
+            low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(filter_weights=weights,
+                                                                                ratio=rankratio,
+                                                                                rank= ranks[conv_idx] if None!=ranks else  None)
+            rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, rank, filter_num)
 
             cur_layer_param = net_msg.layer._values.pop(layer_idx)
-            # generate the low rank conv layer and remove bias
+            # generate the low rank conv layer and move bias to the next layer
             low_rank_layer = caffe.proto.caffe_pb2.LayerParameter()
             low_rank_layer.CopyFrom(cur_layer_param)
             low_rank_layer.name = low_rank_layer.name+"_lowrank"
@@ -126,11 +116,12 @@ if __name__ == "__main__":
             else:
                 new_parameters[linear_layer.name] = {0: linear_combinations[:]}
 
-            reconstruction_weight[:,rank:] = tile(shift_vals,(reconstruction_weight.shape[0],1))
-            reconstruction_weight = subtract(weights_pca, reconstruction_weight)
-            reconstruction_error = dot(reconstruction_weight.reshape((1,-1)),reconstruction_weight.reshape((-1,1)))
-            rank_info = rank_info + "reconstruction_error={}\n".format(reconstruction_error)
-            rank_info = rank_info + "sumofeig={}\n".format(sum(eig_values[rank:])*(reconstruction_weight.shape[0]-1))
+            # reconstruction_weight[:,rank:] = tile(shift_vals,(reconstruction_weight.shape[0],1))
+            # reconstruction_weight = subtract(weights_pca, reconstruction_weight)
+            # reconstruction_error = dot(reconstruction_weight.reshape((1,-1)),reconstruction_weight.reshape((-1,1)))
+            # rank_info = rank_info + "reconstruction_error={}\n".format(reconstruction_error)
+            # rank_info = rank_info + "sumofeig={}\n".format(sum(eig_values[rank:])*(reconstruction_weight.shape[0]-1))
+
             # insert and add idx
             net_msg.layer._values.insert(layer_idx,low_rank_layer)
             layer_idx += 1
