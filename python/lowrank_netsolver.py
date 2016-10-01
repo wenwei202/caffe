@@ -10,7 +10,9 @@ import os
 import copy
 import gc
 
-def lowrank_netsolver(solverfile,caffemodel,ratio):
+
+
+def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
     solver_parser = caffeparser.CaffeProtoParser(solverfile)
     solver_msg = solver_parser.readProtoSolverFile()
     lr_policy = str(solver_msg.lr_policy)
@@ -51,6 +53,7 @@ def lowrank_netsolver(solverfile,caffemodel,ratio):
         layer_idx = -1
         new_net_flag = False
         rank_info = ""
+        ranks = [[]]
         for cur_layer in loop_layers:
             layer_idx += 1
             if 'Convolution' == cur_layer.type and re.match(".*(_lowrank)$", cur_layer.name):
@@ -63,6 +66,7 @@ def lowrank_netsolver(solverfile,caffemodel,ratio):
                 assert next_layer.convolution_param.kernel_size._values[0] == 1
                 low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(cur_weights, ratio)
                 rank_info = rank_info + "_{}".format(rank)
+                ranks[0].append(rank)
                 if rank < cur_weights.shape[0]: # generate lower-rank network
                     new_net_flag = True
                     cur_layer.convolution_param.num_output = rank
@@ -76,6 +80,10 @@ def lowrank_netsolver(solverfile,caffemodel,ratio):
                         new_parameters[next_layer.name] = {0: new_linear_combinations[:]}
 
         iter += test_interval
+        if []==rank_mat:
+            rank_mat=ranks
+        else:
+            rank_mat = np.concatenate((rank_mat,ranks),axis=0)
 
         # snapshot network, caffemodel and solver
         if new_net_flag:
@@ -133,9 +141,13 @@ def lowrank_netsolver(solverfile,caffemodel,ratio):
         if solver!=None :
             solver.solve()
         print "Optimization done!"
-        exit()
+        plt.plot(rank_mat)
+        plt.savefig(str(solver_msg.snapshot_prefix)+"_ranks.png")
+        np.savetxt(str(solver_msg.snapshot_prefix)+".ranks",rank_mat,fmt="%d")
+        #plt.show()
+        return
     else :
-        lowrank_netsolver(str(filepath_solver),str(filepath_caffemodel),ratio)
+        lowrank_netsolver(str(filepath_solver),str(filepath_caffemodel),ratio,rank_mat)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -163,5 +175,5 @@ if __name__ == "__main__":
         caffe.set_mode_gpu()
     else:
         caffe.set_mode_cpu()
-
-    lowrank_netsolver(solverfile,caffemodel,ratio)
+    rank_mat = []
+    lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat)
