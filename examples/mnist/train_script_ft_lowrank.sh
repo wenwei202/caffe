@@ -1,4 +1,6 @@
 #!/bin/bash
+# Function: decompose the network to low-rank format and finetune it
+
 set -e
 set -x
 

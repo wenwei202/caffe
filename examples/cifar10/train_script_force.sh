@@ -1,4 +1,5 @@
 #!/bin/bash
+# train the original network with force regularization
 set -e
 set -x
 

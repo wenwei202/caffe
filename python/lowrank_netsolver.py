@@ -112,6 +112,8 @@ def lowrank_netsolver(solverfile,caffemodel,ratio):
             print "Saved as {}".format(filepath_solver)
 
             # generate the caffemodel
+            if iter == max_iter:
+                solver.solve()
             solver = None # a weird bug if do not release it
             gc.collect()
             dst_net = caffe.Net(str(filepath_network), caffe.TRAIN)

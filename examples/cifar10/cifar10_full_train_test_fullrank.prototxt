@@ -40,6 +40,7 @@ layer {
   top: "conv1_lowrank"
   param {
     lr_mult: 1.0
+    force_mult: 1.0
   }
   convolution_param {
     num_output: 32
@@ -114,6 +115,7 @@ layer {
   top: "conv2_lowrank"
   param {
     lr_mult: 1.0
+    force_mult: 1.0
   }
   convolution_param {
     num_output: 32
@@ -186,6 +188,10 @@ layer {
   type: "Convolution"
   bottom: "norm2"
   top: "conv3_lowrank"
+  param {
+    lr_mult: 1.0
+    force_mult: 1.0
+  }
   convolution_param {
     num_output: 64
     bias_term: false
