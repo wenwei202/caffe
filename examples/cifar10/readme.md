@@ -98,6 +98,7 @@ and you will be using CPU for training.
 
 File list
 ---------
+## Learn sparse feature maps
 `cifar10_full_train_test_sfm.prototxt`: an example of using `SymmetricRectifyLayer` and `SparsifyLayer`.
 
 `cifar10_resnet_n3.prototxt`: deploy network for resnets-20 used in Python.
@@ -106,7 +107,7 @@ File list
 
 `train_script.sh`: script to explore the hyper-parameters.
 ```
-./examples/cifar10/train_script.sh \
+./examples/cifar10/train_script_sparse_feature.sh \
 0.001 \ # base learning rate
 0.00000000045 \ # feature decay
 0 \ # device id, -1 for cpu
@@ -114,5 +115,14 @@ examples/cifar10/template_cifar10_full_multistep_solver_sfm.prototx \ # template
 examples/cifar10/template_cifar10_full_train_test_sfm.prototxt # template of the network
 
 ```
+## train_script_force.sh - learn neural networks with force regularization
+e.g.
+```
+./examples/cifar10/train_script_force.sh 0.001 0.00005 Degradation 1 examples/cifar10/template_cifar10_full_multistep_solver_force.prototxt
+```
 
-
+## train_script_ft_lowrank.sh
+e.g.
+```
+./examples/cifar10/train_script_ft_lowrank.sh 0.001 0.95 0 examples/cifar10/cifar10_full_train_test.prototxt examples/cifar10/cifar10_full_iter_240000.caffemodel.h5 examples/cifar10/template_cifar10_full_multistep_solver_ft_lowrank.prototxt
+```
