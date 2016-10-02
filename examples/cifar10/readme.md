@@ -121,7 +121,7 @@ e.g.
 ./examples/cifar10/train_script_force.sh 0.001 0.00005 Degradation 1 examples/cifar10/template_cifar10_full_multistep_solver_force.prototxt
 ```
 
-## train_script_ft_lowrank.sh
+## train_script_ft_lowrank.sh - decompose and finetune the network
 e.g.
 ```
 ./examples/cifar10/train_script_ft_lowrank.sh 0.001 0.95 0 examples/cifar10/cifar10_full_train_test.prototxt examples/cifar10/cifar10_full_iter_240000.caffemodel.h5 examples/cifar10/template_cifar10_full_multistep_solver_ft_lowrank.prototxt
