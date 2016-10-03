@@ -183,7 +183,7 @@ message SolverParameter {
   // type of force regularization - Gravity, Linear, Constant, Degradation
   optional string force_type = 41 [default = "Degradation"];
   // The iterations after which force_decay will be set to zero.
-  optional float force_iter = 43 [default = -1]; 
+  optional int force_iter = 43 [default = -1]; 
   
   // the stepsize for learning rate policy "step"
   optional int32 stepsize = 13;
