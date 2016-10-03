@@ -472,7 +472,7 @@ layer {
   name: "conv5_group1"
   type: "Convolution"
   bottom: "conv4_group1"
-  top: "conv5"
+  top: "conv5_group1"
   param {
     lr_mult: 1
     decay_mult: 1
