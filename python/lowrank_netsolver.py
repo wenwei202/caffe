@@ -107,6 +107,12 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
                 left_steps[idx] = step_val - iter
             solver_msg.base_lr = next_lr
             solver_msg.max_iter = max_iter - iter
+
+            if -1!=solver_msg.force_iter and 0!=solver_msg.force_iter:
+                solver_msg.force_iter = solver_msg.force_iter - iter
+                if solver_msg.force_iter < 0:
+                    solver_msg.force_iter = 0
+
             solver_msg.stepvalue._values=[]
             for idx, step_val in enumerate(left_steps):
                 if step_val > 0:

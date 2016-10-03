@@ -199,6 +199,9 @@ void Solver<Dtype>::Step(int iters) {
   smoothed_loss_ = 0;
 
   while (iter_ < stop_iter) {
+	// remove force decay after specified iterations
+	if(param_.force_iter()!=-1 && iter_>=param_.force_iter())
+		param_.set_force_decay(0.0);
     // zero-init the params
     net_->ClearParamDiffs();
     if (param_.test_interval() && iter_ % param_.test_interval() == 0
