@@ -5,9 +5,9 @@ test_interval: 1000
 #lr_policy: "step"
 #stepsize: 100000
 #max_iter: 450000
-force_iter: 80000
+force_iter: 100000
 lr_policy: "multistep"
-stepvalue: 120000
+stepvalue: 100000
 stepvalue: 160000
 stepvalue: 180000
 max_iter: 200000
