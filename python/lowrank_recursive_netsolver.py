@@ -151,11 +151,9 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
         plt.savefig(str(solver_msg.snapshot_prefix)+"_ranks.png")
         np.savetxt(str(solver_msg.snapshot_prefix)+".ranks",rank_mat,fmt="%d")
         #plt.show()
-        return {}
+        return
     else :
-        return {'solver':str(filepath_solver),
-                'weights':str(filepath_caffemodel),
-                'rank_mat':rank_mat}
+        lowrank_netsolver(str(filepath_solver),str(filepath_caffemodel),ratio,rank_mat)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -183,12 +181,5 @@ if __name__ == "__main__":
         caffe.set_mode_gpu()
     else:
         caffe.set_mode_cpu()
-
     rank_mat = []
-    train_params =  {'solver': str(solverfile),
-     'weights': str(caffemodel),
-     'rank_mat': rank_mat}
-
-    while {}!=train_params:
-        train_params = lowrank_netsolver(train_params['solver'],train_params['weights'],ratio,train_params['rank_mat'])
-        gc.collect()
+    lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat)
