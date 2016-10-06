@@ -28,3 +28,8 @@ This model was trained by Evan Shelhamer @shelhamer
 ## License
 
 This model is released for unrestricted use.
+
+## scripts
+```
+./models/bvlc_alexnet/train_script_force.sh 0.001 0.00005 Degradation 1 models/bvlc_alexnet/template_solver_force.prototxt models/bvlc_alexnet/alexnet_0.57982_split.caffemodel.h5
+```
