@@ -49,6 +49,15 @@ class Blob {
    * propagate the new input shape to higher layers.
    */
   void Reshape(const vector<int>& shape);
+
+  void Print() const {
+    if (!data_) { return ; }
+    for (int i=0;i<count_;i++){
+  	  LOG(INFO)<<cpu_data()[i];
+    }
+    return ;
+  }
+
   void Reshape(const BlobShape& shape);
   void ReshapeLike(const Blob& other);
   inline string shape_string() const {

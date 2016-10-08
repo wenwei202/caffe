@@ -230,6 +230,7 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
   case Caffe::CPU: {
     if (local_force_decay) {
 		// add force decay
+    	temp_2_[param_id]->Reshape(net_params[param_id]->shape());
 		for (int i=0; i<num_rows-1; i++){
 			for (int j=i+1; j<num_rows; j++){
 				// force regularization between every pair of kernels
@@ -272,16 +273,22 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 					LOG(FATAL) << "Unknown force type: " << force_type;
 				}
 
+
+				caffe_cpu_axpby(num_columns, (Dtype)(-1.0), temp_[param_id]->cpu_data(),
+						(Dtype)(0.0), temp_2_[param_id]->mutable_cpu_data());
+
 				// MUSH PROJECT TO THE TANGENT DIRECTION
 				Dtype projection_length = caffe_cpu_dot(num_columns, kernel0_data, temp_[param_id]->cpu_data())/kernel0_length;
 				caffe_axpy(num_columns, -projection_length/kernel0_length, kernel0_data,
 										 temp_[param_id]->mutable_cpu_data());
-
 				// scale and add gradients to drag kernels together (local_force_decay>0)
 				caffe_axpy(num_columns, local_force_decay * kernel0_length / distance_coef, // SHOULD WE divide kernel0_length?
 						temp_[param_id]->cpu_data(), kernel0_diff);
-				caffe_axpy(num_columns, - local_force_decay * kernel1_length / distance_coef,
-						temp_[param_id]->cpu_data(), kernel1_diff);
+
+				caffe_axpy(num_columns, -projection_length/kernel1_length, kernel1_data,
+										temp_2_[param_id]->mutable_cpu_data());
+				caffe_axpy(num_columns, local_force_decay * kernel1_length / distance_coef,
+						temp_2_[param_id]->cpu_data(), kernel1_diff);
 			}
 		}
     }
@@ -312,7 +319,10 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 			caffe_gpu_powx(net_params[param_id]->count(), net_params[param_id]->gpu_data(),
 					(Dtype)(2.0), temp_[param_id]->mutable_gpu_data());
 			// sum of square of rows
-			caffe_gpu_gemv(CblasNoTrans, n_size, c_size,
+//			caffe_gpu_gemv(CblasNoTrans, n_size, c_size,
+//					(Dtype)(1.0), temp_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
+//					temp_n_[param_id]->mutable_gpu_data());
+			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, 1, c_size,
 					(Dtype)(1.0), temp_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
 					temp_n_[param_id]->mutable_gpu_data());
 			// length of row vector in temp_n_
@@ -327,7 +337,7 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 					temp_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
 			// -sum of normalized weights along columns in temp_c_
 			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, 1, c_size, n_size,
-					(Dtype)(-1.0), ones_n_[param_id]->gpu_data(), net_params[param_id]->gpu_data(),  (Dtype)(0.0),
+					(Dtype)(-1.0), ones_n_[param_id]->gpu_data(), temp_[param_id]->gpu_data(),  (Dtype)(0.0),
 					temp_c_[param_id]->mutable_gpu_data());
 			// replicated -sum of normalized weights in temp_2_
 			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, c_size, 1,
