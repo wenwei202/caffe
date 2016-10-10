@@ -5,12 +5,12 @@ test_interval: 1000
 #lr_policy: "step"
 #stepsize: 100000
 #max_iter: 450000
-force_iter: 100000
+force_iter: 160000
 lr_policy: "multistep"
-stepvalue: 100000
 stepvalue: 160000
-stepvalue: 180000
-max_iter: 200000
+stepvalue: 220000
+#stepvalue: 180000
+max_iter: 240000
 gamma: 0.1
 display: 200
 momentum: 0.9
