@@ -689,7 +689,10 @@ void Blob<Dtype>:: WriteToNistMMIO(string filename) const{
 	mm_set_array(&matcode);
 	mm_set_real(&matcode);
 	mm_set_general(&matcode);
-
+	if(NULL==fp) {
+		LOG(WARNING)<<"NULL file pointer to " << filename;
+		return;
+	}
 	mm_write_banner(fp, matcode);
 	int M = this->shape(0);//column of the stored matrix
 	int N = this->count()/M;
