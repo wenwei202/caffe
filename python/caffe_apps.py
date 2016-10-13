@@ -49,10 +49,21 @@ def filter_pca(filter_weights,ratio=None,rank=None):
     kernel_size = kernel_h * kernel_w
     # decompose the weights
     weights_pca = filter_weights.reshape((filter_num, chan_num * kernel_size)).transpose()
+    weights_mean = mean(weights_pca, axis=0)
     weights_pca, eig_vecs, eig_values = pca(weights_pca)
     if None != ratio:
         rank = rank_by_ratio(eig_values, ratio)
+    shift_vals = dot(weights_mean, eig_vecs[:, rank:])
     weights_full = weights_pca.transpose().reshape((filter_num, chan_num, kernel_h, kernel_w))
     low_rank_filters = weights_full[0:rank]
-    linear_combinations = eig_vecs[:, 0:rank].reshape((filter_num, rank, 1, 1))
-    return (low_rank_filters,linear_combinations,rank)
+    if rank >= filter_num - 1:
+        linear_combinations = eig_vecs[:, 0:rank].reshape((filter_num, rank, 1, 1))
+        return (low_rank_filters, linear_combinations, rank)
+    else:
+        mean_compensation = dot(shift_vals,eig_vecs[:, rank:].transpose()).transpose().reshape((-1, 1))
+        length = np.linalg.norm(mean_compensation)
+        linear_combinations = np.concatenate((eig_vecs[:, 0:rank],mean_compensation/length),axis=1)
+        linear_combinations = linear_combinations.reshape((filter_num, rank+1, 1, 1))
+        # append an all-ones filter to compensate the deviation resulted from non-zero mean filters
+        low_rank_filters = np.concatenate((low_rank_filters, np.ones((1, chan_num, kernel_h, kernel_w))*length), axis=0)
+        return (low_rank_filters,linear_combinations,rank+1)
