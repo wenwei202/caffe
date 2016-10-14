@@ -41,6 +41,21 @@ def rank_by_ratio(eig_values,ratio):
             return i+1
     return eig_values.size
 
+def rank_by_ratio_2(singular_values,ratio):
+    assert ratio<=1 and ratio>0
+    assert (singular_values>=0).all()
+    singular_values = copy.copy(singular_values)
+    singular_val_norm = np.linalg.norm(singular_values)
+    for i in range(1, singular_values.size):
+        singular_values[i] = np.sqrt(singular_values[i]**2 + singular_values[i - 1] ** 2)
+    assert abs(singular_values[-1] - singular_val_norm)<0.001
+    singular_values = singular_values / singular_val_norm
+    # return the rank that keeps ratio information
+    for i in range(0, singular_values.size):
+        if singular_values[i]>=ratio:
+            return i+1
+    return singular_values.size
+
 def filter_pca(filter_weights,ratio=None,rank=None):
     filter_num = filter_weights.shape[0]
     chan_num = filter_weights.shape[1]
@@ -49,21 +64,43 @@ def filter_pca(filter_weights,ratio=None,rank=None):
     kernel_size = kernel_h * kernel_w
     # decompose the weights
     weights_pca = filter_weights.reshape((filter_num, chan_num * kernel_size)).transpose()
-    weights_mean = mean(weights_pca, axis=0)
+    #weights_mean = mean(weights_pca, axis=0)
     weights_pca, eig_vecs, eig_values = pca(weights_pca)
     if None != ratio:
         rank = rank_by_ratio(eig_values, ratio)
-    shift_vals = dot(weights_mean, eig_vecs[:, rank:])
+    #shift_vals = dot(weights_mean, eig_vecs[:, rank:])
     weights_full = weights_pca.transpose().reshape((filter_num, chan_num, kernel_h, kernel_w))
     low_rank_filters = weights_full[0:rank]
-    if rank >= filter_num - 1:
-        linear_combinations = eig_vecs[:, 0:rank].reshape((filter_num, rank, 1, 1))
-        return (low_rank_filters, linear_combinations, rank)
-    else:
-        mean_compensation = dot(shift_vals,eig_vecs[:, rank:].transpose()).transpose().reshape((-1, 1))
-        length = np.linalg.norm(mean_compensation)
-        linear_combinations = np.concatenate((eig_vecs[:, 0:rank],mean_compensation/length),axis=1)
-        linear_combinations = linear_combinations.reshape((filter_num, rank+1, 1, 1))
-        # append an all-ones filter to compensate the deviation resulted from non-zero mean filters
-        low_rank_filters = np.concatenate((low_rank_filters, np.ones((1, chan_num, kernel_h, kernel_w))*length), axis=0)
-        return (low_rank_filters,linear_combinations,rank+1)
+    #if rank >= filter_num - 1:
+    linear_combinations = eig_vecs[:, 0:rank].reshape((filter_num, rank, 1, 1))
+    return (low_rank_filters, linear_combinations, rank)
+    #else:
+    #    mean_compensation = dot(shift_vals,eig_vecs[:, rank:].transpose()).transpose().reshape((-1, 1))
+    #    length = np.linalg.norm(mean_compensation)
+    #    linear_combinations = np.concatenate((eig_vecs[:, 0:rank],mean_compensation/length),axis=1)
+    #    linear_combinations = linear_combinations.reshape((filter_num, rank+1, 1, 1))
+    #    # append an all-ones filter to compensate the deviation resulted from non-zero mean filters
+    #    low_rank_filters = np.concatenate((low_rank_filters, np.ones((1, chan_num, kernel_h, kernel_w))*length), axis=0)
+    #    return (low_rank_filters,linear_combinations,rank+1)
+
+def filter_svd(filter_weights,ratio=None,rank=None):
+    filter_num = filter_weights.shape[0]
+    chan_num = filter_weights.shape[1]
+    kernel_h = filter_weights.shape[2]
+    kernel_w = filter_weights.shape[3]
+    kernel_size = kernel_h * kernel_w
+    # decompose the weights
+    weights = filter_weights.reshape((filter_num, chan_num * kernel_size)).transpose()
+    u, s, v = np.linalg.svd(weights,full_matrices=False)
+    if None != ratio:
+        rank = rank_by_ratio_2(s, ratio)
+    sqrt_singular_val = np.sqrt(np.diag(s))
+    u = dot(u,sqrt_singular_val)
+    v = dot(sqrt_singular_val,v)
+    weights_full = u.transpose().reshape((filter_num, chan_num, kernel_h, kernel_w))
+    low_rank_filters = weights_full[0:rank]
+    linear_combinations = v[0:rank,:].transpose().reshape((filter_num, rank, 1, 1))
+    a = low_rank_filters.reshape((-1, chan_num * kernel_size)).transpose()
+    b = linear_combinations.reshape((filter_num,-1)).transpose()
+    print np.linalg.norm(subtract(weights,dot(a,b))), np.linalg.norm(s[rank:])
+    return (low_rank_filters, linear_combinations, rank)

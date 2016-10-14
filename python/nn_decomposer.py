@@ -72,7 +72,9 @@ if __name__ == "__main__":
             # weights_full = weights_pca.transpose().reshape((filter_num, chan_num, kernel_h, kernel_w))
             # low_rank_filters = weights_full[0:rank]
             # linear_combinations = eig_vecs[:,0:rank].reshape((filter_num,rank,1,1))
+
             low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(filter_weights=weights,
+            #low_rank_filters, linear_combinations, rank = caffe_apps.filter_svd(filter_weights=weights,
                                                                                 ratio=rankratio,
                                                                                 rank= ranks[conv_idx] if None!=ranks else  None)
             rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, rank, filter_num)
