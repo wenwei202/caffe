@@ -38,7 +38,8 @@ This model is released for unrestricted use.
 You can put your email address in the end of the script (e.g. `train_script_force.sh`),so that you will be notified by an email when the training is done.
 Before you can be notified, please install `mail` by
 ```
-apt-get install mailutils
+sudo apt-get install mailutils
+sudo apt-get install sendmail
 ```
 and test it by
 ```
