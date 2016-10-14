@@ -33,3 +33,15 @@ This model is released for unrestricted use.
 ```
 ./models/bvlc_alexnet/train_script_force.sh 0.001 0.00005 Degradation 1 models/bvlc_alexnet/template_solver_force.prototxt models/bvlc_alexnet/alexnet_0.57982_split.caffemodel.h5
 ```
+
+## Email notification when the training is one
+You can put your email address in the end of the script (e.g. `train_script_force.sh`),so that you will be notified by an email when the training is done.
+Before you can be notified, please install `mail` by
+```
+apt-get install mailutils
+```
+and test it by
+```
+echo "Test content" | mail -s "Hello" youraddress@example.com
+```
+The email may be blocked if you send it too frequently.
