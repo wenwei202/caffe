@@ -22,7 +22,8 @@ template_solver=$6
 current_time=$(date)
 current_time=${current_time// /_}
 current_time=${current_time//:/-}
-snapshot_path=$folder/${base_lr}_ranks_${ranks}_${current_time}
+ranks_name=${ranks//,/_}
+snapshot_path=$folder/${base_lr}_ranks_${ranks_name}_${current_time}
 mkdir $snapshot_path
 
 solverfile=$snapshot_path/solver.prototxt
@@ -54,4 +55,4 @@ echo "net: \"$new_net\"" >> $solverfile
 cat ${snapshot_path}/train.info | grep loss+ | awk '{print $8 " " $11}' > ${snapshot_path}/loss.info
 python python/plot_train_info.py --traininfo ${snapshot_path}/train.info
 content="$(hostname) done: ${0##*/} ${@}. Results in ${snapshot_path}"
-echo ${content} | mail -s "Training done" weiwen.web@gmail.com
+echo ${content} | mail -s "Training done" youraddress@example.com
