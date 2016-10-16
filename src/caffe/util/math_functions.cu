@@ -43,6 +43,38 @@ void caffe_gpu_gemm<double>(const CBLAS_TRANSPOSE TransA,
 }
 
 template <>
+void caffe_gpu_geam<float>(const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB, const int M, const int N,
+    const float alpha, const float* A, const float beta, const float* B,
+    float* C){
+	  int lda = (TransA == CblasNoTrans) ? N : M;
+	  int ldb = (TransB == CblasNoTrans) ? N : M;
+	  cublasOperation_t cuTransA =
+	      (TransA == CblasNoTrans) ? CUBLAS_OP_N : CUBLAS_OP_T;
+	  cublasOperation_t cuTransB =
+	      (TransB == CblasNoTrans) ? CUBLAS_OP_N : CUBLAS_OP_T;
+
+	  CUBLAS_CHECK(cublasSgeam(Caffe::cublas_handle(), cuTransA, cuTransB,
+		  N, M, &alpha, A, lda, &beta, B, ldb, C, N));
+}
+
+template <>
+void caffe_gpu_geam<double>(const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB, const int M, const int N,
+    const double alpha, const double* A, const double beta, const double* B,
+    double* C){
+	  int lda = (TransA == CblasNoTrans) ? N : M;
+	  int ldb = (TransB == CblasNoTrans) ? N : M;
+	  cublasOperation_t cuTransA =
+	      (TransA == CblasNoTrans) ? CUBLAS_OP_N : CUBLAS_OP_T;
+	  cublasOperation_t cuTransB =
+	      (TransB == CblasNoTrans) ? CUBLAS_OP_N : CUBLAS_OP_T;
+
+	  CUBLAS_CHECK(cublasDgeam(Caffe::cublas_handle(), cuTransA, cuTransB,
+		  N, M, &alpha, A, lda, &beta, B, ldb, C, N));
+}
+
+template <>
 void caffe_gpu_gemv<float>(const CBLAS_TRANSPOSE TransA, const int M,
     const int N, const float alpha, const float* A, const float* x,
     const float beta, float* y) {
@@ -376,6 +408,15 @@ __global__ void powx_kernel(const int n, const Dtype* a,
   }
 }
 
+template <typename Dtype>
+__global__ void powx_kernel_check_negative(const int n, const Dtype* a,
+    const Dtype alpha, Dtype* y) {
+  CUDA_KERNEL_LOOP(index, n) {
+	if (a[index]<=0) y[index]=0;
+	else y[index] = pow(a[index], alpha);
+  }
+}
+
 template <>
 void caffe_gpu_powx<float>(const int N, const float* a,
     const float alpha, float* y) {
@@ -389,6 +430,22 @@ void caffe_gpu_powx<double>(const int N, const double* a,
     const double alpha, double* y) {
   // NOLINT_NEXT_LINE(whitespace/operators)
   powx_kernel<double><<<CAFFE_GET_BLOCKS(N), CAFFE_CUDA_NUM_THREADS>>>(
+      N, a, alpha, y);
+}
+
+template <>
+void caffe_gpu_powx_check_negative<float>(const int N, const float* a,
+    const float alpha, float* y) {
+  // NOLINT_NEXT_LINE(whitespace/operators)
+  powx_kernel_check_negative<float><<<CAFFE_GET_BLOCKS(N), CAFFE_CUDA_NUM_THREADS>>>(
+      N, a, alpha, y);
+}
+
+template <>
+void caffe_gpu_powx_check_negative<double>(const int N, const double* a,
+    const double alpha, double* y) {
+  // NOLINT_NEXT_LINE(whitespace/operators)
+  powx_kernel_check_negative<double><<<CAFFE_GET_BLOCKS(N), CAFFE_CUDA_NUM_THREADS>>>(
       N, a, alpha, y);
 }
 

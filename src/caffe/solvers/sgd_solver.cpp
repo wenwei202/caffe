@@ -80,6 +80,9 @@ void SGDSolver<Dtype>::PreSolve() {
     temp_n_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>()));
     temp_n_2_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>()));
     temp_c_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>()));
+    temp_nxn_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>()));
+    temp_nxn_2_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>()));
+
     vector<int> n_shape(1, net_params[i]->shape(0));
     vector<int> c_shape(1, net_params[i]->count()/net_params[i]->shape(0));
     ones_n_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(n_shape)));
@@ -273,6 +276,8 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 					LOG(FATAL) << "Unknown force type: " << force_type;
 				}
 
+				caffe_cpu_axpby(num_columns, (Dtype)(0.0), temp_2_[param_id]->cpu_data(),
+						(Dtype)(1.0/distance_coef), temp_[param_id]->mutable_cpu_data());
 
 				caffe_cpu_axpby(num_columns, (Dtype)(-1.0), temp_[param_id]->cpu_data(),
 						(Dtype)(0.0), temp_2_[param_id]->mutable_cpu_data());
@@ -282,12 +287,12 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 				caffe_axpy(num_columns, -projection_length/kernel0_length, kernel0_data,
 										 temp_[param_id]->mutable_cpu_data());
 				// scale and add gradients to drag kernels together (local_force_decay>0)
-				caffe_axpy(num_columns, local_force_decay * kernel0_length / distance_coef, // SHOULD WE divide kernel0_length?
+				caffe_axpy(num_columns, local_force_decay * kernel0_length, // SHOULD WE divide kernel0_length?
 						temp_[param_id]->cpu_data(), kernel0_diff);
 
 				caffe_axpy(num_columns, -projection_length/kernel1_length, kernel1_data,
 										temp_2_[param_id]->mutable_cpu_data());
-				caffe_axpy(num_columns, local_force_decay * kernel1_length / distance_coef,
+				caffe_axpy(num_columns, local_force_decay * kernel1_length,
 						temp_2_[param_id]->cpu_data(), kernel1_diff);
 			}
 		}
@@ -303,93 +308,71 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
     	temp_2_[param_id]->Reshape(net_params[param_id]->shape());
     	temp_3_[param_id]->Reshape(net_params[param_id]->shape());
 		vector<int> n_shape(1, n_size);
+		vector<int> nxn_shape(1, n_size*n_size);
 		vector<int> c_shape(1, c_size);
 		temp_n_[param_id]->Reshape(n_shape);
 		temp_n_2_[param_id]->Reshape(n_shape);
 		temp_c_[param_id]->Reshape(c_shape);
-
-    	if (force_type == "Gravity" || force_type == "Linear" || force_type == "Constant") {
-    		//NOT_IMPLEMENTED;
-    		// add force decay
-			for (int i=0; i<num_rows-1; i++){
-				for (int j=i+1; j<num_rows; j++){
-					// force regularization between every pair of kernels
-					const Dtype * kernel0_data = net_params[param_id]->cpu_data() + i * num_columns;
-					const Dtype * kernel1_data = net_params[param_id]->cpu_data() + j * num_columns;
-					Dtype * kernel0_diff = net_params[param_id]->mutable_cpu_diff() + i * num_columns;
-					Dtype * kernel1_diff = net_params[param_id]->mutable_cpu_diff() + j * num_columns;
-					Dtype kernel0_length = caffe_cpu_dot(num_columns, kernel0_data, kernel0_data);
-					Dtype kernel1_length = caffe_cpu_dot(num_columns, kernel1_data, kernel1_data);
-					kernel0_length = sqrt(kernel0_length);
-					kernel1_length = sqrt(kernel1_length);
-					if( (kernel0_length<=ZERO_THRESHOLD) ||
-						(kernel1_length<=ZERO_THRESHOLD)	){
-						//LOG(WARNING) << "Near zero kernels exist! Skip!";
-						continue; // too small
-					}
-					caffe_copy(num_columns,kernel1_data,temp_[param_id]->mutable_cpu_data());
-					caffe_cpu_axpby(num_columns, (Dtype)(1.0)/kernel0_length, kernel0_data,
-							(Dtype)(-1.0)/kernel1_length, temp_[param_id]->mutable_cpu_data());
-
-					Dtype distance_coef = 1.0;
-					if("Degradation" != force_type) {
-						distance_coef = caffe_cpu_dot(num_columns,
-							temp_[param_id]->cpu_data(),temp_[param_id]->cpu_data());
-						distance_coef = sqrt(distance_coef);
-					}
-					if(distance_coef<=ZERO_THRESHOLD){
-						//LOG(WARNING) << "Very close kernels exist! Skip!";
-						continue;
-					}
-					if (force_type == "Gravity") {
-						distance_coef = (Dtype)pow(distance_coef,3);
-					} else if (force_type == "Linear") {
-						distance_coef = (Dtype)pow(distance_coef,2);
-					} else if(force_type == "Constant") {//group Lasso
-						//distance_coef = distance_coef;
-					} else if (force_type == "Degradation"){//normalized (wik-wjk)^2
-						distance_coef = 1.0;
-					} else {
-						LOG(FATAL) << "Unknown force type: " << force_type;
-					}
-					caffe_cpu_axpby(num_columns, (Dtype)(-1.0), temp_[param_id]->cpu_data(),
-							(Dtype)(0.0), temp_2_[param_id]->mutable_cpu_data());
-
-					// MUSH PROJECT TO THE TANGENT DIRECTION
-					Dtype projection_length = caffe_cpu_dot(num_columns, kernel0_data, temp_[param_id]->cpu_data())/kernel0_length;
-					caffe_axpy(num_columns, -projection_length/kernel0_length, kernel0_data,
-											 temp_[param_id]->mutable_cpu_data());
-					// scale and add gradients to drag kernels together (local_force_decay>0)
-					caffe_axpy(num_columns, local_force_decay * kernel0_length / distance_coef, // SHOULD WE divide kernel0_length?
-							temp_[param_id]->cpu_data(), kernel0_diff);
-
-					caffe_axpy(num_columns, -projection_length/kernel1_length, kernel1_data,
-											temp_2_[param_id]->mutable_cpu_data());
-					caffe_axpy(num_columns, local_force_decay * kernel1_length / distance_coef,
-							temp_2_[param_id]->cpu_data(), kernel1_diff);
-				}
-			}
-		} else if (force_type == "Degradation"){//normalized (wik-wjk)^2
-			// square of weights in temp_
-			caffe_gpu_powx(net_params[param_id]->count(), net_params[param_id]->gpu_data(),
-					(Dtype)(2.0), temp_[param_id]->mutable_gpu_data());
-			// sum of square of rows
+		// square of weights in temp_
+		caffe_gpu_powx(net_params[param_id]->count(), net_params[param_id]->gpu_data(),
+				(Dtype)(2.0), temp_[param_id]->mutable_gpu_data());
+		// sum of square of rows
 //			caffe_gpu_gemv(CblasNoTrans, n_size, c_size,
 //					(Dtype)(1.0), temp_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
 //					temp_n_[param_id]->mutable_gpu_data());
-			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, 1, c_size,
-					(Dtype)(1.0), temp_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
-					temp_n_[param_id]->mutable_gpu_data());
-			// length of row vector in temp_n_
-			caffe_gpu_powx(temp_n_[param_id]->count(), temp_n_[param_id]->gpu_data(),
-					(Dtype)(0.5), temp_n_[param_id]->mutable_gpu_data());
-			// replicated lengths in temp_
+		caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, 1, c_size,
+				(Dtype)(1.0), temp_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
+				temp_n_[param_id]->mutable_gpu_data());
+		// length of row vector in temp_n_ ***
+		caffe_gpu_powx(temp_n_[param_id]->count(), temp_n_[param_id]->gpu_data(),
+				(Dtype)(0.5), temp_n_[param_id]->mutable_gpu_data());
+		// replicated lengths in temp_
+		caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, c_size, 1,
+				(Dtype)(1.0), temp_n_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
+				temp_[param_id]->mutable_gpu_data());
+		// normalized weights in temp_ ***
+		caffe_gpu_div_check_zero(net_params[param_id]->count(), net_params[param_id]->gpu_data(),
+				temp_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
+
+    	if (force_type == "Constant") {
+    		//A in temp_nxn_ and temp_nxn_2_
+    		temp_nxn_[param_id]->Reshape(nxn_shape);
+    		temp_nxn_2_[param_id]->Reshape(nxn_shape);
+    		caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, n_size, 1,
+					(Dtype)(1.0), ones_n_[param_id]->gpu_data(), ones_n_[param_id]->gpu_data(), (Dtype)(0.0),
+					temp_nxn_[param_id]->mutable_gpu_data());
+    		caffe_copy(temp_nxn_[param_id]->count(),temp_nxn_[param_id]->gpu_data(),temp_nxn_2_[param_id]->mutable_gpu_data());
+    		// A -2 * w_norm * w_norm^T in temp_nxn_
+    		caffe_gpu_gemm(CblasNoTrans,CblasTrans, n_size, n_size, c_size,
+					(Dtype)(-2.0), temp_[param_id]->gpu_data(), temp_[param_id]->gpu_data(), (Dtype)(1.0),
+					temp_nxn_[param_id]->mutable_gpu_data());
+    		// D in temp_nxn_
+    		caffe_gpu_geam(CblasNoTrans,CblasTrans, n_size, n_size,
+    				(Dtype)(1.0), temp_nxn_[param_id]->gpu_data(),
+    				(Dtype)(1.0), temp_nxn_2_[param_id]->gpu_data(),
+    				temp_nxn_[param_id]->mutable_gpu_data());
+    		caffe_gpu_powx_check_negative(temp_nxn_[param_id]->count(), temp_nxn_[param_id]->gpu_data(),
+					(Dtype)(0.5), temp_nxn_[param_id]->mutable_gpu_data());
+			// Dr = 1./D in temp_nxn_
+			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, n_size, 1,
+					(Dtype)(1.0), ones_n_[param_id]->gpu_data(), ones_n_[param_id]->gpu_data(), (Dtype)(0.0),
+					temp_nxn_2_[param_id]->mutable_gpu_data());
+			caffe_gpu_div_check_zero(temp_nxn_[param_id]->count(), temp_nxn_2_[param_id]->gpu_data(),
+					temp_nxn_[param_id]->gpu_data(), temp_nxn_[param_id]->mutable_gpu_data());
+			// sum of forces in temp_2_
+			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, 1, n_size,
+					(Dtype)(1.0), temp_nxn_[param_id]->gpu_data(), ones_n_[param_id]->gpu_data(), (Dtype)(0.0),
+					temp_n_2_[param_id]->mutable_gpu_data());
 			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, c_size, 1,
-					(Dtype)(1.0), temp_n_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
-					temp_[param_id]->mutable_gpu_data());
-			// normalized weights in temp_
-			caffe_gpu_div_check_zero(net_params[param_id]->count(), net_params[param_id]->gpu_data(),
-					temp_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
+					(Dtype)(1.0), temp_n_2_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
+					temp_2_[param_id]->mutable_gpu_data());
+			caffe_gpu_mul(temp_[param_id]->count(), temp_[param_id]->gpu_data(),
+					temp_2_[param_id]->gpu_data(), temp_2_[param_id]->mutable_gpu_data());
+			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, c_size, n_size,
+					(Dtype)(-1.0), temp_nxn_[param_id]->gpu_data(), temp_[param_id]->gpu_data(), (Dtype)(1.0),
+					temp_2_[param_id]->mutable_gpu_data());
+
+		} else if (force_type == "Degradation"){//normalized (wik-wjk)^2
 			// -sum of normalized weights along columns in temp_c_
 			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, 1, c_size, n_size,
 					(Dtype)(-1.0), ones_n_[param_id]->gpu_data(), temp_[param_id]->gpu_data(),  (Dtype)(0.0),
@@ -401,33 +384,35 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 			// sum of forces in temp_2_
 			caffe_gpu_axpy(temp_[param_id]->count(), (Dtype)(n_size), temp_[param_id]->gpu_data(),
 					temp_2_[param_id]->mutable_gpu_data());
-			// the lengths of projection in temp_n_2_
-			caffe_gpu_mul(temp_[param_id]->count(), temp_[param_id]->gpu_data(),
-						temp_2_[param_id]->gpu_data(), temp_3_[param_id]->mutable_gpu_data());
-			caffe_gpu_gemv(CblasNoTrans, n_size, c_size,
-						(Dtype)(1.0), temp_3_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
-						temp_n_2_[param_id]->mutable_gpu_data());
-			// force regularization in temp_3_
-			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, c_size, 1,
-						(Dtype)(1.0), temp_n_2_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(),  (Dtype)(0.0),
-						temp_3_[param_id]->mutable_gpu_data());
-			caffe_gpu_mul(temp_3_[param_id]->count(), temp_3_[param_id]->gpu_data(),
-						temp_[param_id]->gpu_data(), temp_3_[param_id]->mutable_gpu_data());
-			caffe_gpu_sub(temp_3_[param_id]->count(), temp_2_[param_id]->gpu_data(),
-						temp_3_[param_id]->gpu_data(), temp_3_[param_id]->mutable_gpu_data());
-			// scale and update diff
-			caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, c_size, 1,
-						(Dtype)(1.0), temp_n_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
-						temp_[param_id]->mutable_gpu_data());
-			caffe_gpu_mul(temp_[param_id]->count(), temp_[param_id]->gpu_data(),
-						temp_3_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
-			caffe_gpu_axpy(net_params[param_id]->count(),
-						local_force_decay,
-			            temp_[param_id]->gpu_data(),
-			            net_params[param_id]->mutable_gpu_diff());
+		} else if(force_type == "Gravity" || force_type == "Linear"){
+			NOT_IMPLEMENTED;
 		} else {
 			LOG(FATAL) << "Unknown force type: " << force_type;
 		}
+		// the lengths of projection in temp_n_2_
+		caffe_gpu_mul(temp_[param_id]->count(), temp_[param_id]->gpu_data(),
+					temp_2_[param_id]->gpu_data(), temp_3_[param_id]->mutable_gpu_data());
+		caffe_gpu_gemv(CblasNoTrans, n_size, c_size,
+					(Dtype)(1.0), temp_3_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
+					temp_n_2_[param_id]->mutable_gpu_data());
+		// force regularization in temp_3_
+		caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, c_size, 1,
+					(Dtype)(1.0), temp_n_2_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(),  (Dtype)(0.0),
+					temp_3_[param_id]->mutable_gpu_data());
+		caffe_gpu_mul(temp_3_[param_id]->count(), temp_3_[param_id]->gpu_data(),
+					temp_[param_id]->gpu_data(), temp_3_[param_id]->mutable_gpu_data());
+		caffe_gpu_sub(temp_3_[param_id]->count(), temp_2_[param_id]->gpu_data(),
+					temp_3_[param_id]->gpu_data(), temp_3_[param_id]->mutable_gpu_data());
+		// scale and update diff
+		caffe_gpu_gemm(CblasNoTrans,CblasNoTrans, n_size, c_size, 1,
+					(Dtype)(1.0), temp_n_[param_id]->gpu_data(), ones_c_[param_id]->gpu_data(), (Dtype)(0.0),
+					temp_[param_id]->mutable_gpu_data());
+		caffe_gpu_mul(temp_[param_id]->count(), temp_[param_id]->gpu_data(),
+					temp_3_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
+		caffe_gpu_axpy(net_params[param_id]->count(),
+					local_force_decay,
+					temp_[param_id]->gpu_data(),
+					net_params[param_id]->mutable_gpu_diff());
     }
 #else
     NO_GPU;

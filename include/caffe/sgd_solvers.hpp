@@ -44,6 +44,7 @@ class SGDSolver : public Solver<Dtype> {
   vector<shared_ptr<Blob<Dtype> > > history_, update_, temp_;
   vector<shared_ptr<Blob<Dtype> > > temp_2_, temp_3_, temp_n_,temp_c_,temp_n_2_;
   vector<shared_ptr<Blob<Dtype> > > ones_n_,ones_c_;
+  vector<shared_ptr<Blob<Dtype> > > temp_nxn_,temp_nxn_2_;
 
   DISABLE_COPY_AND_ASSIGN(SGDSolver);
 };

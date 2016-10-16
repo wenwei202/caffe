@@ -53,7 +53,7 @@ class Blob {
   void Print() const {
     if (!data_) { return ; }
     for (int i=0;i<count_;i++){
-  	  LOG(INFO)<<cpu_data()[i];
+  	  LOG(INFO)<<i<<" "<<cpu_data()[i]<<" "<<cpu_diff()[i];
     }
     return ;
   }
