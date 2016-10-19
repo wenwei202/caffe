@@ -40,17 +40,34 @@ def vh_decompose(conv, K):
     v.param[1].lr_mult = 0
     v_param = v.convolution_param
     v_param.num_output = K
-    v_param.kernel_h, v_param.kernel_w = conv_param.kernel_size, 1
-    v_param.pad_h, v_param.pad_w = conv_param.pad, 0
-    v_param.stride_h, v_param.stride_w = conv_param.stride, 1
+    v_param.kernel_h, v_param.kernel_w = conv_param.kernel_size._values[0], 1
+
+    if 0==len(conv_param.pad._values):
+        v_param.pad_h, v_param.pad_w = 0, 0
+    else:
+        v_param.pad_h, v_param.pad_w = conv_param.pad._values[0], 0
+
+    if 0 == len(conv_param.stride._values):
+        v_param.stride_h, v_param.stride_w = 1, 1
+    else:
+        v_param.stride_h, v_param.stride_w = conv_param.stride._values[0], 1
+
     # horizontal
     h = _create_new(conv.name + '_h')
     del(h.bottom[:])
     h.bottom.extend(v.top)
     h_param = h.convolution_param
-    h_param.kernel_h, h_param.kernel_w = 1, conv_param.kernel_size
-    h_param.pad_h, h_param.pad_w = 0, conv_param.pad
-    h_param.stride_h, h_param.stride_w = 1, conv_param.stride
+    h_param.kernel_h, h_param.kernel_w = 1, conv_param.kernel_size._values[0]
+
+    if 0==len(conv_param.pad._values):
+        h_param.pad_h, h_param.pad_w = 0, 0
+    else:
+        h_param.pad_h, h_param.pad_w = 0, conv_param.pad._values[0]
+
+    if 0 == len(conv_param.stride._values):
+        h_param.stride_h, h_param.stride_w = 1, 1
+    else:
+        h_param.stride_h, h_param.stride_w = 1, conv_param.stride._values[0]
     return v, h
 
 
