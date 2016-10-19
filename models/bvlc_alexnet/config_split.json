@@ -1,0 +1,12 @@
+{
+  "conv1_group0": 4,
+  "conv1_group1": 4,
+  "conv2_group0": 20,
+  "conv2_group1": 20,
+  "conv3_group0": 30,
+  "conv3_group1": 30,
+  "conv4_group0": 50,
+  "conv4_group1": 50,
+  "conv5_group0": 100,
+  "conv5_group1": 100
+}
