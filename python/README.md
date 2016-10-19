@@ -1,6 +1,10 @@
 # Python tools
 Use -h [--help] for help.
 
+## group_spitter.py - split the groups in alexnet to two parallel layers
+```
+python python/group_spitter.py --original_alexnet models/bvlc_alexnet/train_val.prototxt --split_alexnet models/bvlc_alexnet/train_val_split.prototxt --caffemodel models/bvlc_alexnet/bvlc_alexnet.caffemodel
+```
 ## resnet_generator.py - generates resnets on cifar-10
 
 e.g.
