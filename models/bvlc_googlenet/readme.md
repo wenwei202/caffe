@@ -7,6 +7,19 @@ sha1: 405fc5acd08a3bb12de8ee5e23a96bec22f08204
 caffe_commit: bc614d1bd91896e3faceaf40b23b72dab47d44f5
 ---
 
+# Learn GoogLeNet with structured sparisty
+```
+./models/bvlc_googlenet/train_script.sh 0.001 0.0001 0.0 0.0 0.00004 0 template_quick_solver_ssl.prototxt bvlc_googlenet.caffemodel &
+```
+
+# Fine-tune SSL-regularized GoogLeNet
+```
+./models/bvlc_googlenet/train_script.sh 0.001 0.0001 0.0 0.0 0.0 0 template_quick_solver_finetune.prototxt 0.001_0.0001_0.0_0.0_0.00012_Sun_Oct_16_00-03-46_PDT_2016/googlenet_ssl_iter_1600000.caffemodel &
+```
+
+
+
+
 This model is a replication of the model described in the [GoogleNet](http://arxiv.org/abs/1409.4842) publication. We would like to thank Christian Szegedy for all his help in the replication of GoogleNet model.
 
 Differences:
