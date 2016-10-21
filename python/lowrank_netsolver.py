@@ -11,8 +11,7 @@ import copy
 import gc
 
 
-
-def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
+def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat,pruning_iter = -1):
     solver_parser = caffeparser.CaffeProtoParser(solverfile)
     solver_msg = solver_parser.readProtoSolverFile()
     lr_policy = str(solver_msg.lr_policy)
@@ -29,6 +28,8 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
     net_msg = net_parser.readProtoNetFile()
     loop_layers = net_msg.layer
 
+    pruning_flag = True
+
     solver = caffe.get_solver(solverfile)
     if None != caffemodel:
         solver.net.load_hdf5(caffemodel)
@@ -38,6 +39,8 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
     while iter<max_iter:
         # train for some steps
         solver.step(test_interval)
+        iter += test_interval
+        pruning_flag = (pruning_iter==-1) or (pruning_iter >= iter)
 
         # initialize the parameters in the new network
         new_parameters = {}
@@ -67,7 +70,7 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
                 low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(cur_weights, ratio)
                 rank_info = rank_info + "_{}".format(rank)
                 ranks[0].append(rank)
-                if rank < cur_weights.shape[0]: # generate lower-rank network
+                if rank < cur_weights.shape[0] and pruning_flag: # generate lower-rank network
                     new_net_flag = True
                     cur_layer.convolution_param.num_output = rank
                     new_parameters[cur_layer.name] = {0: low_rank_filters[:]}
@@ -79,7 +82,7 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
                     else:
                         new_parameters[next_layer.name] = {0: new_linear_combinations[:]}
 
-        iter += test_interval
+
         if []==rank_mat:
             rank_mat=ranks
         else:
@@ -112,6 +115,7 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
                 solver_msg.force_iter = solver_msg.force_iter - iter
                 if solver_msg.force_iter < 0:
                     solver_msg.force_iter = 0
+
 
             solver_msg.stepvalue._values=[]
             for idx, step_val in enumerate(left_steps):
@@ -153,15 +157,21 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat):
         #plt.show()
         return {}
     else :
+        if -1 != pruning_iter and 0 != pruning_iter:
+            pruning_iter = pruning_iter - iter
+            if pruning_iter < 0:
+                pruning_iter = 0
         return {'solver':str(filepath_solver),
                 'weights':str(filepath_caffemodel),
-                'rank_mat':rank_mat}
+                'rank_mat':rank_mat,
+                'pruning_iter':pruning_iter}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--solver', type=str, required=True, help="Solver prototxt")
     parser.add_argument('--weights', type=str, required=False, help="Caffemodel in hdf5 format")
     parser.add_argument('--ratio', type=float, required=False, help="The ratio of reserved info after pca")
+    parser.add_argument('--pruning_iter', type=float, required=False, help="The ratio of reserved info after pca")
     parser.add_argument('--device', type=int, required=False,help="The GPU device id, -1 for CPU")
     args = parser.parse_args()
     solverfile = args.solver
@@ -170,6 +180,10 @@ if __name__ == "__main__":
     ratio = args.ratio
     if ratio == None:
         ratio = 0.99
+
+    pruning_iter = args.pruning_iter
+    if pruning_iter == None:
+        pruning_iter = -1
 
     device = args.device
     if device == None:
@@ -187,8 +201,9 @@ if __name__ == "__main__":
     rank_mat = []
     train_params =  {'solver': str(solverfile),
      'weights': str(caffemodel),
-     'rank_mat': rank_mat}
+     'rank_mat': rank_mat,
+     'pruning_iter':pruning_iter}
 
     while {}!=train_params:
-        train_params = lowrank_netsolver(train_params['solver'],train_params['weights'],ratio,train_params['rank_mat'])
+        train_params = lowrank_netsolver(train_params['solver'],train_params['weights'],ratio,train_params['rank_mat'],train_params['pruning_iter'])
         gc.collect()
