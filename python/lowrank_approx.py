@@ -118,7 +118,7 @@ def approx_lowrank_weights(orig_model, orig_weights, conf,
             h = V[:K, :] * np.sqrt(S)[:K, np.newaxis]
             h = h.reshape((K, 1, D, N)).transpose(3, 0, 1, 2)
             h_weights[N*g:N*(g+1)] = h.copy()
-    lowrank_net.save(lowrank_weights)
+    lowrank_net.save_hdf5(lowrank_weights)
 
 
 def main(args):
