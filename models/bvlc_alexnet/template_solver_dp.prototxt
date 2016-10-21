@@ -7,9 +7,7 @@ test_interval: 1000
 #max_iter: 450000
 force_iter: 160000
 lr_policy: "multistep"
-stepvalue: 160000
-stepvalue: 220000
-#stepvalue: 180000
+stepvalue: 200000
 max_iter: 240000
 gamma: 0.1
 display: 200
