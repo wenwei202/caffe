@@ -17,6 +17,9 @@ Caffemodels of AlexNet learned by SSL are uploaded to [Caffe Model Zoo](https://
 
 Please check [examples/cifar10](/examples/cifar10/readme.md) for the detailed tutorial to use the code.
 
+## Issue
+Let us know here if any question: [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
+
 ## Overview of Features
 Please refer to our [NIPS 2016 paper](http://arxiv.org/abs/1608.03665) for technical details.
 ### Train sparsity-structured deep neural networks 
