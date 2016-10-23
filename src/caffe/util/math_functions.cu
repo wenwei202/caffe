@@ -271,6 +271,13 @@ __global__ void mul_kernel(const int n, const Dtype* a,
   }
 }
 
+template <typename Dtype>
+__global__ void keep_same_direction_kernel(const int n, const Dtype* X, Dtype* Y) {
+  CUDA_KERNEL_LOOP(index, n) {
+    if(X[index]*Y[index]<0) Y[index] = 0;
+  }
+}
+
 template <>
 void caffe_gpu_mul<float>(const int N, const float* a,
     const float* b, float* y) {
@@ -285,6 +292,20 @@ void caffe_gpu_mul<double>(const int N, const double* a,
   // NOLINT_NEXT_LINE(whitespace/operators)
   mul_kernel<double><<<CAFFE_GET_BLOCKS(N), CAFFE_CUDA_NUM_THREADS>>>(
       N, a, b, y);
+}
+
+template <>
+void caffe_gpu_keep_same_direction<float>(const int N, const float* X,
+		float* Y){
+  keep_same_direction_kernel<float><<<CAFFE_GET_BLOCKS(N), CAFFE_CUDA_NUM_THREADS>>>(
+	      N, X,Y);
+}
+
+template <>
+void caffe_gpu_keep_same_direction<double>(const int N, const double* X,
+		double* Y){
+  keep_same_direction_kernel<double><<<CAFFE_GET_BLOCKS(N), CAFFE_CUDA_NUM_THREADS>>>(
+	      N, X,Y);
 }
 
 template <typename Dtype>

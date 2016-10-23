@@ -30,6 +30,10 @@ void caffe_axpy(const int N, const Dtype alpha, const Dtype* X,
     Dtype* Y);
 
 template <typename Dtype>
+void caffe_cpu_keep_same_direction(const int N, const Dtype* X,
+    Dtype* Y);
+
+template <typename Dtype>
 void caffe_cpu_axpby(const int N, const Dtype alpha, const Dtype* X,
     const Dtype beta, Dtype* Y);
 
@@ -167,6 +171,10 @@ void caffe_gpu_gemv(const CBLAS_TRANSPOSE TransA, const int M, const int N,
 
 template <typename Dtype>
 void caffe_gpu_axpy(const int N, const Dtype alpha, const Dtype* X,
+    Dtype* Y);
+
+template <typename Dtype>
+void caffe_gpu_keep_same_direction(const int N, const Dtype* X,
     Dtype* Y);
 
 template <typename Dtype>

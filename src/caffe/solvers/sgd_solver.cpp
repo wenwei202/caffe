@@ -226,6 +226,8 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
   const vector<float>& net_params_force_mult = this->net_->params_force_mult();
   Dtype force_decay = this->param_.force_decay();
   string force_type = this->param_.force_type();
+  string force_decay_type = this->param_.force_decay_type();
+  string force_direction = this->param_.force_direction();
   Dtype local_force_decay = force_decay * net_params_force_mult[param_id];
   int num_columns = net_params[param_id]->count(1);
   int num_rows = net_params[param_id]->shape(0);
@@ -234,13 +236,16 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
     if (local_force_decay) {
 		// add force decay
     	temp_2_[param_id]->Reshape(net_params[param_id]->shape());
+    	// temporary diff in temp_3_
+    	temp_3_[param_id]->Reshape(net_params[param_id]->shape());
+    	caffe_set(temp_3_[param_id]->count(), (Dtype)(0.0), temp_3_[param_id]->mutable_cpu_diff());
 		for (int i=0; i<num_rows-1; i++){
 			for (int j=i+1; j<num_rows; j++){
 				// force regularization between every pair of kernels
 				const Dtype * kernel0_data = net_params[param_id]->cpu_data() + i * num_columns;
 				const Dtype * kernel1_data = net_params[param_id]->cpu_data() + j * num_columns;
-				Dtype * kernel0_diff = net_params[param_id]->mutable_cpu_diff() + i * num_columns;
-				Dtype * kernel1_diff = net_params[param_id]->mutable_cpu_diff() + j * num_columns;
+				Dtype * kernel0_diff = temp_3_[param_id]->mutable_cpu_diff() + i * num_columns;
+				Dtype * kernel1_diff = temp_3_[param_id]->mutable_cpu_diff() + j * num_columns;
 				Dtype kernel0_length = caffe_cpu_dot(num_columns, kernel0_data, kernel0_data);
 				Dtype kernel1_length = caffe_cpu_dot(num_columns, kernel1_data, kernel1_data);
 				kernel0_length = sqrt(kernel0_length);
@@ -287,15 +292,53 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 				caffe_axpy(num_columns, -projection_length/kernel0_length, kernel0_data,
 										 temp_[param_id]->mutable_cpu_data());
 				// scale and add gradients to drag kernels together (local_force_decay>0)
-				caffe_axpy(num_columns, local_force_decay * kernel0_length, // SHOULD WE divide kernel0_length?
+				caffe_axpy(num_columns, kernel0_length, // SHOULD WE divide kernel0_length?
 						temp_[param_id]->cpu_data(), kernel0_diff);
 
 				caffe_axpy(num_columns, -projection_length/kernel1_length, kernel1_data,
 										temp_2_[param_id]->mutable_cpu_data());
-				caffe_axpy(num_columns, local_force_decay * kernel1_length,
+				caffe_axpy(num_columns, kernel1_length,
 						temp_2_[param_id]->cpu_data(), kernel1_diff);
 			}
 		}
+
+		// control the direction of regularization gradients
+		if("same"==force_direction){
+			// zero out regularization gradients with the opposite directions with error gradient
+			caffe_cpu_keep_same_direction(temp_3_[param_id]->count(),
+					net_params[param_id]->cpu_diff(),
+					temp_3_[param_id]->mutable_cpu_diff());
+		} else if ("all"!=force_direction){
+			LOG(FATAL)<<"Unsupported force_direction = " << force_direction;
+		}//esle keep the original
+
+		// decay strength
+		Dtype final_force_decay = 0;
+		if("fixed"==force_decay_type){
+			final_force_decay = local_force_decay;
+		} else if ("adaptive"==force_decay_type){
+			// adapt the strength to the error gradients
+			Dtype error_length = sqrt(
+					caffe_cpu_dot(net_params[param_id]->count(),
+					net_params[param_id]->cpu_diff(),
+					net_params[param_id]->cpu_diff()));
+			Dtype regularization_length = sqrt(
+					caffe_cpu_dot(temp_3_[param_id]->count(),
+					temp_3_[param_id]->cpu_diff(),
+					temp_3_[param_id]->cpu_diff()));
+			final_force_decay = 0;
+			if(fabs(regularization_length)>=(Dtype)1.0e-8) {
+				final_force_decay = local_force_decay * (error_length / regularization_length);
+			} else {
+				LOG(WARNING)<<"Small force regularization. Set to 0!";
+			}
+		} else {
+			LOG(FATAL)<<"Unsupported force_decay_type = " << force_decay_type;
+		}
+		caffe_axpy(net_params[param_id]->count(),
+				final_force_decay,
+				temp_3_[param_id]->cpu_diff(),
+				net_params[param_id]->mutable_cpu_diff());
     }
     break;
   }
@@ -409,10 +452,49 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 					temp_[param_id]->mutable_gpu_data());
 		caffe_gpu_mul(temp_[param_id]->count(), temp_[param_id]->gpu_data(),
 					temp_3_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
-		caffe_gpu_axpy(net_params[param_id]->count(),
-					local_force_decay,
+
+		// control the direction of regularization gradients
+		if("same"==force_direction){
+			// zero out regularization gradients with the opposite directions with error gradient
+			caffe_gpu_keep_same_direction(temp_[param_id]->count(),
+					net_params[param_id]->gpu_diff(),
+					temp_[param_id]->mutable_gpu_data());//diff is stored in temp_.data
+		} else if ("all"!=force_direction){
+			LOG(FATAL)<<"Unsupported force_direction = " << force_direction;
+		}//esle keep the original
+
+		// decay strength
+		Dtype final_force_decay = 0;
+		if("fixed"==force_decay_type){
+			final_force_decay = local_force_decay;
+		} else if ("adaptive"==force_decay_type){
+			// adapt the strength to the error gradients
+			Dtype error_length = 0;
+			caffe_gpu_dot(net_params[param_id]->count(),
+					net_params[param_id]->gpu_diff(),
+					net_params[param_id]->gpu_diff(),
+					&error_length);
+			error_length = sqrt(error_length);
+			Dtype regularization_length = 0;
+			caffe_gpu_dot(temp_[param_id]->count(),
 					temp_[param_id]->gpu_data(),
-					net_params[param_id]->mutable_gpu_diff());
+					temp_[param_id]->gpu_data(),
+					&regularization_length);
+			regularization_length = sqrt(regularization_length);
+			final_force_decay = 0;
+			if(fabs(regularization_length)>=(Dtype)1.0e-8) {
+				final_force_decay = local_force_decay * (error_length / regularization_length);
+			} else {
+				LOG(WARNING)<<"Small force regularization. Set to 0!";
+			}
+		} else {
+			LOG(FATAL)<<"Unsupported force_decay_type = " << force_decay_type;
+		}
+
+		caffe_gpu_axpy(net_params[param_id]->count(),
+				final_force_decay,
+				temp_[param_id]->gpu_data(),
+				net_params[param_id]->mutable_gpu_diff());
     }
 #else
     NO_GPU;

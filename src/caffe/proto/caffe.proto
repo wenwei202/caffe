@@ -98,7 +98,7 @@ message NetParameter {
 // NOTE
 // Update the next available ID when you add a new SolverParameter field.
 //
-// SolverParameter next available ID: 43 (last added: type)
+// SolverParameter next available ID: 46 (last added: type)
 message SolverParameter {
   //////////////////////////////////////////////////////////////////////////////
   // Specifying the train and test networks
@@ -178,13 +178,22 @@ message SolverParameter {
   // controlled by weight_decay
   optional string regularization_type = 29 [default = "L2"];
   
-  // The decay of force regularization.
+  // The directions of gradients by force regularization
+  // "all": the exact gradients derivatived by force regularization
+  // "same": only gradients (which have the same directions with error gradients) are used.
+  optional string force_direction = 45 [default = "all"];
+  // The type of the strength of force regularization/decay
+  // "fixed": its strength is fixed as force_decay
+  // "adaptive": the length (length1) of regularization gradients in each layer is adapted to the length (length2) of error gradients.
+  //             In this case, length1=force_decay*length2
+  optional string force_decay_type = 44 [default = "fixed"];
+  // The strength/decay of force regularization.
   optional float force_decay = 42 [default = 0.0]; 
-  // type of force regularization - Gravity, Linear, Constant, Degradation
+  // Type of force regularization - Gravity, Linear, Constant, Degradation
   optional string force_type = 41 [default = "Degradation"];
   // The iterations after which force_decay will be set to zero.
   optional int32 force_iter = 43 [default = -1]; 
-  
+    
   // the stepsize for learning rate policy "step"
   optional int32 stepsize = 13;
   // the stepsize for learning rate policy "multistep"
