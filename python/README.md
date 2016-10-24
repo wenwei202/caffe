@@ -161,9 +161,5 @@ From [C. Tai, ICLR 2016](https://github.com/chengtaipu/lowrankcnn)
 
 Generate lowrank weights
 ```
-python python/lowrank_approx.py --config models/bvlc_alexnet/config_split.json --model models/bvlc_alexnet/deploy_split.prototxt --weights models/bvlc_alexnet/bvlc_alexnet_split.caffemodel.h5 --save_model models/bvlc_alexnet/deploy_split_lowrank_iclr.prototxt --save_weights models/bvlc_alexnet/bvlc_alexnet_split_lowrank_iclr.caffemodel.h5
-```
-Generate network prototxt for training
-```
-python python/lowrank_approx.py --config models/bvlc_alexnet/config_split.json --model models/bvlc_alexnet/train_val_split.prototxt --save_model models/bvlc_alexnet/train_val_split_lowrank_iclr.prototxt
+python python/lowrank_approx.py --config models/bvlc_alexnet/config_iclr.json --model models/bvlc_alexnet/train_val.prototxt --weights models/bvlc_alexnet/bvlc_alexnet.caffemodel.h5 --save_model models/bvlc_alexnet/train_val_lowrank_iclr.prototxt --save_weights models/bvlc_alexnet/bvlc_alexnet_lowrank_iclr.caffemodel.h5
 ```
