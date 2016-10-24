@@ -52,6 +52,10 @@ python python/nn_decomposer.py \
 
 `--rankratio 0.95` is also supported to reserve 95% information after low-rank approximation. Note that `--rankratio 1.0` can be used to generate a full-rank equivalent network.
 
+`--rank_config models/bvlc_alexnet/config.json` is also supported to decompose only partial layers.
+
+Only one of `--rankratio`, `--rank_config` and `--ranks` can be used.
+
 Each conv layer will be decompsed to one conv layers (with low-rank basis as the filters) and one 1x1 conv layer (which linearly combines the feature map basis to generate output feature maps with the same dimensionality).
 In this example, the network prototxt is saved as `examples/cifar10/cifar10_full_train_test.prototxt.lowrank.prototxt` and corresponding decomposed weights are saved in `examples/cifar10/cifar10_full_iter_240000_0.8201.caffemodel.lowrank.caffemodel`. Note that the original biases are moved to linear combination layer.
 
