@@ -6,6 +6,13 @@ import matplotlib.pyplot as plt
 import argparse
 import caffeparser
 import caffe_apps
+import json
+import numpy as np
+
+def load_config(config_file):
+    with open(config_file, 'r') as fp:
+        conf = json.load(fp)
+    return conf
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -13,21 +20,24 @@ if __name__ == "__main__":
     parser.add_argument('--caffemodel', type=str, required=True,help="The trained caffemodel to be decomposed.")
     parser.add_argument('--rankratio', type=float, required=False,help="The ratio of reserved information based on eigenvalues.")
     parser.add_argument('--ranks', type=str, required=False,help="The reserved rank in each conv layers.")
+    parser.add_argument('--rank_config', type=str, required=False, help="The json file to configure ranks in layers.")
     args = parser.parse_args()
     prototxt = args.prototxt
     caffemodel = args.caffemodel
+
     rankratio = args.rankratio
     ranks = args.ranks
-    if None!=ranks and None!=rankratio:
-        print "Please use either --rankratio or --ranks"
+    rank_config = args.rank_config
+    rank_param_num = (None!=ranks) + (None!=rankratio) + (None!=rank_config)
+    if 1!=rank_param_num:
+        print "Please use one of --rankratio, --ranks or --rank_config"
         exit()
-    elif None==ranks and None==rankratio:
-        print "Using default --rankratio 0.95"
-        rankratio = 0.95
-    elif None==rankratio and None != ranks:
+    if None != ranks:
         ranks = args.ranks.split(',')
         for i in range(0,len(ranks)):
             ranks[i] = int(ranks[i])
+    if None != rank_config:
+        rank_config = load_config(args.rank_config)
 
     net_parser = caffeparser.CaffeProtoParser(prototxt)
     net_msg = net_parser.readProtoNetFile()
@@ -49,14 +59,15 @@ if __name__ == "__main__":
     for cur_layer in loop_layers:
         layer_idx += 1
         layer_name = cur_layer.name
-        if 'Convolution' == cur_layer.type:
+        if 'Convolution' == cur_layer.type and ( (None==rank_config) or (layer_name in rank_config.keys()) ):
             conv_idx += 1
-            assert 1==cur_layer.convolution_param.group
+            group = cur_layer.convolution_param.group
+            assert (1==group) or (None==rankratio)
             weights = orig_net.params[layer_name][0].data
             filter_num = weights.shape[0]
-            # chan_num = weights.shape[1]
-            # kernel_h = weights.shape[2]
-            # kernel_w = weights.shape[3]
+            chan_num = weights.shape[1]
+            kernel_h = weights.shape[2]
+            kernel_w = weights.shape[3]
             # kernel_size = kernel_h * kernel_w
             # # decompose the weights
             # weights_pca = weights.reshape((filter_num, chan_num * kernel_size)).transpose()
@@ -72,12 +83,33 @@ if __name__ == "__main__":
             # weights_full = weights_pca.transpose().reshape((filter_num, chan_num, kernel_h, kernel_w))
             # low_rank_filters = weights_full[0:rank]
             # linear_combinations = eig_vecs[:,0:rank].reshape((filter_num,rank,1,1))
+            cur_rank = None
+            if None != ranks:
+                cur_rank = ranks[conv_idx]
+                cur_rank = cur_rank / group * group
+            elif None != rank_config:
+                cur_rank = rank_config[layer_name]
+                cur_rank = cur_rank / group * group
+            final_rank = 0
+            if None!=rankratio:
+                low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(filter_weights=weights,
+                #low_rank_filters, linear_combinations, rank = caffe_apps.filter_svd(filter_weights=weights,
+                                                                                    ratio=rankratio,
+                                                                                    rank= cur_rank)
+                final_rank = rank
+            else:
+                group_size1 = cur_rank/group
+                group_size2 = filter_num/group
+                low_rank_filters = np.zeros((cur_rank, chan_num, kernel_h, kernel_w))
+                linear_combinations = np.zeros((filter_num, group_size1, 1, 1))
+                for g in range(0,group):
+                    low_rank_filters[g * group_size1:(g + 1) * group_size1], linear_combinations[g * group_size2:( g + 1) * group_size2], rank =  \
+                        caffe_apps.filter_pca(filter_weights=weights[g * group_size2:(g + 1) * group_size2],
+                                              ratio=rankratio,
+                                              rank=group_size1)
+                    final_rank += rank
 
-            low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(filter_weights=weights,
-            #low_rank_filters, linear_combinations, rank = caffe_apps.filter_svd(filter_weights=weights,
-                                                                                ratio=rankratio,
-                                                                                rank= ranks[conv_idx] if None!=ranks else  None)
-            rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, rank, filter_num)
+            rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, final_rank, filter_num)
 
             cur_layer_param = net_msg.layer._values.pop(layer_idx)
             # generate the low rank conv layer and move bias to the next layer
@@ -88,7 +120,7 @@ if __name__ == "__main__":
             assert len(low_rank_layer.param._values)<=2
             if len(low_rank_layer.param._values)==2:
                 low_rank_layer.param._values.pop()
-            low_rank_layer.convolution_param.num_output = rank
+            low_rank_layer.convolution_param.num_output = final_rank
             if low_rank_layer.convolution_param.HasField("bias_filler"):
                 low_rank_layer.convolution_param.ClearField("bias_filler")
             bias_flag = low_rank_layer.convolution_param.bias_term
