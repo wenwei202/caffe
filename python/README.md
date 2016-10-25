@@ -10,6 +10,7 @@ python python/caffemodel_convertor.py \
 --network examples/mnist/lenet_train_test.prototxt \
 --caffemodel examples/mnist/lenet_0.9917.caffemodel.h5
 ```
+In this branch, please use `hdf5` caffe model file **always**.
 
 ## group_spitter.py - split the groups in alexnet to two parallel layers
 ```
