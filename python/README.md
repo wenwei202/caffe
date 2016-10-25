@@ -163,3 +163,11 @@ Generate lowrank weights
 ```
 python python/lowrank_approx.py --config models/bvlc_alexnet/config_iclr.json --model models/bvlc_alexnet/train_val.prototxt --weights models/bvlc_alexnet/bvlc_alexnet.caffemodel.h5 --save_model models/bvlc_alexnet/train_val_lowrank_iclr.prototxt --save_weights models/bvlc_alexnet/bvlc_alexnet_lowrank_iclr.caffemodel.h5
 ```
+
+## mixed_decomposer_tuner.py - decompose net by mixed low-rank approximation
+e.g. decompose the first two layers by the method in iclr and other layers by cvpr method
+
+```
+python python/mixed_decomposer_tuner.py --solver=models/bvlc_alexnet/finetune_solver.prototxt --model models/bvlc_alexnet/train_val.prototxt --weights=models/bvlc_alexnet/bvlc_alexnet.caffemodel.h5 --rank_config1 models/bvlc_alexnet/config_iclr.json --rank_config2 models/bvlc_alexnet/config_cvpr.json --device 0
+```
+Note that the caffe model must be in `hdf5` format
