@@ -14,8 +14,10 @@ if __name__ == "__main__":
     parser.add_argument('--rank_config1', required=True, help="JSON config file 1 specifying the low-rank approximation")
     parser.add_argument('--rank_config2', required=True, help="JSON config file 2 specifying the low-rank approximation")
     parser.add_argument('--device', type=int, required=False,help="The GPU device id, -1 for CPU")
+    parser.add_argument('--path', type=str, required=True, help="The path to store generated net model and weight caffemodel")
     args = parser.parse_args()
-
+    save_model = args.path + "/lowrank_net.prototxt"
+    save_weights = args.path + "/lowrank_weights.caffemodel.h5"
     # e.g.
     # python/lowrank_approx.py \
     # --config models/bvlc_alexnet/config_iclr.json \
@@ -24,12 +26,10 @@ if __name__ == "__main__":
     script_str1 = "python python/lowrank_approx.py " + \
                   " --config " + args.rank_config1 + \
                   " --model " + args.model + \
-                  " --weights " + args.weights
+                  " --weights " + args.weights + \
+                  " --save_model " + save_model + \
+                  " --save_weights " + save_weights
     os.system(script_str1)
-    prefix, ext = os.path.splitext(args.model)
-    save_model = prefix + '_lowrank' + ext
-    prefix, ext = os.path.splitext(args.weights)
-    save_weights = prefix + '_lowrank' + ext
 
     # e.g. python python/nn_decomposer.py \
     # --prototxt models/bvlc_alexnet/train_val.prototxt \

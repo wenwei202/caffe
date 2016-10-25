@@ -150,4 +150,11 @@ if __name__ == '__main__':
     parser.add_argument('--save_weights',
         help="Path to the caffemodel of the low-rank approximated net")
     args = parser.parse_args()
+
+    file_split = os.path.splitext(args.weights)
+    assert ".h5" == file_split[1]
+    if None!=args.save_weights:
+        file_split = os.path.splitext(args.save_weights)
+        assert ".h5" == file_split[1]
+
     main(args)

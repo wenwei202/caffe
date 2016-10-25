@@ -45,7 +45,7 @@ new_json2="${snapshot_path}/config_cvpr.json"
 cp ${rank_config1} ${new_json1}
 cp ${rank_config2} ${new_json2}
 
-python python/mixed_decomposer_tuner.py --solver=$solverfile --model ${orig_net}  --weights=${orig_caffemodel} --rank_config1 ${new_json1} --rank_config2 ${new_json2} --device ${device_id} >> "${snapshot_path}/train.info" 2>&1
+python python/mixed_decomposer_tuner.py --solver=$solverfile --model ${orig_net}  --weights=${orig_caffemodel} --rank_config1 ${new_json1} --rank_config2 ${new_json2} --device ${device_id} --path ${snapshot_path} >> "${snapshot_path}/train.info" 2>&1
 
 cat ${snapshot_path}/train.info | grep loss+ | awk '{print $8 " " $11}' > ${snapshot_path}/loss.info
 python python/plot_train_info.py --traininfo ${snapshot_path}/train.info
