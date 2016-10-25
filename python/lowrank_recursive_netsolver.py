@@ -164,7 +164,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     solverfile = args.solver
     caffemodel = args.weights
-
+    file_split = os.path.splitext(caffemodel)
+    assert ".h5" == file_split[1]
+    
     ratio = args.ratio
     if ratio == None:
         ratio = 0.99

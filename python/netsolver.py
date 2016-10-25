@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import caffe
 import argparse
-import caffeparser
+import os
 # --solver examples/cifar10/cifar10_full_multistep_solver.prototxt --weights examples/cifar10/cifar10_full_iter_50000.caffemodel.h5
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -13,6 +13,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     solverfile = args.solver
     caffemodel = args.weights
+    file_split = os.path.splitext(caffemodel)
+    assert ".h5" == file_split[1]
 
     device = args.device
     if device == None:
