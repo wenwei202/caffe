@@ -167,7 +167,7 @@ if __name__ == "__main__":
 
     # save the new network proto
     #file_split = os.path.splitext(prototxt)
-    filepath_network = prototxt+".lowrank.prototxt" #file_split[0] + '_lowrank' + file_split[1]
+    filepath_network = prototxt+".lowrank.prototxt" # DO NOT CHANGE THE SUFFIX - Other scripts depend on this
     file = open(filepath_network, "w")
     if not file:
         raise IOError("ERROR (" + filepath_network + ")!")
@@ -182,7 +182,7 @@ if __name__ == "__main__":
             dst_net.params[key][keykey].data[:] = valval[:]
 
     #file_split = os.path.splitext(caffemodel)
-    filepath_caffemodel = caffemodel + '.lowrank.caffemodel.h5'
+    filepath_caffemodel = caffemodel + '.lowrank.caffemodel.h5' # DO NOT CHANGE THE SUFFIX - Other scripts depend on this
     dst_net.save_hdf5(filepath_caffemodel)
 
     print rank_info

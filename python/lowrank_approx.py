@@ -10,9 +10,9 @@ import google.protobuf as pb
 from argparse import ArgumentParser
 
 
-CAFFE_ROOT = './caffe'
-if osp.join(CAFFE_ROOT, 'python') not in sys.path:
-    sys.path.insert(0, osp.join(CAFFE_ROOT, 'python'))
+#CAFFE_ROOT = './caffe'
+#if osp.join(CAFFE_ROOT, 'python') not in sys.path:
+#    sys.path.insert(0, osp.join(CAFFE_ROOT, 'python'))
 import caffe
 from caffe.proto.caffe_pb2 import NetParameter, LayerParameter
 
@@ -93,7 +93,7 @@ def make_lowrank_model(input_file, conf, output_file):
 def approx_lowrank_weights(orig_model, orig_weights, conf,
                            lowrank_model, lowrank_weights):
     orig_net = caffe.Net(orig_model, orig_weights, caffe.TEST)
-    lowrank_net = caffe.Net(lowrank_model, orig_weights, caffe.TEST)
+    lowrank_net = caffe.Net(lowrank_model, orig_weights, caffe.TRAIN)
     for layer_name in conf:
         W, b = [p.data for p in orig_net.params[layer_name]]
         v_weights, v_bias = \
@@ -126,13 +126,13 @@ def main(args):
     # Make prototxt
     if args.save_model is None:
         prefix, ext = osp.splitext(args.model)
-        args.save_model = prefix + '_lowrank' + ext
+        args.save_model = prefix + '_lowrank' + ext # DO NOT CHANGE THE FILENAME - Other scripts depend on this
     make_lowrank_model(args.model, conf, args.save_model)
     # Approximate conv weights
     if args.weights is None: return
     if args.save_weights is None:
         prefix, ext = osp.splitext(args.weights)
-        args.save_weights = prefix + '_lowrank' + ext
+        args.save_weights = prefix + '_lowrank' + ext # DO NOT CHANGE THE FILENAME - Other scripts depend on this
     approx_lowrank_weights(args.model, args.weights, conf, args.save_model,
                            args.save_weights)
 
