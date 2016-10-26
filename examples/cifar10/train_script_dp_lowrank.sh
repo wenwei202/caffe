@@ -10,7 +10,7 @@ file_prefix="cifar10_full_dp"
 
 if [ "$#" -lt 6 ]; then
 	echo "Illegal number of parameters"
-	echo "Usage: base_lr rank_ratio force_decay force_type device_id template_solver.prototxt [orig_caffemodel]"
+	echo "Usage: base_lr rank_ratio force_decay force_type device_id template_solver.prototxt orig_caffemodel [pruning_iter]"
 	exit
 fi
 base_lr=$1
@@ -20,6 +20,7 @@ force_type=$4
 solver_mode="GPU"
 device_id=0
 template_solver=$6
+orig_caffemodel=$7
 
 current_time=$(date)
 current_time=${current_time// /_}
@@ -44,12 +45,13 @@ fi
 echo "solver_mode: $solver_mode" >> $solverfile
 
 # start training
-if [ "$#" -ge "7" ]; then
-	caffemodel=$7
-	python python/lowrank_netsolver.py --solver ${solverfile} --weights ${caffemodel} --device ${device_id} --ratio ${rank_ratio} > ${snapshot_path}/train.info 2>&1
+if [ "$#" -ge "8" ]; then
+	python python/lowrank_netsolver.py --solver ${solverfile} --weights ${orig_caffemodel} --device ${device_id} --ratio ${rank_ratio} --pruning_iter $8 > ${snapshot_path}/train.info 2>&1
 else
-        python python/lowrank_netsolver.py --solver ${solverfile} --device ${device_id} --ratio ${rank_ratio} > ${snapshot_path}/train.info 2>&1
+	python python/lowrank_netsolver.py --solver ${solverfile} --weights ${orig_caffemodel} --device ${device_id} --ratio ${rank_ratio}  > ${snapshot_path}/train.info 2>&1
 fi
 
 cat ${snapshot_path}/train.info | grep loss+ | awk '{print $8 " " $11}' > ${snapshot_path}/loss.info
 python python/plot_train_info.py --traininfo ${snapshot_path}/train.info
+content="$(hostname) done: ${0##*/} ${@}. Results in ${snapshot_path}"
+echo ${content} | mail -s "Training done" youremail@example.com
