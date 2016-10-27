@@ -34,12 +34,8 @@ python python/resnet_generator.py \
 python python/resnet_generator.py \
 --net_template examples/cifar10/resnet_template.prototxt \
 --n 3 \
---sparsify # add SymmetricRectifyLayer and SparsifyLayer before every ReLULayer
+--force_regularization # add force_mult to conv layers except the first conv and shortcuts
 
-python python/resnet_generator.py \
---net_template examples/cifar10/resnet_template.prototxt \
---n 3 \
---regularize # add SparsifyLayer before ConvolutionLayers except the shortcuts
 ```
 
 ## nn_decomposer.py - decompose convolutional layers to low rank space
