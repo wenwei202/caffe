@@ -11,9 +11,10 @@ import os
 
 g_sparsify_relu = False
 g_regularize_conv = False
+g_force_mult_conv = 0.0
 
 def add_conv_layer(net_msg,name,bottom,num_output,pad,kernel_size,stride,
-                   bias_term=True,learn_depth=False,input_channel=1,connectivity_mode=0):
+                   bias_term=True,learn_depth=False,input_channel=1,connectivity_mode=0,force_mult=0.0):
     conv_layer = net_msg.layer.add()
     conv_layer.name = name
     conv_layer.type = 'Convolution'
@@ -26,6 +27,7 @@ def add_conv_layer(net_msg,name,bottom,num_output,pad,kernel_size,stride,
     # param info for weight and bias
     lr_param = caffe_pb2.ParamSpec()
     lr_param.lr_mult = 1
+    lr_param.force_mult = force_mult
     if learn_depth:
         blk_param = caffe_pb2.BlockGroupLassoSpec()
         blk_param.xdimen = kernel_size*kernel_size*input_channel
@@ -177,13 +179,13 @@ def add_sparsify_layer(net_msg,bottom):
 
 def add_1st_res_layers(net_msg,name,bottom,learn_depth=False,connectivity_mode=0):
     # first layer
-    add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode)
+    add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode,force_mult=g_force_mult_conv)
     if g_regularize_conv:
         add_sparsify_layer(net_msg,name+'_conv1')
     add_BN_layer(net_msg,name=name+'_bn1',bottom=name+'_conv1')
     add_relu_layer(net_msg,name=name+'_relu1',bottom=name+'_bn1')
     #second conv
-    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode)
+    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=16,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode,force_mult=g_force_mult_conv)
     if g_regularize_conv:
         add_sparsify_layer(net_msg,name+'_conv2')
     add_BN_layer(net_msg,name=name+'_bn2',bottom=name+'_conv2')
@@ -195,15 +197,15 @@ def add_1st_res_layers(net_msg,name,bottom,learn_depth=False,connectivity_mode=0
 def add_2nd_res_layers(net_msg,name,bottom,downsample=False,learn_depth=False,connectivity_mode=0):
     # first layer
     if downsample:
-        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=2,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode)
+        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=2,bias_term=False,learn_depth=learn_depth,input_channel=16,connectivity_mode=connectivity_mode,force_mult=g_force_mult_conv)
     else:
-        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode)
+        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode,force_mult=g_force_mult_conv)
     if g_regularize_conv:
         add_sparsify_layer(net_msg,name+'_conv1')
     add_BN_layer(net_msg,name=name+'_bn1',bottom=name+'_conv1')
     add_relu_layer(net_msg,name=name+'_relu1',bottom=name+'_bn1')
     #second conv
-    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode)
+    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=32,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode,force_mult=g_force_mult_conv)
     if g_regularize_conv:
         add_sparsify_layer(net_msg,name+'_conv2')
     add_BN_layer(net_msg,name=name+'_bn2',bottom=name+'_conv2')
@@ -220,15 +222,15 @@ def add_2nd_res_layers(net_msg,name,bottom,downsample=False,learn_depth=False,co
 def add_3rd_res_layers(net_msg,name,bottom,downsample=False,learn_depth=False,connectivity_mode=0):
     # first layer
     if downsample:
-        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=2,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode)
+        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=2,bias_term=False,learn_depth=learn_depth,input_channel=32,connectivity_mode=connectivity_mode,force_mult=g_force_mult_conv)
     else:
-        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=64,connectivity_mode=connectivity_mode)
+        add_conv_layer(net_msg,name=name+'_conv1',bottom=bottom,num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=64,connectivity_mode=connectivity_mode,force_mult=g_force_mult_conv)
     if g_regularize_conv:
         add_sparsify_layer(net_msg,name+'_conv1')
     add_BN_layer(net_msg,name=name+'_bn1',bottom=name+'_conv1')
     add_relu_layer(net_msg,name=name+'_relu1',bottom=name+'_bn1')
     #second conv
-    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=64,connectivity_mode=connectivity_mode)
+    add_conv_layer(net_msg,name=name+'_conv2',bottom=name+'_relu1',num_output=64,pad=1,kernel_size=3,stride=1,bias_term=False,learn_depth=learn_depth,input_channel=64,connectivity_mode=connectivity_mode,force_mult=g_force_mult_conv)
     if g_regularize_conv:
         add_sparsify_layer(net_msg,name+'_conv2')
     add_BN_layer(net_msg,name=name+'_bn2',bottom=name+'_conv2')
@@ -245,7 +247,7 @@ def add_3rd_res_layers(net_msg,name,bottom,downsample=False,learn_depth=False,co
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--net_template', type=str, required=True)
+    parser.add_argument('--net_template', type=str, required=True,help="template (data layers) to generate net")
     parser.add_argument('--n', type=int, required=True)
     #parser.add_argument('--connectivity_mode', type=int, required=True)
     #parser.add_argument('--learn_depth', type=bool, required=False)
@@ -258,6 +260,9 @@ if __name__ == "__main__":
     parser.add_argument('--regularize', dest='regularize', action='store_true')
     parser.add_argument('--no-regularize', dest='regularize', action='store_false')
     parser.set_defaults(regularize=False)
+    parser.add_argument('--force_regularization', dest='force_regularization', action='store_true')
+    parser.add_argument('--no-force_regularization', dest='force_regularization', action='store_false')
+    parser.set_defaults(force_regularization=False)
 
     args = parser.parse_args()
     net_template = args.net_template
@@ -265,6 +270,8 @@ if __name__ == "__main__":
     learn_depth = args.learndepth
     g_sparsify_relu = args.sparsify
     g_regularize_conv = args.regularize
+    if args.force_regularization:
+        g_force_mult_conv = 1.0
     connectivity_mode = 0#args.connectivity_mode
 
     caffe.set_mode_cpu()
