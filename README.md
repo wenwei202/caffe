@@ -5,6 +5,8 @@ This is a detached source code of [Caffe](http://caffe.berkeleyvision.org/) targ
 Technical details are in our [NIPS 2016 paper](http://arxiv.org/abs/1608.03665): **Learning Structured Sparsity in Deep Neural Networks**.
 Our *SSL (Structured Sparsity Learning)* method utilizes group Lasso regularization to dynamically learn a compact DNN structure (less filters, less channels,smaller filter shapes, less neurons and less layers), achieving speedups of convolutional layers in AlexNet by 3.1X in GPUs and 5.1X in CPUs, measured by the off-the-shelf GEMM in BLAS (e.g. MKL in CPUs and cuBLAS in nvidia GPUs). Alternatively, a variant of our method can improve accuracy of AlexNet by ~1%. Moreover, our results can also reduce the number of layers in Deep Residual Networks (ResNets) meanwhile improving its accuracy.
 
+Slides are [here](/docs/WEN_NIPS2016.pdf).
+
 ## Motivation
 Deep neural networks can be very sparse (>90%), after optimization by L1 regularization or connection pruning. The model size can be compressed using those sparsifying methods, however, the computation cannot be sped up because of the poor cache locality and jumping memory access pattern resulted from the random pattern of the sparsity.
 
