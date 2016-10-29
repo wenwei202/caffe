@@ -2,10 +2,13 @@ __author__ = 'pittnuts'
 import caffe
 import re
 from pittnuts import *
+from caffe_apps import *
 import os
 import matplotlib.pyplot as plt
 import argparse
 import caffeparser
+import numpy as np
+import sklearn.preprocessing as skp
 # --prototxt models/bvlc_reference_caffenet/deploy.prototxt --origimodel models/bvlc_reference_caffenet/caffenet_0.57368.caffemodel --tunedmodel models/bvlc_reference_caffenet/
 # --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_0.9917.caffemodel --tunedmodel examples/mnist/lenet_iter_10000.caffemodel
 # --prototxt examples/mnist/lenet_.prototxt --origimodel examples/mnist/lenet_0.9917.caffemodel --tunedmodel examples/mnist/lenet_iter_10000.caffemodel
@@ -34,7 +37,7 @@ def show_filters(net,layername ,filt_min ,filt_max):
     rgb = (chan_num==3)
     plt.figure()
     if rgb:
-        for n in range(filter_num):
+        for n in range(filter_num/2):
             plt.subplot(6, 16,  n + 1)
             img = (weights[n, :].transpose((1,2,0)) - filt_min)/(filt_max-filt_min)
             plt.imshow(img,  interpolation='none')
@@ -100,6 +103,24 @@ def show_filter_channel_pca(net,layername,style,display_channel=False):
         weights_pca, eig_vecs, eig_values = pca(weights_pca)
         print_eig_info(eig_values,style)
 
+def show_filter_projection(net,layername):
+    weights = net.params[layername][0].data
+    if len(weights.shape) < 3:
+        return
+    filter_num = weights.shape[0]
+    chan_num = weights.shape[1]
+    kernel_h = weights.shape[2]
+    kernel_w = weights.shape[3]
+    kernel_size = kernel_h*kernel_w
+
+    weights_pca = weights.reshape((filter_num, chan_num*kernel_size)).transpose()
+    weights_pca = skp.normalize(weights_pca,axis=0)
+    weights_pca, eig_vecs, eig_values = pca(weights_pca)
+    colors = np.random.rand(weights_pca.shape[0])
+    plt.scatter(weights_pca[:,0], weights_pca[:,1], c=colors, s=200,alpha=0.5)
+    plt.show()
+
+
 def show_filter_shapes(net, layername):
     weights = net.params[layername][0].data
     if len(weights.shape) < 3:
@@ -161,17 +182,26 @@ if __name__ == "__main__":
     #show_2Dfilter_pca(orig_net, 'conv4')
     #show_2Dfilter_pca(orig_net, 'conv5')
 
-    show_filter_channel_pca(orig_net, 'conv1','--r')
-    show_filter_channel_pca(tuned_net, 'conv1','-r')
-    show_filter_channel_pca(orig_net, 'conv2','--g')
-    show_filter_channel_pca(tuned_net, 'conv2','-g')
+    #show_filter_channel_pca(orig_net, 'conv2','--r')
+    #show_filter_channel_pca(tuned_net, 'conv2','-r')
+    #show_filter_channel_pca(orig_net, 'conv2','--g')
+    #show_filter_channel_pca(tuned_net, 'conv2','-g')
     #show_filter_channel_pca(orig_net, 'conv3', '--b')
     #show_filter_channel_pca(tuned_net, 'conv3', '-b')
     #show_filter_channel_pca(orig_net, 'conv3')
     #show_filter_channel_pca(tuned_net, 'conv3')
 
-    #weight_scope = get_max_weight(orig_net, tuned_net, 'conv1')
-    #show_filters(orig_net,'conv1',-weight_scope, weight_scope)
-    #show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
+    weights_tmp = orig_net.params['conv1'][0].data[:]
+    weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
+    weight_scope = abs(weights_tmp).max()
+    show_filters(orig_net,'conv1',-weight_scope, weight_scope)
+
+    weights_tmp = tuned_net.params['conv1'][0].data[:]
+    weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
+    weight_scope = abs(weights_tmp).max()
+    show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
+    #plt.figure()
+    #show_filter_projection(orig_net, 'conv2')
+    #show_filter_projection(tuned_net, 'conv2')
 
     plt.show()
