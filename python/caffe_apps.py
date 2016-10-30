@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pittnuts import *
 import copy
+from sklearn.cluster import KMeans
 
 # take an array of shape (n, height, width) or (n, height, width, channels)
 # and visualize each (height, width) thing in a grid of size approx. sqrt(n) by sqrt(n)
@@ -82,6 +83,23 @@ def filter_pca(filter_weights,ratio=None,rank=None):
     #    # append an all-ones filter to compensate the deviation resulted from non-zero mean filters
     #    low_rank_filters = np.concatenate((low_rank_filters, np.ones((1, chan_num, kernel_h, kernel_w))*length), axis=0)
     #    return (low_rank_filters,linear_combinations,rank+1)
+
+def filter_kmeans(filter_weights,rank):
+    if rank==None:
+        print "rank is None"
+        exit()
+    filter_num = filter_weights.shape[0]
+    chan_num = filter_weights.shape[1]
+    kernel_h = filter_weights.shape[2]
+    kernel_w = filter_weights.shape[3]
+    kernel_size = kernel_h * kernel_w
+    # decompose the weights
+    weights_kmeans = filter_weights.reshape((filter_num, chan_num * kernel_size))
+    kmeans = KMeans(n_clusters=rank).fit(weights_kmeans)
+    low_rank_filters = kmeans.cluster_centers_.reshape((rank, chan_num, kernel_h, kernel_w))
+    cluster_idx = kmeans.predict(weights_kmeans)
+    linear_combinations = np.eye(rank)[cluster_idx].reshape((filter_num, rank, 1, 1))
+    return (low_rank_filters, linear_combinations, rank)
 
 def filter_svd(filter_weights,ratio=None,rank=None):
     filter_num = filter_weights.shape[0]

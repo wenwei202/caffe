@@ -21,6 +21,9 @@ if __name__ == "__main__":
     parser.add_argument('--rankratio', type=float, required=False,help="The ratio of reserved information based on eigenvalues.")
     parser.add_argument('--ranks', type=str, required=False,help="The reserved rank in each conv layers.")
     parser.add_argument('--rank_config', type=str, required=False, help="The json file to configure ranks in layers.")
+    parser.add_argument('--except', type=str, required=False, help="The Json file that excludes some conv layers from decomposition. Using with --rankratio")
+    parser.add_argument('--lra_type', type=str, required=False, help="The type of Low rank approximation: pca (default), svd and kmeans")
+
     args = parser.parse_args()
     prototxt = args.prototxt
     caffemodel = args.caffemodel
@@ -38,6 +41,10 @@ if __name__ == "__main__":
             ranks[i] = int(ranks[i])
     if None != rank_config:
         rank_config = load_config(args.rank_config)
+
+    lra_type = "pca"
+    if None!=args.lra_type:
+        lra_type = args.lra_type
 
     net_parser = caffeparser.CaffeProtoParser(prototxt)
     net_msg = net_parser.readProtoNetFile()
@@ -92,10 +99,18 @@ if __name__ == "__main__":
                 cur_rank = cur_rank / group * group
             final_rank = 0
             if None!=rankratio:
-                low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(filter_weights=weights,
-                #low_rank_filters, linear_combinations, rank = caffe_apps.filter_svd(filter_weights=weights,
-                                                                                    ratio=rankratio,
-                                                                                    rank= cur_rank)
+                rank = -1
+                if "pca" == lra_type:
+                    low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(filter_weights=weights,
+                                                                                        ratio=rankratio,
+                                                                                        rank= cur_rank)
+                elif "svd" == lra_type:
+                    low_rank_filters, linear_combinations, rank = caffe_apps.filter_svd(filter_weights=weights,
+                                                                                        ratio=rankratio,
+                                                                                        rank=cur_rank)
+                else:
+                    print "Unsupported --lra_type with --rankratio"
+                    exit()
                 final_rank = rank
             else:
                 group_size1 = cur_rank/group
@@ -103,10 +118,21 @@ if __name__ == "__main__":
                 low_rank_filters = np.zeros((cur_rank, chan_num, kernel_h, kernel_w))
                 linear_combinations = np.zeros((filter_num, group_size1, 1, 1))
                 for g in range(0,group):
-                    low_rank_filters[g * group_size1:(g + 1) * group_size1], linear_combinations[g * group_size2:( g + 1) * group_size2], rank =  \
-                        caffe_apps.filter_pca(filter_weights=weights[g * group_size2:(g + 1) * group_size2],
-                                              ratio=rankratio,
-                                              rank=group_size1)
+                    rank = -1
+                    if "pca" == lra_type:
+                        low_rank_filters[g * group_size1:(g + 1) * group_size1], linear_combinations[g * group_size2:( g + 1) * group_size2], rank =  \
+                            caffe_apps.filter_pca(filter_weights=weights[g * group_size2:(g + 1) * group_size2],
+                                                  ratio=None,
+                                                  rank=group_size1)
+                    elif "svd" == lra_type:
+                        low_rank_filters[g * group_size1:(g + 1) * group_size1], linear_combinations[g * group_size2:( g + 1) * group_size2], rank = \
+                            caffe_apps.filter_svd(filter_weights=weights[g * group_size2:(g + 1) * group_size2],
+                                                  ratio=None,
+                                                  rank=group_size1)
+                    elif "kmeans" == lra_type:
+                        low_rank_filters[g * group_size1:(g + 1) * group_size1], linear_combinations[g * group_size2:( g + 1) * group_size2], rank = \
+                            caffe_apps.filter_kmeans(filter_weights=weights[g * group_size2:(g + 1) * group_size2],
+                                                  rank=group_size1)
                     final_rank += rank
 
             rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, final_rank, filter_num)

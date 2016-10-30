@@ -8,7 +8,7 @@ file_prefix="alexnet"
 
 if [ "$#" -lt 6 ]; then
 	echo "Illegal number of parameters"
-	echo "Usage: base_lr ranks device_id orig_net orig_caffemodel template_solver.prototxt"
+	echo "Usage: base_lr ranks device_id orig_net orig_caffemodel template_solver.prototxt [lra_type]"
 	exit
 fi
 base_lr=$1
@@ -18,12 +18,15 @@ device_id=0
 orig_net=$4
 orig_caffemodel=$5
 template_solver=$6
-
+lra_type="pca"
+if [ "$#" -ge 7 ]; then
+	lra_type=$7
+fi
 current_time=$(date)
 current_time=${current_time// /_}
 current_time=${current_time//:/-}
 ranks_name=${ranks//,/_}
-snapshot_path=$folder/${base_lr}_ranks_${ranks_name}_${current_time}
+snapshot_path=$folder/${base_lr}_ranks_${ranks_name}_${lra_type}_${current_time}
 mkdir $snapshot_path
 
 solverfile=$snapshot_path/solver.prototxt
@@ -41,7 +44,7 @@ fi
 echo "solver_mode: $solver_mode" >> $solverfile
 
 # generate net and caffemodel
-python python/nn_decomposer.py --prototxt ${orig_net} --caffemodel ${orig_caffemodel} --ranks ${ranks} > "${snapshot_path}/train.info" 2>&1
+python python/nn_decomposer.py --prototxt ${orig_net} --caffemodel ${orig_caffemodel} --ranks ${ranks} --lra_type ${lra_type} > "${snapshot_path}/train.info" 2>&1
 gen_net=${orig_net}.lowrank.prototxt
 gen_caffemodel=${orig_caffemodel}.lowrank.caffemodel.h5
 mv ${gen_net} $snapshot_path
@@ -55,4 +58,4 @@ echo "net: \"$new_net\"" >> $solverfile
 cat ${snapshot_path}/train.info | grep loss+ | awk '{print $8 " " $11}' > ${snapshot_path}/loss.info
 python python/plot_train_info.py --traininfo ${snapshot_path}/train.info
 content="$(hostname) done: ${0##*/} ${@}. Results in ${snapshot_path}"
-echo ${content} | mail -s "Training done" youraddress@example.com
+echo ${content} | mail -s "Training done" address@example.com

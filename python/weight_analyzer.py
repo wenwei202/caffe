@@ -9,6 +9,17 @@ import argparse
 import caffeparser
 import numpy as np
 import sklearn.preprocessing as skp
+import math
+
+def dotproduct(v1, v2):
+  return sum((a*b) for a, b in zip(v1, v2))
+
+def length(v):
+  return math.sqrt(dotproduct(v, v))
+
+def angle(v1, v2):
+  return math.acos(dotproduct(v1, v2) / (length(v1) * length(v2)))
+
 # --prototxt models/bvlc_reference_caffenet/deploy.prototxt --origimodel models/bvlc_reference_caffenet/caffenet_0.57368.caffemodel --tunedmodel models/bvlc_reference_caffenet/
 # --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_0.9917.caffemodel --tunedmodel examples/mnist/lenet_iter_10000.caffemodel
 # --prototxt examples/mnist/lenet_.prototxt --origimodel examples/mnist/lenet_0.9917.caffemodel --tunedmodel examples/mnist/lenet_iter_10000.caffemodel
@@ -113,13 +124,36 @@ def show_filter_projection(net,layername):
     kernel_w = weights.shape[3]
     kernel_size = kernel_h*kernel_w
 
-    weights_pca = weights.reshape((filter_num, chan_num*kernel_size)).transpose()
-    weights_pca = skp.normalize(weights_pca,axis=0)
-    weights_pca, eig_vecs, eig_values = pca(weights_pca)
-    colors = np.random.rand(weights_pca.shape[0])
-    plt.scatter(weights_pca[:,0], weights_pca[:,1], c=colors, s=200,alpha=0.5)
+    weights_norm = weights.reshape((filter_num, chan_num * kernel_size))
+    weights_norm = skp.normalize(weights_norm)
+
+    n_clusters = 3
+    kmeans = KMeans(n_clusters=n_clusters).fit(weights_norm)
+
+
+    weights_pca, eig_vecs, eig_values = pca(weights_norm)
+    colors = np.random.rand(n_clusters)
+    plt.scatter(weights_pca[:,0], weights_pca[:,1], c=colors[kmeans.labels_], s=200,alpha=0.5)
     plt.show()
 
+def get_angle_sum(net,layername):
+    weights = net.params[layername][0].data
+    if len(weights.shape) < 3:
+        return
+    filter_num = weights.shape[0]
+    chan_num = weights.shape[1]
+    kernel_h = weights.shape[2]
+    kernel_w = weights.shape[3]
+    kernel_size = kernel_h*kernel_w
+
+    weights_norm = weights.reshape((filter_num, chan_num * kernel_size))
+    weights_norm = skp.normalize(weights_norm)
+    angle_sum = 0
+    for idx1 in range(0,filter_num-1):
+        for idx2 in range(idx1+1, filter_num):
+            angle_sum += angle(weights_norm[idx1],weights_norm[idx2])
+
+    return angle_sum
 
 def show_filter_shapes(net, layername):
     weights = net.params[layername][0].data
@@ -191,17 +225,20 @@ if __name__ == "__main__":
     #show_filter_channel_pca(orig_net, 'conv3')
     #show_filter_channel_pca(tuned_net, 'conv3')
 
-    weights_tmp = orig_net.params['conv1'][0].data[:]
-    weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
-    weight_scope = abs(weights_tmp).max()
-    show_filters(orig_net,'conv1',-weight_scope, weight_scope)
-
-    weights_tmp = tuned_net.params['conv1'][0].data[:]
-    weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
-    weight_scope = abs(weights_tmp).max()
-    show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
+    #weights_tmp = orig_net.params['conv1'][0].data[:]
+    #weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
+    #weight_scope = abs(weights_tmp).max()
+    #show_filters(orig_net,'conv1',-weight_scope, weight_scope)
+    #weights_tmp = tuned_net.params['conv1'][0].data[:]
+    #weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
+    #weight_scope = abs(weights_tmp).max()
+    #show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
     #plt.figure()
-    #show_filter_projection(orig_net, 'conv2')
-    #show_filter_projection(tuned_net, 'conv2')
+    print get_angle_sum(orig_net, 'conv1')
+    print get_angle_sum(tuned_net, 'conv1')
+    print get_angle_sum(orig_net, 'conv2')
+    print get_angle_sum(tuned_net, 'conv2')
+    print get_angle_sum(orig_net, 'conv3')
+    print get_angle_sum(tuned_net, 'conv3')
 
     plt.show()
