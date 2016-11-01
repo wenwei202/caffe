@@ -168,3 +168,7 @@ e.g. decompose the first two layers by the method in iclr and other layers by cv
 python python/mixed_decomposer_tuner.py --solver=models/bvlc_alexnet/finetune_solver.prototxt --model models/bvlc_alexnet/train_val.prototxt --weights=models/bvlc_alexnet/bvlc_alexnet.caffemodel.h5 --rank_config1 models/bvlc_alexnet/config_iclr.json --rank_config2 models/bvlc_alexnet/config_cvpr.json --device 0
 ```
 Note that the caffe model must be in `hdf5` format
+
+## similarity_reg_visualizer.py
+
+A simple example to illustrate the process of similarity regularization. Change the number of the loops to get the result after different iterations.
