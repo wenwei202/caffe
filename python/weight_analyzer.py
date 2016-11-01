@@ -5,12 +5,14 @@ from pittnuts import *
 from caffe_apps import *
 import os
 import matplotlib.pyplot as plt
+import matplotlib
 import argparse
 import caffeparser
 import numpy as np
 import sklearn.preprocessing as skp
 import math
-
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+g_colors = np.array([0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0])
 def dotproduct(v1, v2):
   return sum((a*b) for a, b in zip(v1, v2))
 
@@ -114,7 +116,7 @@ def show_filter_channel_pca(net,layername,style,display_channel=False):
         weights_pca, eig_vecs, eig_values = pca(weights_pca)
         print_eig_info(eig_values,style)
 
-def show_filter_projection(net,layername):
+def show_filter_pca_projection(net,layername):
     weights = net.params[layername][0].data
     if len(weights.shape) < 3:
         return
@@ -135,6 +137,32 @@ def show_filter_projection(net,layername):
     colors = np.random.rand(n_clusters)
     plt.scatter(weights_pca[:,0], weights_pca[:,1], c=colors[kmeans.labels_], s=200,alpha=0.5)
     plt.show()
+
+
+def show_filter_lda_projection(net,layername):
+    weights = net.params[layername][0].data
+    if len(weights.shape) < 3:
+        return
+    filter_num = weights.shape[0]
+    chan_num = weights.shape[1]
+    kernel_h = weights.shape[2]
+    kernel_w = weights.shape[3]
+    kernel_size = kernel_h*kernel_w
+
+    weights_norm = weights.reshape((filter_num, chan_num * kernel_size))
+    weights_norm = skp.normalize(weights_norm)
+
+    n_clusters = 4
+    kmeans = KMeans(n_clusters=n_clusters).fit(weights_norm)
+
+    lda = LinearDiscriminantAnalysis(n_components=2)
+    X_r2 = lda.fit(weights_norm, kmeans.labels_).transform(weights_norm)
+
+    colors = np.random.rand(n_clusters)
+    plt.scatter(X_r2[:, 0], X_r2[:, 1], c=g_colors[kmeans.labels_], s=300, alpha=0.5)
+
+    plt.show()
+
 
 def get_angle_sum(net,layername):
     weights = net.params[layername][0].data
@@ -184,6 +212,8 @@ def get_max_weight(orig_net,tuned_net,layer_name):
 
 
 if __name__ == "__main__":
+
+    matplotlib.rcParams.update({'font.size': 22})
     parser = argparse.ArgumentParser()
     parser.add_argument('--prototxt', type=str, required=True)
     parser.add_argument('--origimodel', type=str, required=True)
@@ -234,11 +264,14 @@ if __name__ == "__main__":
     #weight_scope = abs(weights_tmp).max()
     #show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
     #plt.figure()
-    print get_angle_sum(orig_net, 'conv1')
-    print get_angle_sum(tuned_net, 'conv1')
-    print get_angle_sum(orig_net, 'conv2')
-    print get_angle_sum(tuned_net, 'conv2')
-    print get_angle_sum(orig_net, 'conv3')
-    print get_angle_sum(tuned_net, 'conv3')
+    #print get_angle_sum(orig_net, 'conv1')
+    #print get_angle_sum(tuned_net, 'conv1')
+    #print get_angle_sum(orig_net, 'conv2')
+    #print get_angle_sum(tuned_net, 'conv2')
+    #print get_angle_sum(orig_net, 'conv3')
+    #print get_angle_sum(tuned_net, 'conv3')
+
+    show_filter_lda_projection(orig_net, 'conv4')
+    show_filter_lda_projection(tuned_net, 'conv4')
 
     plt.show()
