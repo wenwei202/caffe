@@ -11,6 +11,6 @@ max_iter: 1200000
 momentum: 0.9
 weight_decay: 0.0001
 snapshot: 100000
-snapshot_format: HDF5
+#snapshot_format: HDF5
 #snapshot_prefix: "models/bvlc_googlenet/bvlc_googlenet_quick"
 #solver_mode: GPU

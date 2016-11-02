@@ -55,4 +55,4 @@ fi
 cat ${snapshot_path}/train.info | grep loss+ | awk '{print $8 " " $11}' > ${snapshot_path}/loss.info
 python python/plot_train_info.py --traininfo ${snapshot_path}/train.info
 content="$(hostname) done: ${0##*/} ${@}. Results in ${snapshot_path}"
-echo ${content} | mail -s "Training done" weiwen.web@gmail.com
+echo ${content} | mail -s "Training done" adddress@example.com
