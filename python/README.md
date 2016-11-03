@@ -49,9 +49,24 @@ python python/nn_decomposer.py \
 
 `--rankratio 0.95` is also supported to reserve 95% information after low-rank approximation. Note that `--rankratio 1.0` can be used to generate a full-rank equivalent network.
 
-`--rank_config models/bvlc_alexnet/config.json` is also supported to decompose only partial layers.
+`--rank_config` is also supported to decompose only partial layers, see `--rank_config models/bvlc_alexnet/config.json` as an example.
+
+`--except_layers` is also supported to exclude some layers to be decomposed, see `--except_layers examples/cifar10/resnet_except_shortcuts.json` as an example.
 
 Only one of `--rankratio`, `--rank_config` and `--ranks` can be used.
+
+`--lra_type` can specify the type of low rank approximation, default is `pca`. `svd` and `kmeans` are also supported.
+
+Following is an example to decompose resnet-20 on cifar-10:
+
+```
+python python/nn_decomposer.py \
+--prototxt examples/cifar10/cifar10_resnet_train_test_n3.prototxt \
+--caffemodel examples/cifar10/cifar10_resnet20_64000_0.9118.caffemodel \
+--rankratio 0.95 \
+--lra_type pca \
+--except_layers examples/cifar10/resnet_except_shortcuts.json
+```
 
 Each conv layer will be decompsed to one conv layers (with low-rank basis as the filters) and one 1x1 conv layer (which linearly combines the feature map basis to generate output feature maps with the same dimensionality).
 In this example, the network prototxt is saved as `examples/cifar10/cifar10_full_train_test.prototxt.lowrank.prototxt` and corresponding decomposed weights are saved in `examples/cifar10/cifar10_full_iter_240000_0.8201.caffemodel.lowrank.caffemodel`. Note that the original biases are moved to linear combination layer.
