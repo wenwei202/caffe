@@ -21,7 +21,7 @@ if __name__ == "__main__":
     parser.add_argument('--rankratio', type=float, required=False,help="The ratio of reserved information based on eigenvalues.")
     parser.add_argument('--ranks', type=str, required=False,help="The reserved rank in each conv layers.")
     parser.add_argument('--rank_config', type=str, required=False, help="The json file to configure ranks in layers.")
-    parser.add_argument('--except', type=str, required=False, help="The Json file that excludes some conv layers from decomposition. Using with --rankratio")
+    parser.add_argument('--except_layers', type=str, required=False, help="The Json file that excludes some conv layers from decomposition.")
     parser.add_argument('--lra_type', type=str, required=False, help="The type of Low rank approximation: pca (default), svd and kmeans")
 
     args = parser.parse_args()
@@ -31,6 +31,8 @@ if __name__ == "__main__":
     rankratio = args.rankratio
     ranks = args.ranks
     rank_config = args.rank_config
+    except_layers = args.except_layers
+
     rank_param_num = (None!=ranks) + (None!=rankratio) + (None!=rank_config)
     if 1!=rank_param_num:
         print "Please use one of --rankratio, --ranks or --rank_config"
@@ -41,6 +43,8 @@ if __name__ == "__main__":
             ranks[i] = int(ranks[i])
     if None != rank_config:
         rank_config = load_config(args.rank_config)
+    if None != except_layers:
+        except_layers = load_config(args.except_layers)
 
     lra_type = "pca"
     if None!=args.lra_type:
@@ -66,7 +70,7 @@ if __name__ == "__main__":
     for cur_layer in loop_layers:
         layer_idx += 1
         layer_name = cur_layer.name
-        if 'Convolution' == cur_layer.type and ( (None==rank_config) or (layer_name in rank_config.keys()) ):
+        if 'Convolution' == cur_layer.type and ( (None==rank_config) or (layer_name in rank_config.keys()) ) and ((None==except_layers) or (layer_name not in except_layers) ):
             conv_idx += 1
             group = cur_layer.convolution_param.group
             assert (1==group) or (None==rankratio)

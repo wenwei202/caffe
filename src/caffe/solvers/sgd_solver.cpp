@@ -452,6 +452,8 @@ void SGDSolver<Dtype>::ForceRegularize(int param_id) {
 					temp_[param_id]->mutable_gpu_data());
 		caffe_gpu_mul(temp_[param_id]->count(), temp_[param_id]->gpu_data(),
 					temp_3_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
+		//caffe_gpu_div_check_zero(temp_[param_id]->count(), temp_3_[param_id]->gpu_data(),
+		//			temp_[param_id]->gpu_data(), temp_[param_id]->mutable_gpu_data());
 
 		// control the direction of regularization gradients
 		if("same"==force_direction){
