@@ -13,15 +13,15 @@ weight_decay: 0.0005
 # The learning rate policy
 lr_policy: "multistep"
 gamma: 0.9
-stepvalue: 10000
-stepvalue: 14000
-stepvalue: 16000
-stepvalue: 18000
-stepvalue: 19000
+stepvalue: 20000
+stepvalue: 24000
+stepvalue: 26000
+stepvalue: 28000
+stepvalue: 29000
 # Display every 100 iterations
 display: 100
 # The maximum number of iterations
-max_iter: 20000
+max_iter: 30000
 # snapshot intermediate results
 snapshot: 5000
 #snapshot_prefix: "examples/mnist/lenet_multistep_dp"

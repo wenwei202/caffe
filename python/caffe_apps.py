@@ -84,6 +84,17 @@ def filter_pca(filter_weights,ratio=None,rank=None):
     #    low_rank_filters = np.concatenate((low_rank_filters, np.ones((1, chan_num, kernel_h, kernel_w))*length), axis=0)
     #    return (low_rank_filters,linear_combinations,rank+1)
 
+def fc_pca(fc_weights,ratio=None,rank=None):
+    # decompose the weights
+    weights_pca = fc_weights.transpose()
+    weights_pca, eig_vecs, eig_values = pca(weights_pca)
+    if None != ratio:
+        rank = rank_by_ratio(eig_values, ratio)
+    weights_full = weights_pca.transpose()
+    low_rank_a = weights_full[0:rank]
+    low_rank_b = eig_vecs[:, 0:rank]
+    return (low_rank_a, low_rank_b, rank)
+
 def filter_kmeans(filter_weights,rank):
     if rank==None:
         print "rank is None"
@@ -122,3 +133,17 @@ def filter_svd(filter_weights,ratio=None,rank=None):
     b = linear_combinations.reshape((filter_num,-1)).transpose()
     print np.linalg.norm(subtract(weights,dot(a,b))), np.linalg.norm(s[rank:])
     return (low_rank_filters, linear_combinations, rank)
+
+def fc_svd(fc_weights,ratio=None,rank=None):
+    # decompose the weights
+    weights = fc_weights.transpose()
+    u, s, v = np.linalg.svd(weights,full_matrices=False)
+    if None != ratio:
+        rank = rank_by_ratio_2(s, ratio)
+    sqrt_singular_val = np.sqrt(np.diag(s))
+    u = dot(u,sqrt_singular_val)
+    v = dot(sqrt_singular_val,v)
+    weights_full = u.transpose()
+    low_rank_a = weights_full[0:rank]
+    low_rank_b = v[0:rank,:].transpose()
+    return (low_rank_a, low_rank_b, rank)

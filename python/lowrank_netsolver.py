@@ -11,7 +11,7 @@ import copy
 import gc
 
 
-def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat,pruning_iter = -1):
+def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat,pruning_iter = -1,lra_type="pca"):
     solver_parser = caffeparser.CaffeProtoParser(solverfile)
     solver_msg = solver_parser.readProtoSolverFile()
     lr_policy = str(solver_msg.lr_policy)
@@ -67,7 +67,13 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat,pruning_iter = -1):
                 assert re.match(".*(_linear)$",next_layer.name)
                 assert len(solver.net.params[next_layer.name]) == 2
                 assert next_layer.convolution_param.kernel_size._values[0] == 1
-                low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(cur_weights, ratio)
+                if "pca"==lra_type:
+                    low_rank_filters, linear_combinations, rank = caffe_apps.filter_pca(cur_weights, ratio)
+                elif "svd"==lra_type:
+                    low_rank_filters, linear_combinations, rank = caffe_apps.filter_svd(cur_weights, ratio)
+                else:
+                    print "Unsupported ".format(lra_type)
+                    exit()
                 rank_info = rank_info + "_{}".format(rank)
                 ranks[0].append(rank)
                 if rank < cur_weights.shape[0] and pruning_flag: # generate lower-rank network
@@ -79,6 +85,32 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat,pruning_iter = -1):
                     if  next_layer.convolution_param.bias_term:
                         new_parameters[next_layer.name] = {0: new_linear_combinations[:],
                                                              1: solver.net.params[next_layer.name][1].data[:]}
+                    else:
+                        new_parameters[next_layer.name] = {0: new_linear_combinations[:]}
+            elif 'InnerProduct' == cur_layer.type and re.match(".*(_lowrank)$", cur_layer.name):
+                assert len(solver.net.params[cur_layer.name]) == 1
+                cur_weights = solver.net.params[cur_layer.name][0].data
+                next_layer = net_msg.layer._values[layer_idx + 1]
+                next_weights = solver.net.params[next_layer.name][0].data
+                assert re.match(".*(_linear)$", next_layer.name)
+                assert len(solver.net.params[next_layer.name]) == 2
+                if "pca"==lra_type:
+                    low_rank_a, low_rank_b, rank = caffe_apps.fc_pca(cur_weights, ratio)
+                elif "svd"==lra_type:
+                    low_rank_a, low_rank_b, rank = caffe_apps.fc_svd(cur_weights, ratio)
+                else:
+                    print "Unsupported ".format(lra_type)
+                    exit()
+                rank_info = rank_info + "_{}".format(rank)
+                ranks[0].append(rank)
+                if rank < cur_weights.shape[0] and pruning_flag:  # generate lower-rank network
+                    new_net_flag = True
+                    cur_layer.inner_product_param.num_output = rank
+                    new_parameters[cur_layer.name] = {0: low_rank_a[:]}
+                    new_linear_combinations = np.dot(next_weights, low_rank_b)
+                    if next_layer.convolution_param.bias_term:
+                        new_parameters[next_layer.name] = {0: new_linear_combinations[:],
+                                                           1: solver.net.params[next_layer.name][1].data[:]}
                     else:
                         new_parameters[next_layer.name] = {0: new_linear_combinations[:]}
 
@@ -169,9 +201,11 @@ def lowrank_netsolver(solverfile,caffemodel,ratio,rank_mat,pruning_iter = -1):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--solver', type=str, required=True, help="Solver prototxt")
+    parser.add_argument('--lra_type', type=str, required=False, help="The type of low rank approximation (pca or svd)")
+    parser.set_defaults(lra_type="pca")
     parser.add_argument('--weights', type=str, required=False, help="Caffemodel in hdf5 format")
-    parser.add_argument('--ratio', type=float, required=False, help="The ratio of reserved info after pca")
-    parser.add_argument('--pruning_iter', type=float, required=False, help="The ratio of reserved info after pca")
+    parser.add_argument('--ratio', type=float, required=False, help="The ratio of reserved info after lra")
+    parser.add_argument('--pruning_iter', type=float, required=False, help="The ratio of reserved info after lra")
     parser.add_argument('--device', type=int, required=False,help="The GPU device id, -1 for CPU")
     args = parser.parse_args()
     solverfile = args.solver
@@ -206,5 +240,5 @@ if __name__ == "__main__":
      'pruning_iter':pruning_iter}
 
     while {}!=train_params:
-        train_params = lowrank_netsolver(train_params['solver'],train_params['weights'],ratio,train_params['rank_mat'],train_params['pruning_iter'])
+        train_params = lowrank_netsolver(train_params['solver'],train_params['weights'],ratio,train_params['rank_mat'],train_params['pruning_iter'],lra_type=args.lra_type)
         gc.collect()

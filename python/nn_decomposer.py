@@ -23,7 +23,9 @@ if __name__ == "__main__":
     parser.add_argument('--rank_config', type=str, required=False, help="The json file to configure ranks in layers.")
     parser.add_argument('--except_layers', type=str, required=False, help="The Json file that excludes some conv layers from decomposition.")
     parser.add_argument('--lra_type', type=str, required=False, help="The type of Low rank approximation: pca (default), svd and kmeans")
-
+    parser.add_argument('--enable_fc', dest='enable_fc', action='store_true')
+    parser.add_argument('--no-enable_fc', dest='enable_fc', action='store_false')
+    parser.set_defaults(enable_fc=False)
     args = parser.parse_args()
     prototxt = args.prototxt
     caffemodel = args.caffemodel
@@ -65,13 +67,13 @@ if __name__ == "__main__":
     loop_layers = net_msg.layer[:]  # adding : implicitly makes a copy to avoid being modified in the loop
     layer_idx = -1
     new_parameters = {}
-    conv_idx = -1
+    rank_idx = -1
     rank_info = ""
     for cur_layer in loop_layers:
         layer_idx += 1
         layer_name = cur_layer.name
         if 'Convolution' == cur_layer.type and ( (None==rank_config) or (layer_name in rank_config.keys()) ) and ((None==except_layers) or (layer_name not in except_layers) ):
-            conv_idx += 1
+            rank_idx += 1
             group = cur_layer.convolution_param.group
             assert (1==group) or (None==rankratio)
             weights = orig_net.params[layer_name][0].data
@@ -88,7 +90,7 @@ if __name__ == "__main__":
             # if None != rankratio:
             #     rank = caffe_apps.rank_by_ratio(eig_values, rankratio)
             # elif None != ranks:
-            #     rank = ranks[conv_idx]
+            #     rank = ranks[rank_idx]
             # rank_info = rank_info + "{}\t{}/{} filters\n".format(layer_name, rank,filter_num)
             # shift_vals = dot(weights_mean,eig_vecs[:,rank:])
             # weights_full = weights_pca.transpose().reshape((filter_num, chan_num, kernel_h, kernel_w))
@@ -96,7 +98,7 @@ if __name__ == "__main__":
             # linear_combinations = eig_vecs[:,0:rank].reshape((filter_num,rank,1,1))
             cur_rank = None
             if None != ranks:
-                cur_rank = ranks[conv_idx]
+                cur_rank = ranks[rank_idx]
                 cur_rank = cur_rank / group * group
             elif None != rank_config:
                 cur_rank = rank_config[layer_name]
@@ -188,6 +190,58 @@ if __name__ == "__main__":
             net_msg.layer._values.insert(layer_idx,low_rank_layer)
             layer_idx += 1
             net_msg.layer._values.insert(layer_idx, linear_layer)
+        elif 'InnerProduct' == cur_layer.type and args.enable_fc and ( (None==rank_config) or (layer_name in rank_config.keys()) ) and ((None==except_layers) or (layer_name not in except_layers) ):
+            rank_idx += 1
+            weights = orig_net.params[layer_name][0].data
+            cur_rank = None
+            if None != ranks:
+                cur_rank = ranks[rank_idx]
+            elif None != rank_config:
+                cur_rank = rank_config[layer_name]
+            if "pca" == lra_type:
+                low_rank_a, low_rank_b, final_rank = caffe_apps.fc_pca(fc_weights=weights,
+                                                                 ratio=rankratio,
+                                                                 rank=cur_rank)
+            elif "svd" == lra_type:
+                low_rank_a, low_rank_b, final_rank = caffe_apps.fc_svd(fc_weights=weights,
+                                                                 ratio=rankratio,
+                                                                 rank=cur_rank)
+            else:
+                print "Unsupported --lra_type with --rankratio"
+                exit()
+
+            rank_info = rank_info + "{}\t{}/{} neurons\n".format(layer_name, final_rank, weights.shape[0])
+
+            cur_layer_param = net_msg.layer._values.pop(layer_idx)
+            # generate the low rank conv layer and move bias to the next layer
+            low_rank_layer = caffe.proto.caffe_pb2.LayerParameter()
+            low_rank_layer.CopyFrom(cur_layer_param)
+            low_rank_layer.name = low_rank_layer.name + "_lowrank"
+            low_rank_layer.top._values[0] = low_rank_layer.top._values[0] + "_lowrank"
+            assert len(low_rank_layer.param._values) <= 2
+            if len(low_rank_layer.param._values) == 2:
+                low_rank_layer.param._values.pop()
+            low_rank_layer.inner_product_param.num_output = final_rank
+            if low_rank_layer.inner_product_param.HasField("bias_filler"):
+                low_rank_layer.inner_product_param.ClearField("bias_filler")
+            bias_flag = low_rank_layer.inner_product_param.bias_term
+            low_rank_layer.inner_product_param.bias_term = False
+            new_parameters[low_rank_layer.name] = {0: low_rank_a[:]}
+
+            linear_layer = caffe.proto.caffe_pb2.LayerParameter()
+            linear_layer.CopyFrom(cur_layer_param)
+            linear_layer.name = linear_layer.name + "_linear"
+            linear_layer.bottom._values[0] = low_rank_layer.top._values[0]
+            if bias_flag:
+                new_parameters[linear_layer.name] = {0: low_rank_b[:],
+                                                     1: orig_net.params[layer_name][1].data[:]}
+            else:
+                new_parameters[linear_layer.name] = {0: low_rank_b[:]}
+
+            # insert and add idx
+            net_msg.layer._values.insert(layer_idx, low_rank_layer)
+            layer_idx += 1
+            net_msg.layer._values.insert(layer_idx, linear_layer)
         else:
             if layer_name in orig_net.params:
                 cur_param = {}
@@ -205,6 +259,8 @@ if __name__ == "__main__":
     file.close()
     #print net_msg
 
+    print rank_info
+
     # open and generate the caffemodel
     dst_net = caffe.Net(filepath_network, caffe.TRAIN)
     for key,val in new_parameters.iteritems():
@@ -215,7 +271,6 @@ if __name__ == "__main__":
     filepath_caffemodel = caffemodel + '.lowrank.caffemodel.h5' # DO NOT CHANGE THE SUFFIX - Other scripts depend on this
     dst_net.save_hdf5(filepath_caffemodel)
 
-    print rank_info
     print "Saved as {}".format(filepath_network)
     print "Saved as {}".format(filepath_caffemodel)
     print "Done!"
