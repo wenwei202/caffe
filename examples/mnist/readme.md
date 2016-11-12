@@ -33,7 +33,7 @@ Step 3: generated network prototxt and caffemodel is saved as `examples/mnist/le
 Step 4: rename generated files
 ```
 mv examples/mnist/lenet_train_test.prototxt.lowrank.prototxt examples/mnist/lenet_train_test_fullrank.prototxt
-mv examples/mnist/lenet_0.9917.caffemodel.h5.lowrank.caffemodel.h5 lenet_0.9917_fullrank.caffemodel.h5
+mv examples/mnist/lenet_0.9917.caffemodel.h5.lowrank.caffemodel.h5 examples/mnist/lenet_0.9917_fullrank.caffemodel.h5
 ```
 
 ### 3. Start clipping
