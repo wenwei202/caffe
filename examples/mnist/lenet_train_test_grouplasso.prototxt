@@ -49,14 +49,14 @@ layer {
     decay_mult: 1.0
     
     # kernel_shape_decay_mult * kernel_shape_decay = coefficient of group Lasso regularization on columns
-    kernel_shape_decay_mult: 1.0
+    # kernel_shape_decay_mult: 1.0
     
     # breadth_decay_mult * breadth_decay = coefficient of group Lasso regularization on rows
-    breadth_decay_mult: 1.0
+    # breadth_decay_mult: 1.0
     
     block_group_lasso {
       xdimen: 25
-      ydimen: 5
+      ydimen: 1
       # block_decay_mult * block_group_decay = coefficient of group Lasso regularization on blocks
       block_decay_mult: 1.0
     }
@@ -97,11 +97,11 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1.0
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 1.0
+    # kernel_shape_decay_mult: 1.0
+    # breadth_decay_mult: 1.0
     block_group_lasso {
-      xdimen: 25
-      ydimen: 5
+      xdimen: 50
+      ydimen: 1
       block_decay_mult: 1.0
     }
   }
@@ -140,11 +140,11 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1.0
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 1.0
+    #kernel_shape_decay_mult: 1.0
+    #breadth_decay_mult: 1.0
     block_group_lasso {
-      xdimen: 10
-      ydimen: 10
+      xdimen: 50
+      ydimen: 1
       block_decay_mult: 1.0
     }
   }
@@ -176,11 +176,11 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1.0
-    kernel_shape_decay_mult: 1.0
-    breadth_decay_mult: 1.0
+    #kernel_shape_decay_mult: 1.0
+    #breadth_decay_mult: 1.0
     block_group_lasso {
-      xdimen: 10
-      ydimen: 10
+      xdimen: 50
+      ydimen: 1
       block_decay_mult: 1.0
     }
   }
