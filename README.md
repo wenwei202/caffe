@@ -114,7 +114,7 @@ Please cite our NIPS 2016 paper and Caffe if it helps you:
   - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
   
 2. Caffe version
-  - scnn branch is forked from caffe @ commit [04aa36e](https://github.com/BVLC/caffe/tree/04aa36e2712fb7a5e4f96afa55856e419a9f4021)
+  - scnn branch is forked from caffe @ commit [eb4ba30](https://github.com/BVLC/caffe/tree/eb4ba30e3c4899edc7a9713158d61503fa8ecf90)
 3. Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer (by MKL BLAS in CPU mode and cuBLAS (not cuDNN) in GPU mode), in a layer-by-layer fashion. The speedup of the total time may be different, because
   1. The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
   2. After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
@@ -131,7 +131,7 @@ However, the lowering and pooling can also be optimized by programming tricks. P
 
 ### Issues
 1. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)
-2. cudnn: version of cudnn 4 is supported, not cudnn 5
+2. cudnn: version of cudnn 5 is supported
 3. More in [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
 4. To profile, use `deploy.prototxt` in Python and use `train_val.prototxt` in `caffe time ...`, otherwise, the there might be some bugs in original Caffe. Note that training using `LOWERED_CSRMM` or `LOWERED_CCNMM` is forbidden. `caffe time` calls backward function of each layer, to use `caffe time` to profile, comment backward related codes in `tools/caffe.cpp:time()` function.
 
