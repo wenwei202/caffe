@@ -25,9 +25,14 @@ DEFINE_VSL_BINARY_FUNC(DivCheckZero, y[i] = (b[i]==0 ? 0: a[i] / b[i]));
 
 #else  // If use MKL, simply include the MKL header
 
+#ifdef USE_ACCELERATE
+#include <Accelerate/Accelerate.h>
+#else
 extern "C" {
 #include <cblas.h>
 }
+#endif  // USE_ACCELERATE
+
 #include <math.h>
 
 // Functions that caffe uses but are not present if MKL is not linked.
