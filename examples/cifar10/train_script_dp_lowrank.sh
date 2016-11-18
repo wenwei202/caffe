@@ -5,12 +5,12 @@ set -e
 set -x
 
 folder="examples/cifar10/"
-file_prefix="cifar10_full_dp"
+file_prefix="cifar10_dp"
 #file_prefix="cifar10_resnet"
 
 if [ "$#" -lt 6 ]; then
 	echo "Illegal number of parameters"
-	echo "Usage: base_lr rank_ratio force_decay force_type device_id template_solver.prototxt orig_caffemodel [pruning_iter]"
+	echo "Usage: base_lr rank_ratio force_decay force_type device_id template_solver.prototxt orig_caffemodel lra_type [pruning_iter]"
 	exit
 fi
 base_lr=$1
@@ -21,11 +21,12 @@ solver_mode="GPU"
 device_id=0
 template_solver=$6
 orig_caffemodel=$7
+lra_type=$8
 
 current_time=$(date)
 current_time=${current_time// /_}
 current_time=${current_time//:/-}
-snapshot_path=$folder/${base_lr}_${rank_ratio}_${force_decay}_${force_type}_dp_${current_time}
+snapshot_path=$folder/${base_lr}_${rank_ratio}_${force_decay}_${force_type}_${lra_type}_dp_${current_time}
 mkdir $snapshot_path
 
 solverfile=$snapshot_path/solver.prototxt
@@ -45,10 +46,10 @@ fi
 echo "solver_mode: $solver_mode" >> $solverfile
 
 # start training
-if [ "$#" -ge "8" ]; then
-	python python/lowrank_netsolver.py --solver ${solverfile} --weights ${orig_caffemodel} --device ${device_id} --ratio ${rank_ratio} --pruning_iter $8 > ${snapshot_path}/train.info 2>&1
+if [ "$#" -ge "9" ]; then
+	python python/lowrank_netsolver.py --solver ${solverfile} --weights ${orig_caffemodel} --device ${device_id} --ratio ${rank_ratio} --lra_type ${lra_type} --pruning_iter $9 > ${snapshot_path}/train.info 2>&1
 else
-	python python/lowrank_netsolver.py --solver ${solverfile} --weights ${orig_caffemodel} --device ${device_id} --ratio ${rank_ratio}  > ${snapshot_path}/train.info 2>&1
+	python python/lowrank_netsolver.py --solver ${solverfile} --weights ${orig_caffemodel} --device ${device_id} --ratio ${rank_ratio}  --lra_type ${lra_type}  > ${snapshot_path}/train.info 2>&1
 fi
 
 cat ${snapshot_path}/train.info | grep loss+ | awk '{print $8 " " $11}' > ${snapshot_path}/loss.info
