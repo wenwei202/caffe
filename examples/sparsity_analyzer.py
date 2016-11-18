@@ -56,7 +56,7 @@ if __name__ == "__main__":
     # GPU mode
     #caffe.set_device(1)
     #caffe.set_mode_gpu()
-    orig_net = caffe.Net(prototxt,original_caffemodel, caffe.TEST)
+    orig_net = caffe.Net(prototxt,original_caffemodel, caffe.TRAIN)
     tuned_net = caffe.Net(prototxt,fine_tuned_caffemodel, caffe.TEST)
     #orig_net = tuned_net
     print("blobs {}\nparams {}".format(orig_net.blobs.keys(), orig_net.params.keys()))
