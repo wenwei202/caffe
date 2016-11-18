@@ -55,6 +55,11 @@ def show_filters(net,layername ,filt_min ,filt_max):
             img = (weights[n, :].transpose((1,2,0)) - filt_min)/(filt_max-filt_min)
             plt.imshow(img,  interpolation='none')
             plt.tick_params(which='both', labelbottom='off', labelleft='off', bottom='off', top='off', left='off', right='off')
+            ax = plt.gca()
+            if n<11:
+                for spine in ax.spines.values():
+                    spine.set_edgecolor('red')
+                    spine.set_linewidth(2)
     else:
         #c_ordered=(3,10,12,0,1,2,4,5,6,7,8,9,11,13,14,15,16,17,18,19)
         for c in range(min(20,chan_num)):
@@ -255,14 +260,14 @@ if __name__ == "__main__":
     #show_filter_channel_pca(orig_net, 'conv3')
     #show_filter_channel_pca(tuned_net, 'conv3')
 
-    #weights_tmp = orig_net.params['conv1'][0].data[:]
-    #weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
-    #weight_scope = abs(weights_tmp).max()
-    #show_filters(orig_net,'conv1',-weight_scope, weight_scope)
-    #weights_tmp = tuned_net.params['conv1'][0].data[:]
-    #weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
-    #weight_scope = abs(weights_tmp).max()
-    #show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
+    weights_tmp = orig_net.params['conv1'][0].data[:]
+    weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
+    weight_scope = abs(weights_tmp).max()
+    show_filters(orig_net,'conv1',-weight_scope, weight_scope)
+    weights_tmp = tuned_net.params['conv1'][0].data[:]
+    weights_tmp[:],tmp1,tmp2 = filter_pca(weights_tmp, rank=weights_tmp.shape[0])
+    weight_scope = abs(weights_tmp).max()
+    show_filters(tuned_net, 'conv1', -weight_scope, weight_scope)
     #plt.figure()
     #print get_angle_sum(orig_net, 'conv1')
     #print get_angle_sum(tuned_net, 'conv1')
@@ -271,7 +276,7 @@ if __name__ == "__main__":
     #print get_angle_sum(orig_net, 'conv3')
     #print get_angle_sum(tuned_net, 'conv3')
 
-    show_filter_lda_projection(orig_net, 'conv4')
-    show_filter_lda_projection(tuned_net, 'conv4')
+    #show_filter_lda_projection(orig_net, 'conv3')
+    #show_filter_lda_projection(tuned_net, 'conv3')
 
     plt.show()
