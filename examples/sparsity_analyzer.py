@@ -6,6 +6,7 @@ import os
 import matplotlib.pyplot as plt
 import argparse
 import caffeparser
+import matplotlib.cm as cm
 # --prototxt models/bvlc_reference_caffenet/deploy.prototxt --origimodel models/bvlc_reference_caffenet/caffenet_0.57368.caffemodel --tunedmodel models/bvlc_reference_caffenet/
 # --prototxt examples/mnist/lenet.prototxt --origimodel examples/mnist/lenet_0.9912.caffemodel --tunedmodel examples/mnist/lenet_grouplasso_iter_10000.caffemodel
 # --prototxt examples/cifar10/cifar10_full.prototxt --origimodel examples/cifar10/cifar10_full_iter_300000_0.8212.caffemodel --tunedmodel examples/cifar10/cifar10_full_grouplasso_iter_60000.caffemodel
@@ -27,7 +28,7 @@ def show_filters(net,layername):
                 plt.subplot((int)(display_region_size),(int)(display_region_size),c+1)
                 if sum(abs(weights[n,c]))>0:
                     #plt.title("filter #{} output".format(c))
-                    plt.imshow(weights[n,c],vmin=filt_min,vmax=filt_max,cmap=plt.get_cmap('Greys'),interpolation='none')
+                    plt.imshow(weights[n,c],vmin=filt_min,vmax=filt_max,cmap=plt.get_cmap('seismic'),interpolation='none')
                     #plt.tight_layout()
                 plt.tick_params(which='both',labelbottom='off',labelleft='off',bottom='off',top='off',left='off',right='off')
 
@@ -130,7 +131,12 @@ if __name__ == "__main__":
                         plt.plot( xIdx,nonzero_ratio[0,::-1],"-r",label="{}_{}".format(layer_name,g),linewidth=4.0)
                         plt.legend(loc='upper right', shadow=True)
                         plt.axis([0, weights_tuned_reshaped.shape[1],0, 1])
-                        show_matrix(abs(weights_tuned_reshaped)>0)
+                        #show_matrix(abs(weights_tuned_reshaped)>0)
+                        #plt.matshow(weights_tuned_reshaped.transpose())
+                        plt.figure()
+                        weight_scope = abs(weights_tuned_reshaped).max()
+                        plt.imshow(weights_tuned_reshaped.transpose(), vmin=-weight_scope, vmax=weight_scope, cmap=plt.get_cmap('cool'),
+                                   interpolation='none')
                         # display sparsity
                         counts_along_row = sum(weights_tuned_reshaped!=0,axis=1)
                         col_sparsity = sum(nonzero_ratio==0)*1.0/nonzero_ratio.size
