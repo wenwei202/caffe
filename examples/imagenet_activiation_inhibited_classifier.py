@@ -29,24 +29,25 @@ def show_filter_outputs(net,blobname):
         #plt.tight_layout()
         plt.axis('off')
 
+imagenet_val_path="examples/imagenet/ilsvrc12_val_lmdb"
 
 #--imagenet_val_path examples/imagenet/ilsvrc12_val_lmdb --prototxt models/eilab_reference_sparsenet/deploy_scnn.prototxt --caffemodel models/eilab_reference_sparsenet/eilab_reference_sparsenet_zerout.caffemodel
 #--imagenet_val_path examples/imagenet/ilsvrc12_val_lmdb --prototxt models/bvlc_reference_caffenet/deploy.prototxt --caffemodel models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--prototxt', type=str, required=True)
-    parser.add_argument('--imagenet_val_path', type=str, required=True)
     parser.add_argument('--caffemodel', type=str, required=True)
+    parser.add_argument('--threshold', type=float, required=False)
+    parser.set_defaults(threshold=0.0)
     args = parser.parse_args()
     prototxt=args.prototxt
-    imagenet_val_path=args.imagenet_val_path
     caffedmodel=args.caffemodel
 
     plt.rcParams['figure.figsize'] = (10, 10)
     plt.rcParams['image.interpolation'] = 'nearest'
     plt.rcParams['image.cmap'] = 'gray'
 
-    caffe.set_device(0)
+    caffe.set_device(1)
     caffe.set_mode_gpu()
 
     net = caffe.Net( prototxt, caffedmodel, caffe.TEST)
@@ -71,8 +72,8 @@ if __name__ == "__main__":
     #layer_prop_to=('norm1','norm2','relu3','relu4','prob')
     #layer_prop_from=('conv1','conv4','conv5')
     #layer_prop_to=('relu3','relu4','prob')
-    layer_prop_from=('conv1','conv2','conv3','conv4','conv5','fc6')
-    layer_prop_to=('norm1','norm2','relu3','relu4','pool5','prob')
+    layer_prop_from=('conv1','fc6','fc7','fc8')
+    layer_prop_to=('pool5','relu6','relu7','prob')
     average_sparsity = zeros((1,len(layer_prop_from)))
 
     for key, value in lmdb_cursor:
@@ -93,13 +94,17 @@ if __name__ == "__main__":
             #show_filter_outputs(net,end_layername)
             #plt.show()
             tmp_out = abs(out[end_layername]).flatten()
-            thre = 0#tmp_out[argsort(tmp_out)[round(tmp_out.size*40/100)]]
-            thre = max([1,thre])
+            thre = args.threshold# 0#tmp_out[argsort(tmp_out)[round(tmp_out.size*40/100)]]
             if prop_step!=len(layer_prop_from)-1:
                 zero_out(net.blobs[end_layername].data,thre)
                 average_sparsity[0,prop_step] = (average_sparsity[0,prop_step]*count + get_sparsity(net.blobs[end_layername].data,0.0001))/(count+1)
-
-            #cur_sparsity =
+                #if count<10:
+                #    thefile = open(layer_prop_from[prop_step+1] + ".feature{}".format(count) + ".txt", 'w')
+                #    for ndx, iterm_ in enumerate(net.blobs[end_layername].data[:].flatten()):
+                #        thefile.write("%.6f\n" % (float)(iterm_))
+                #    thefile.close()
+                #else:
+                #    exit()
 
         #show_filter_outputs(net,'data')
         #show_filter_outputs(net,'relu3')

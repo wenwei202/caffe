@@ -643,7 +643,13 @@ Dtype Net<Dtype>::ForwardFromTo(int start, int end) {
 	//nvtxRangePushA(layer_names_[i].c_str());
 	//PUSH_RANGE(layer_names_[i].c_str(),i);
     //timer.Start();
+//	if(layers_[i]->layer_param().type()=="Pooling"){
+//		cudaProfilerStart();
+//	}
     Dtype layer_loss = layers_[i]->Forward(bottom_vecs_[i], top_vecs_[i]);
+//    if(layers_[i]->layer_param().type()=="Pooling"){
+//    	cudaProfilerStop();
+//    }
     //timer.Stop();
     //nvtxRangePop();
     //POP_RANGE;
