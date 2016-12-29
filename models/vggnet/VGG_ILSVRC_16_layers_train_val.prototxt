@@ -14,7 +14,7 @@ layer {
   }
   data_param {
     source: "examples/imagenet/ilsvrc12_train_lmdb"
-    batch_size: 256
+    batch_size: 8
     backend: LMDB
   }
 }
@@ -42,6 +42,15 @@ layer {
   top: "conv1_1"
   name: "conv1_1"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 64
     pad: 1
@@ -59,6 +68,15 @@ layer {
   top: "conv1_2"
   name: "conv1_2"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 64
     pad: 1
@@ -87,6 +105,15 @@ layer {
   top: "conv2_1"
   name: "conv2_1"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 128
     pad: 1
@@ -104,6 +131,15 @@ layer {
   top: "conv2_2"
   name: "conv2_2"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 128
     pad: 1
@@ -132,6 +168,15 @@ layer {
   top: "conv3_1"
   name: "conv3_1"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 256
     pad: 1
@@ -149,6 +194,15 @@ layer {
   top: "conv3_2"
   name: "conv3_2"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 256
     pad: 1
@@ -166,6 +220,15 @@ layer {
   top: "conv3_3"
   name: "conv3_3"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 256
     pad: 1
@@ -194,6 +257,15 @@ layer {
   top: "conv4_1"
   name: "conv4_1"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 512
     pad: 1
@@ -211,6 +283,15 @@ layer {
   top: "conv4_2"
   name: "conv4_2"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 512
     pad: 1
@@ -228,6 +309,15 @@ layer {
   top: "conv4_3"
   name: "conv4_3"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 512
     pad: 1
@@ -256,6 +346,15 @@ layer {
   top: "conv5_1"
   name: "conv5_1"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 512
     pad: 1
@@ -273,6 +372,15 @@ layer {
   top: "conv5_2"
   name: "conv5_2"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 512
     pad: 1
@@ -290,6 +398,15 @@ layer {
   top: "conv5_3"
   name: "conv5_3"
   type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+    kernel_shape_decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
   convolution_param {
     num_output: 512
     pad: 1
