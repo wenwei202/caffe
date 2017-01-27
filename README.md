@@ -109,6 +109,13 @@ Please cite our NIPS 2016 paper and Caffe if it helps you:
       Year = {2014}
     }
 
+## Tricks
+For training large-scale DNNs like AlexNet in ImageNet:
+  1. Set the base learning rates of both SSL and fine-tuning to `0.1x` of the base learning rate of training original DNNs from stratch.
+  2. Set the maximum iteration `K` of SSL to about half of the max iteration `M` of training original DNNs from stratch (`K=M/2`); set max iteration `N` of finetuning to around `M/3`.
+  3. During SSL, the first learning rate is critical to get high sparsity, please train it longer. The group sparsity increase slowly at the early iterations and will ramp up rapidly in the later iterations. The second learning rate of SSL is important to maintain accuracy.
+  
+
 ## Notes
 1. Stabilizing sparsity
   - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
