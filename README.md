@@ -58,13 +58,13 @@ Training by SSL is simple, we add new features in [caffe.proto](/src/caffe/proto
 ```
   - `block_group_decay` in `SolverParameter`: do NOT forget to configure global weight decay of group lasso regularization in the solver prototxt by setting `block_group_decay` (default value is 0)
   - Group Lasso regularization on each row or column can be specified by `block_group_lasso`. However, we also implemented (`kernel_shape_decay_mult` & `breadth_decay_mult` in `ParamSpec param`) and (`kernel_shape_decay` & `breadth_decay`  in `SolverParameter`) to configure the group Lasso regularization on row and column respectively. 
-  - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L362).
+  - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L375).
   - local [regularization_type](/src/caffe/proto/caffe.proto#L316) ("L1/L2") is supported for each `ParamSpec` (e.g. weights) in each layer.
 
 
 ### Test/Evaluate sparsity-structured deep neural networks 
 Testing the SSL learned DNN is also simple by configuring prototxt (i.e. `conv_mode`). Note that ATLAS and OpenBLAS do not officially support sparse BLAS, please use mkl BLAS if you want to use the Compressed Sparse Row feature in CPU mode.
-  - [conv_mode](/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the implementations of convolution (GEMM, CSR or Concatenation+GEMM). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by (sparse weight matrix) * (dense feature map matrix) (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
+  - [conv_mode](/src/caffe/proto/caffe.proto#L655) in `ConvolutionParameter` configures the implementations of convolution (GEMM, CSR or Concatenation+GEMM). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by (sparse weight matrix) * (dense feature map matrix) (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
 ```
 layer {
   name: "conv2"
