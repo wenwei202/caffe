@@ -127,9 +127,8 @@ For training large-scale DNNs, the following setups may be a good starting point
 3. Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer (by MKL BLAS in CPU mode and cuBLAS (not cuDNN) in GPU mode), in a layer-by-layer fashion. The speedup of the total time may be different, because
   1. The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
   2. After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
+  3. However, the lowering and pooling can also be optimized. Please refer to [intel branch](https://github.com/wenwei202/caffe/tree/intel).
 4. In GPU mode, the lowering operation to shrink feature matrix is temporally implemented with CPU subroutines. Please pull request if you implemented it in GPU mode.
-
-However, the lowering and pooling can also be optimized. Please refer to [intel branch](https://github.com/wenwei202/caffe/tree/intel).
 
 
 ### Issues
