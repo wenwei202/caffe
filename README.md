@@ -129,14 +129,8 @@ For training large-scale DNNs, the following setups may be a good starting point
   2. After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
 4. In GPU mode, the lowering operation to shrink feature matrix is temporally implemented with CPU subroutines. Please pull request if you implemented it in GPU mode.
 
-However, the lowering and pooling can also be optimized by programming tricks. Please refer to our paper of [Holistic SparseCNN](https://arxiv.org/abs/1608.01409) and [intel branch](https://github.com/wenwei202/caffe/tree/intel):
+However, the lowering and pooling can also be optimized. Please refer to [intel branch](https://github.com/wenwei202/caffe/tree/intel).
 
-    @article{park2016scnn,
-      Author = {Park, Jongsoo and Li, R. Sheng and Wen, Wei and Li, Hai and Chen, Yiran and Dubey, Pradeep},
-      Journal = {arXiv preprint arXiv:1608.01409},
-      Title = {Holistic SparseCNN: Forging the Trident of Accuracy, Speed, and Size},
-      Year = {2016}
-    }
 
 ### Issues
 1. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)
