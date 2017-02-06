@@ -8,7 +8,7 @@ Our *SSL (Structured Sparsity Learning)* method utilizes group Lasso regularizat
 Poster is [here](/docs/Poster_Wen_NIPS2016.pdf).
 Slides are [here](/docs/WEN_NIPS2016.pdf).
 
-Please also see our ICLR 2017 paper on sparse DNNs:
+Please also see our accepted ICLR 2017 paper on sparse DNNs:
 [Paper](https://openreview.net/pdf?id=rJPcZ3txx), [Code](https://github.com/IntelLabs/SkimCaffe)
 
 ## Motivation
