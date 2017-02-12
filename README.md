@@ -1,5 +1,5 @@
 # About
-This branch is deprecated and extended to [IntelLabs/SkimCaffe](https://github.com/IntelLabs/SkimCaffe) by @jspark1105. The related work is published in ICLR 2017.
+This branch is deprecated and extended to [IntelLabs/SkimCaffe](https://github.com/IntelLabs/SkimCaffe) by @jspark1105. The related work is published in ICLR 2017:
 
     @incollection{Jongsoo_ICLR2017,
     Title = {Faster CNNs with Direct Sparse Convolutions and Guided Pruning},
