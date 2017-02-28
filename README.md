@@ -2,10 +2,14 @@
 
 This is a detached source code of [Caffe](http://caffe.berkeleyvision.org/) targeting on sparse deep neural networks with *structured sparisty* to speedup the evaluation of Deep Neural Networks (DNN).
 
-Technical details are in our [NIPS 2016 paper](http://arxiv.org/abs/1608.03665): **Learning Structured Sparsity in Deep Neural Networks**.
+Technical details are in our [NIPS 2016 paper](http://papers.nips.cc/paper/6504-learning-structured-sparsity-in-deep-neural-networks.pdf): **Learning Structured Sparsity in Deep Neural Networks**.
 Our *SSL (Structured Sparsity Learning)* method utilizes group Lasso regularization to dynamically learn a compact DNN structure (less filters, less channels,smaller filter shapes, less neurons and less layers), achieving speedups of convolutional layers in AlexNet by 3.1X in GPUs and 5.1X in CPUs, measured by the off-the-shelf GEMM in BLAS (e.g. MKL in CPUs and cuBLAS in nvidia GPUs). Alternatively, a variant of our method can improve accuracy of AlexNet by ~1%. Moreover, our results can also reduce the number of layers in Deep Residual Networks (ResNets) meanwhile improving its accuracy.
 
+Poster is [here](/docs/Poster_Wen_NIPS2016.pdf).
 Slides are [here](/docs/WEN_NIPS2016.pdf).
+
+Please also see our accepted ICLR 2017 paper on sparse DNNs:
+[Paper](https://openreview.net/pdf?id=rJPcZ3txx), [Code](https://github.com/IntelLabs/SkimCaffe)
 
 ## Motivation
 Deep neural networks can be very sparse (>90%), after optimization by L1 regularization or connection pruning. The model size can be compressed using those sparsifying methods, however, the computation cannot be sped up because of the poor cache locality and jumping memory access pattern resulted from the random pattern of the sparsity.
@@ -15,7 +19,7 @@ Deep neural networks can be very sparse (>90%), after optimization by L1 regular
 The above figure shows the speedups are very limited (sometimes even slows down) althrough the sparsity can be as high as >90%. Our *SSL* method can train DNNs with structured sparsity, which results in very good locality and memory access pattern. For example, SSL can directly reduce the dimensions of weight matrixes in both convolutional layers and fully-connected layers.
 
 ## Caffemodel and examples
-Caffemodels of AlexNet learned by SSL are uploaded to [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learning-structured-sparsity-in-deep-neural-networks).
+Caffemodels of AlexNet learned by SSL are uploaded to [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learning-structured-sparsity-in-deep-neural-networks). Note that the paper focuses on acceleration and those caffemodels are NOT compressed by removing zeros. Zeros are stored as nonzeros are. During testing, zeros are removed and compressed at the beginning by `Layer::WeightAlign()` of [conv layer](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/layers/base_conv_layer.cpp#L13) and [fully-connected layer](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/layers/inner_product_layer.cpp#L10).
 
 Please check [examples/cifar10](/examples/cifar10/readme.md) for the detailed tutorial to use the code.
 
@@ -56,13 +60,13 @@ Training by SSL is simple, we add new features in [caffe.proto](/src/caffe/proto
 ```
   - `block_group_decay` in `SolverParameter`: do NOT forget to configure global weight decay of group lasso regularization in the solver prototxt by setting `block_group_decay` (default value is 0)
   - Group Lasso regularization on each row or column can be specified by `block_group_lasso`. However, we also implemented (`kernel_shape_decay_mult` & `breadth_decay_mult` in `ParamSpec param`) and (`kernel_shape_decay` & `breadth_decay`  in `SolverParameter`) to configure the group Lasso regularization on row and column respectively. 
-  - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L362).
+  - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L375).
   - local [regularization_type](/src/caffe/proto/caffe.proto#L316) ("L1/L2") is supported for each `ParamSpec` (e.g. weights) in each layer.
 
 
 ### Test/Evaluate sparsity-structured deep neural networks 
 Testing the SSL learned DNN is also simple by configuring prototxt (i.e. `conv_mode`). Note that ATLAS and OpenBLAS do not officially support sparse BLAS, please use mkl BLAS if you want to use the Compressed Sparse Row feature in CPU mode.
-  - [conv_mode](/src/caffe/proto/caffe.proto#L637) in `ConvolutionParameter` configures the implementations of convolution (GEMM, CSR or Concatenation+GEMM). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by (sparse weight matrix) * (dense feature map matrix) (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
+  - [conv_mode](/src/caffe/proto/caffe.proto#L655) in `ConvolutionParameter` configures the implementations of convolution (GEMM, CSR or Concatenation+GEMM). Following is an example to configure `deploy.prototxt` so that the matrix multiplication is operated by (sparse weight matrix) * (dense feature map matrix) (`LOWERED_CSRMM`), GEMM (`LOWERED_GEMM`) or Concatenation+GEMM (`LOWERED_CCNMM`): 
 ```
 layer {
   name: "conv2"
@@ -109,6 +113,13 @@ Please cite our NIPS 2016 paper and Caffe if it helps you:
       Year = {2014}
     }
 
+## Tricks
+For training large-scale DNNs, the following setups may be a good starting point (which are verified by AlexNet in ImageNet):
+  1. Set the base learning rates of both SSL and fine-tuning to `0.1x` of the base learning rate of training original DNNs from stratch.
+  2. Set the maximum iteration `K` of SSL to about half of the max iteration `M` of training original DNNs from stratch (`K=M/2`); set max iteration `N` of finetuning to around `M/3`.
+  3. During SSL, training with the first learning rate is critical to get high sparsity, please train it longer with, say, `0.7*K`iterations. The group sparsity increase slowly at the early iterations and will ramp up rapidly in the later iterations. In SSL, the training stage under the second learning rate is the key stage that can recover accuracy.
+  
+
 ## Notes
 1. Stabilizing sparsity
   - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
@@ -118,16 +129,9 @@ Please cite our NIPS 2016 paper and Caffe if it helps you:
 3. Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer (by MKL BLAS in CPU mode and cuBLAS (not cuDNN) in GPU mode), in a layer-by-layer fashion. The speedup of the total time may be different, because
   1. The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
   2. After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
+  3. However, the lowering and pooling can also be optimized. Please refer to [intel branch](https://github.com/wenwei202/caffe/tree/intel).
 4. In GPU mode, the lowering operation to shrink feature matrix is temporally implemented with CPU subroutines. Please pull request if you implemented it in GPU mode.
 
-However, the lowering and pooling can also be optimized by programming tricks. Please refer to our paper of [Holistic SparseCNN](https://arxiv.org/abs/1608.01409) and [intel branch](https://github.com/wenwei202/caffe/tree/intel):
-
-    @article{park2016scnn,
-      Author = {Park, Jongsoo and Li, R. Sheng and Wen, Wei and Li, Hai and Chen, Yiran and Dubey, Pradeep},
-      Journal = {arXiv preprint arXiv:1608.01409},
-      Title = {Holistic SparseCNN: Forging the Trident of Accuracy, Speed, and Size},
-      Year = {2016}
-    }
 
 ### Issues
 1. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)

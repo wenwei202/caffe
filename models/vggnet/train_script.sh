@@ -2,9 +2,9 @@
 set -e
 set -x
 
-folder="models/vgg"
-file_prefix="caffenet_train"
-model_path="models/vgg"
+folder="models/vggnet/"
+file_prefix="vggnet_ssl"
+model_path="models/vggnet/"
 
 if [ "$#" -lt 7 ]; then
 	echo "Illegal number of parameters"

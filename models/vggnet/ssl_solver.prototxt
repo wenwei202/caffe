@@ -1,0 +1,16 @@
+net: "models/vggnet/VGG_ILSVRC_16_layers_train_val.prototxt"
+test_iter: 1000
+test_interval: 1000
+base_lr: 0.001
+lr_policy: "multistep"
+gamma: 0.1
+stepvalue: 2000000
+stepvalue: 2500000
+display: 200
+max_iter: 2600000
+momentum: 0.9
+weight_decay: 0.00001
+kernel_shape_decay: 0.0001
+snapshot: 100000
+snapshot_prefix: "models/vggnet/ssl_vggnet_train"
+solver_mode: GPU
