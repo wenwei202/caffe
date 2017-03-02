@@ -1,0 +1,21 @@
+net: "models/bvlc_alexnet/lowrank_net_ft_top5.prototxt.lowrank.prototxt"
+test_iter: 1000
+test_interval: 1000
+#base_lr: 0.001
+#lr_policy: "step"
+lr_policy: "multistep"
+gamma: 0.1
+stepvalue: 70000
+stepvalue: 140000
+display: 200
+max_iter: 150000
+momentum: 0.9
+
+#weight_decay: 0
+#kernel_shape_decay: 8.0e-4
+#breadth_decay: 3.0e-5
+
+regularization_type: "L2"
+snapshot: 70000
+#snapshot_prefix: "models/bvlc_"
+#solver_mode: GPU
