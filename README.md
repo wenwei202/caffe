@@ -46,7 +46,7 @@ Training by SSL is simple, we add new features in [caffe.proto](/src/caffe/proto
     block_group_lasso { # specify the group lasso regularization on 2D blocks
       xdimen: 5 # the block size along the x (column) dimension
       ydimen: 10 # the block size along the y (row) dimension
-      block_decay_mult: 1.667 # the local multiplier of weight decay by group lasso regularization
+      block_decay_mult: 1.667 # the local multiplier of weight decay (block_group_decay) by group lasso regularization
     }
   }
   param { # biases
@@ -59,7 +59,30 @@ Training by SSL is simple, we add new features in [caffe.proto](/src/caffe/proto
 }
 ```
   - `block_group_decay` in `SolverParameter`: do NOT forget to configure global weight decay of group lasso regularization in the solver prototxt by setting `block_group_decay` (default value is 0)
-  - Group Lasso regularization on each row or column can be specified by `block_group_lasso`. However, we also implemented (`kernel_shape_decay_mult` & `breadth_decay_mult` in `ParamSpec param`) and (`kernel_shape_decay` & `breadth_decay`  in `SolverParameter`) to configure the group Lasso regularization on row and column respectively. 
+  - Group Lasso regularization on each row or column can be specified by `block_group_lasso` with `ydimen: 1` or `xdimen: 1`. However, we also implemented (`breadth_decay_mult` & `kernel_shape_decay_mult` in `ParamSpec param`) and (`breadth_decay` & `kernel_shape_decay` in `SolverParameter`) to simplify the configuration of group Lasso regularization on each row or column, respectively. For example, in `conv1` of LeNet, `kernel_shape_decay_mult: 1.5` is equivalent to 
+  
+  ```
+  param { # weights
+    lr_mult: 1
+    block_group_lasso { # specify the group lasso regularization each column
+      xdimen: 1 
+      ydimen: 20 # The size of each column is the number of filters 
+      block_decay_mult: 1.5 # the same with kernel_shape_decay_mult
+    }
+  }
+  ```
+  and `breadth_decay_mult: 1.5` is equivalent to
+  
+  ```
+  param { # weights
+    lr_mult: 1
+    block_group_lasso { # specify the group lasso regularization each row
+      xdimen: 75 # The size of each row is the size of filter 5*5*3
+      ydimen: 1  
+      block_decay_mult: 1.5 # the same with breadth_decay_mult
+    }
+  }
+  ```
   - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L375).
   - local [regularization_type](/src/caffe/proto/caffe.proto#L316) ("L1/L2") is supported for each `ParamSpec` (e.g. weights) in each layer.
 
