@@ -230,7 +230,7 @@ message SolverParameter {
   
   optional float breadth_decay = 41 [default = 0.0]; // The group weight decay on each kernel.
   optional float kernel_shape_decay = 42 [default = 0.0]; // The group weight decay on all elemements having the same coordinate in each kernel
-  optional float block_group_decay = 43 [default = 0.0]; // The group weight decay on all elemements each block
+  optional float block_group_decay = 43 [default = 0.0]; // The group weight decay on all elemements in each block
 
   // DEPRECATED: old solver enum types, use string instead
   enum SolverType {
