@@ -46,6 +46,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -72,6 +73,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -109,6 +111,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -135,6 +138,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -172,6 +176,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -198,6 +203,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -224,6 +230,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -261,6 +268,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -287,6 +295,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -313,6 +322,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -350,6 +360,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -376,6 +387,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
@@ -402,6 +414,7 @@ layer {
     lr_mult: 1
     decay_mult: 1
     kernel_shape_decay_mult: 1
+    breadth_decay_mult: 1
   }
   param {
     lr_mult: 2
