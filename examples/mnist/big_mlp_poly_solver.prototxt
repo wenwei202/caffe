@@ -24,6 +24,10 @@ power: 0.5
 display: 1000
 # The maximum number of iterations
 max_iter: 60000
+
+# Sparsity regularization
+# regularization_type: "L1"
+
 # snapshot intermediate results
 snapshot: 10000
 snapshot_prefix: "examples/mnist/big_mlp_poly"
