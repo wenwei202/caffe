@@ -45,8 +45,8 @@ layer {
   param {
     lr_mult: 1
     decay_mult: 1
-    kernel_shape_decay_mult: 1
-    breadth_decay_mult: 1
+    kernel_shape_decay_mult: 0 # disable ssl in this layer if potential column sparisty is small
+    breadth_decay_mult: 0      # disable ssl in this layer if potential row sparisty is small
   }
   param {
     lr_mult: 2
