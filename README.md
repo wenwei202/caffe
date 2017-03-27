@@ -21,7 +21,7 @@ The above figure shows the speedups are very limited (sometimes even slows down)
 ## Caffemodel and examples
 Caffemodels of AlexNet learned by SSL are uploaded to [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learning-structured-sparsity-in-deep-neural-networks). Note that the paper focuses on acceleration and those caffemodels are NOT compressed by removing zeros. Zeros are stored as nonzeros are. During testing, zeros are removed and compressed at the beginning by `Layer::WeightAlign()` of [conv layer](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/layers/base_conv_layer.cpp#L13) and [fully-connected layer](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/layers/inner_product_layer.cpp#L10).
 
-Please check [examples/cifar10](/examples/cifar10/readme.md) for the detailed tutorial to use the code.
+Please check [examples/cifar10](/examples/cifar10/readme.md) and [models/vggnet](/models/vggnet/) for the detailed tutorial to use the code.
 
 ## Issue
 Let us know here if any question: [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
