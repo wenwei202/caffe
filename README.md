@@ -152,7 +152,7 @@ For training large-scale DNNs, the following setups may be a good starting point
     - The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
     - After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
     - However, the lowering and pooling can also be optimized. Please refer to [intel branch](https://github.com/wenwei202/caffe/tree/intel).
-4. In GPU mode, the lowering operation to shrink feature matrix is temporally implemented with CPU subroutines. Please pull request if you implemented it in GPU mode.
+4. In GPU mode, the lowering operation to shrink feature matrix in `LOWERED_CCNMM` mode is temporally implemented with CPU subroutines. Please pull request if you implemented it in GPU mode.
 
 
 ### Issues
