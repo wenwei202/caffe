@@ -118,7 +118,7 @@ layer {
   - `Concatenation Timing` -> `LOWERED_CCNMM`
 
 
-Note that the weight matrixes of convolutional and fully-connected layers are snapshotted as `$CAFFE_ROOT/layername.weight`, the format obeys [Matrix Market](http://math.nist.gov/MatrixMarket/). You can use interfaces of [C](http://math.nist.gov/MatrixMarket/mmio-c.html), Fortran and [Matlab](http://math.nist.gov/MatrixMarket/mmio/matlab/mmiomatlab.html) to read those weight matrixes.
+Note that our code uses standard `caffemodel` to read and store weights, but the weight matrixes of convolutional and fully-connected layers are also snapshotted as `$CAFFE_ROOT/layername.weight` for visualization when you run DNN testing. The `.weight` format obeys [Matrix Market](http://math.nist.gov/MatrixMarket/) format. You can use interfaces of [C](http://math.nist.gov/MatrixMarket/mmio-c.html), Fortran and [Matlab](http://math.nist.gov/MatrixMarket/mmio/matlab/mmiomatlab.html) to read those weight matrixes.
 
 Please cite our NIPS 2016 paper and Caffe if it helps you:
 
