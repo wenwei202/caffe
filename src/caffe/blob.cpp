@@ -692,7 +692,7 @@ void Blob<Dtype>:: WriteToNistMMIO(string filename) const{
 	mm_set_real(&matcode);
 	mm_set_general(&matcode);
 	if(NULL==fp) {
-		LOG(WARNING)<<"NULL file pointer to " << filename;
+		LOG(WARNING)<<"Failed to save " << filename;
 		return;
 	}
 	mm_write_banner(fp, matcode);
