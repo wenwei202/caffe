@@ -104,6 +104,7 @@ layer {
     conv_mode: LOWERED_CSRMM # sparse weight matrix in CSR format * lowered feature maps
     # conv_mode: LOWERED_GEMM # default original matrix multiplication 
     # conv_mode: LOWERED_CCNMM # removing all-zero rows & columns and ConCateNating remaining ones, then do gemm. In GPU mode, the lowering operation is temporally implemented with CPU subroutines. 
+    engine: CAFFE # Those features are available in CAFFE cuBLAS mode instead of CUDNN
   }
 }
 ```
@@ -118,23 +119,9 @@ layer {
   - `Concatenation Timing` -> `LOWERED_CCNMM`
 
 
+Training only supports `LOWERED_GEMM` mode, which is the default one, but both `CAFFE` and `CUDNN` `engine` are supported for training. 
+
 Note that our code uses standard `caffemodel` to read and store weights, but the weight matrixes of convolutional and fully-connected layers are also snapshotted as `$CAFFE_ROOT/layername.weight` for visualization when you run DNN testing. The `.weight` format obeys [Matrix Market](http://math.nist.gov/MatrixMarket/) format. You can use interfaces of [C](http://math.nist.gov/MatrixMarket/mmio-c.html), Fortran and [Matlab](http://math.nist.gov/MatrixMarket/mmio/matlab/mmiomatlab.html) to read those weight matrixes.
-
-Please cite our NIPS 2016 paper and Caffe if it helps you:
-
-    @incollection{Wen_NIPS2016,
-    Title = {Learning Structured Sparsity in Deep Neural Networks},
-    Author = {Wen, Wei and Wu, Chunpeng and Wang, Yandan and Chen, Yiran and Li, Hai},
-    bookTitle = {Advances in Neural Information Processing Systems},
-    Year = {2016}
-    }
-    
-    @article{jia2014caffe,
-      Author = {Jia, Yangqing and Shelhamer, Evan and Donahue, Jeff and Karayev, Sergey and Long, Jonathan and Girshick, Ross and Guadarrama, Sergio and Darrell, Trevor},
-      Journal = {arXiv preprint arXiv:1408.5093},
-      Title = {Caffe: Convolutional Architecture for Fast Feature Embedding},
-      Year = {2014}
-    }
 
 ## Tricks
 For training large-scale DNNs, the following setups may be a good starting point (which are verified by AlexNet in ImageNet):
@@ -155,9 +142,26 @@ For training large-scale DNNs, the following setups may be a good starting point
 4. In GPU mode, the lowering operation to shrink feature matrix in `LOWERED_CCNMM` mode is temporally implemented with CPU subroutines. Please pull request if you implemented it in GPU mode.
 
 
-### Issues
+## Issues
 1. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)
 2. cudnn: version of cudnn 5 is supported
 3. More in [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
 4. To profile, use `deploy.prototxt` in Python and use `train_val.prototxt` in `caffe time ...`, otherwise, the there might be some bugs in original Caffe. Note that training using `LOWERED_CSRMM` or `LOWERED_CCNMM` is forbidden. `caffe time` calls backward function of each layer, to use `caffe time` to profile, comment backward related codes in `tools/caffe.cpp:time()` function.
 
+## Citations
+
+Please cite our NIPS 2016 paper and Caffe if it helps you:
+
+    @incollection{Wen_NIPS2016,
+    Title = {Learning Structured Sparsity in Deep Neural Networks},
+    Author = {Wen, Wei and Wu, Chunpeng and Wang, Yandan and Chen, Yiran and Li, Hai},
+    bookTitle = {Advances in Neural Information Processing Systems},
+    Year = {2016}
+    }
+    
+    @article{jia2014caffe,
+      Author = {Jia, Yangqing and Shelhamer, Evan and Donahue, Jeff and Karayev, Sergey and Long, Jonathan and Girshick, Ross and Guadarrama, Sergio and Darrell, Trevor},
+      Journal = {arXiv preprint arXiv:1408.5093},
+      Title = {Caffe: Convolutional Architecture for Fast Feature Embedding},
+      Year = {2014}
+    }
