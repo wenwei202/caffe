@@ -1,5 +1,11 @@
 # ABOUT 
 
+This is a branch working on low-rank deep neural networks for faster evaluation.
+
+## Paper
+
+[Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746)
+
 ## Caffe version
 sfm branch is from caffe @ commit [985493e](https://github.com/BVLC/caffe/tree/985493e9ce3e8b61e06c072a16478e6a74e3aa5a)
 
