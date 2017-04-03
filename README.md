@@ -21,7 +21,7 @@ The above figure shows the speedups are very limited (sometimes even slows down)
 ## Caffemodel and examples
 Caffemodels of AlexNet learned by SSL are uploaded to [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learning-structured-sparsity-in-deep-neural-networks). Note that the paper focuses on acceleration and those caffemodels are NOT compressed by removing zeros. Zeros are stored as nonzeros are. During testing, zeros are removed and compressed at the beginning by `Layer::WeightAlign()` of [conv layer](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/layers/base_conv_layer.cpp#L13) and [fully-connected layer](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/layers/inner_product_layer.cpp#L10).
 
-Please check [examples/cifar10](/examples/cifar10/readme.md) for the detailed tutorial to use the code.
+Please check examples in [examples/cifar10](/examples/cifar10/readme.md) and [models/vggnet](/models/vggnet/).
 
 ## Issue
 Let us know here if any question: [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
@@ -104,6 +104,7 @@ layer {
     conv_mode: LOWERED_CSRMM # sparse weight matrix in CSR format * lowered feature maps
     # conv_mode: LOWERED_GEMM # default original matrix multiplication 
     # conv_mode: LOWERED_CCNMM # removing all-zero rows & columns and ConCateNating remaining ones, then do gemm. In GPU mode, the lowering operation is temporally implemented with CPU subroutines. 
+    engine: CAFFE # Those features are available in CAFFE cuBLAS mode instead of CUDNN
   }
 }
 ```
@@ -118,7 +119,37 @@ layer {
   - `Concatenation Timing` -> `LOWERED_CCNMM`
 
 
-Note that the weight matrixes of convolutional and fully-connected layers are snapshotted as `$CAFFE_ROOT/layername.weight`, the format obeys [Matrix Market](http://math.nist.gov/MatrixMarket/). You can use interfaces of [C](http://math.nist.gov/MatrixMarket/mmio-c.html), Fortran and [Matlab](http://math.nist.gov/MatrixMarket/mmio/matlab/mmiomatlab.html) to read those weight matrixes.
+Training only supports `LOWERED_GEMM` mode, which is the default one, but both `CAFFE` and `CUDNN` `engine` are supported for training. 
+
+Note that our code uses standard `caffemodel` to read and store weights, but the weight matrixes of convolutional and fully-connected layers are also snapshotted as `$CAFFE_ROOT/layername.weight` for visualization when you run DNN testing. The `.weight` format obeys [Matrix Market](http://math.nist.gov/MatrixMarket/) format. You can use interfaces of [C](http://math.nist.gov/MatrixMarket/mmio-c.html), Fortran and [Matlab](http://math.nist.gov/MatrixMarket/mmio/matlab/mmiomatlab.html) to read those weight matrixes.
+
+## Tricks
+For training large-scale DNNs, the following setups may be a good starting point (which are verified by AlexNet in ImageNet):
+  1. Set the base learning rates of both SSL and fine-tuning to `0.1x` of the base learning rate of training original DNNs from stratch.
+  2. Set the maximum iteration `K` of SSL to about half of the max iteration `M` of training original DNNs from stratch (`K=M/2`); set max iteration `N` of finetuning to around `M/3`.
+  3. During SSL, training with the first learning rate is critical to get high sparsity, please train it longer with, say, `0.7*K`iterations. The group sparsity increase slowly at the early iterations and will ramp up rapidly in the later iterations. In SSL, the training stage under the second learning rate is the key stage that can recover accuracy.
+  
+
+## Notes
+1. Stabilizing sparsity
+  - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
+2. Caffe version
+  - scnn branch is forked from caffe @ commit [eb4ba30](https://github.com/BVLC/caffe/tree/eb4ba30e3c4899edc7a9713158d61503fa8ecf90)
+3. cudnn: version of cudnn 5 is supported
+
+
+
+## Issues
+1. To profile, use `deploy.prototxt` in Python and use `train_val.prototxt` in `caffe time ...`, otherwise, the there might be some bugs in original Caffe. Note that training using `LOWERED_CSRMM` or `LOWERED_CCNMM` is forbidden. `caffe time` calls backward function of each layer, to use `caffe time` to profile, comment backward related codes in `tools/caffe.cpp:time()` function.
+2. Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer (by MKL BLAS in CPU mode and cuBLAS (not cuDNN) in GPU mode), in a layer-by-layer fashion. The speedup of the total time may be different, because
+    - The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
+    - After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
+    - However, the lowering and pooling can also be optimized. Please refer to [intel branch](https://github.com/wenwei202/caffe/tree/intel).
+3. In GPU mode, the lowering operation to shrink feature matrix in `LOWERED_CCNMM` mode is temporally implemented with CPU subroutines. Please pull request if you implemented it in GPU mode.
+4. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)
+5. More in [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
+
+## Citations
 
 Please cite our NIPS 2016 paper and Caffe if it helps you:
 
@@ -135,30 +166,3 @@ Please cite our NIPS 2016 paper and Caffe if it helps you:
       Title = {Caffe: Convolutional Architecture for Fast Feature Embedding},
       Year = {2014}
     }
-
-## Tricks
-For training large-scale DNNs, the following setups may be a good starting point (which are verified by AlexNet in ImageNet):
-  1. Set the base learning rates of both SSL and fine-tuning to `0.1x` of the base learning rate of training original DNNs from stratch.
-  2. Set the maximum iteration `K` of SSL to about half of the max iteration `M` of training original DNNs from stratch (`K=M/2`); set max iteration `N` of finetuning to around `M/3`.
-  3. During SSL, training with the first learning rate is critical to get high sparsity, please train it longer with, say, `0.7*K`iterations. The group sparsity increase slowly at the early iterations and will ramp up rapidly in the later iterations. In SSL, the training stage under the second learning rate is the key stage that can recover accuracy.
-  
-
-## Notes
-1. Stabilizing sparsity
-  - Note that weights smaller than a threshold ([0.0001](http://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Liu_Sparse_Convolutional_Neural_2015_CVPR_paper.pdf)) are zeroed out after updating weights
-  
-2. Caffe version
-  - scnn branch is forked from caffe @ commit [eb4ba30](https://github.com/BVLC/caffe/tree/eb4ba30e3c4899edc7a9713158d61503fa8ecf90)
-3. Speed is compared by matrix-matrix multiplication (GEMM) in each convolutional layer (by MKL BLAS in CPU mode and cuBLAS (not cuDNN) in GPU mode), in a layer-by-layer fashion. The speedup of the total time may be different, because
-  1. The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
-  2. After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
-  3. However, the lowering and pooling can also be optimized. Please refer to [intel branch](https://github.com/wenwei202/caffe/tree/intel).
-4. In GPU mode, the lowering operation to shrink feature matrix is temporally implemented with CPU subroutines. Please pull request if you implemented it in GPU mode.
-
-
-### Issues
-1. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)
-2. cudnn: version of cudnn 5 is supported
-3. More in [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
-4. To profile, use `deploy.prototxt` in Python and use `train_val.prototxt` in `caffe time ...`, otherwise, the there might be some bugs in original Caffe. Note that training using `LOWERED_CSRMM` or `LOWERED_CCNMM` is forbidden. `caffe time` calls backward function of each layer, to use `caffe time` to profile, comment backward related codes in `tools/caffe.cpp:time()` function.
-

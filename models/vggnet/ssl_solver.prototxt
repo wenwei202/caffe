@@ -10,7 +10,7 @@ display: 200
 max_iter: 2600000
 momentum: 0.9
 weight_decay: 0.00001
-kernel_shape_decay: 0.0001
+kernel_shape_decay: 0.0008
 snapshot: 100000
 snapshot_prefix: "models/vggnet/ssl_vggnet_train"
 solver_mode: GPU
