@@ -1,0 +1,23 @@
+net: "models/bvlc_reference_caffenet/train_val_breadth_shape.prototxt"
+test_iter: 1000
+test_interval: 1000
+base_lr: 0.001
+
+lr_policy: "multistep"
+gamma: 0.1
+stepvalue: 250000
+stepvalue: 350000
+stepvalue: 400000
+display: 500
+max_iter: 450000
+
+momentum: 0.9
+
+weight_decay: 0.00025
+kernel_shape_decay: 0.001
+breadth_decay: 0.001
+regularization_type: "L2"
+
+snapshot: 50000
+snapshot_prefix: "models/bvlc_reference_caffenet/caffenet_train_grouplasso"
+solver_mode: GPU
