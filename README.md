@@ -24,7 +24,9 @@ Caffemodels of AlexNet learned by SSL are uploaded to [Caffe Model Zoo](https://
 Please check examples in [examples/cifar10](/examples/cifar10/readme.md) and [models/vggnet](/models/vggnet/).
 
 ## Issue
-Let us know here if any question: [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
+Submit an issue [here](https://github.com/wenwei202/caffe/issues).
+
+Or, refer to [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
 
 ## Overview of Features
 Please refer to our [NIPS 2016 paper](http://arxiv.org/abs/1608.03665) for technical details.
@@ -145,8 +147,8 @@ For training large-scale DNNs, the following setups may be a good starting point
     - The implementation of lowering convolution to GEMM is not efficient in Caffe, especially in CPU mode.
     - After the time of GEMM is squeezed, the computation time of other layers (e.g. pooling layers) comes to the surface.
     - However, the lowering and pooling can also be optimized. Please refer to [intel branch](https://github.com/wenwei202/caffe/tree/intel).
-3. In GPU mode, the lowering operation to shrink feature matrix in `LOWERED_CCNMM` mode is temporally implemented with CPU subroutines. Please pull request if you implemented it in GPU mode.
-4. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764)
+3. In GPU mode, the lowering operation to shrink feature matrix in `LOWERED_CCNMM` mode is temporally implemented with CPU subroutines. Please [pull request](https://github.com/wenwei202/caffe/issues/3) if you implemented it in GPU mode.
+4. `make runtest`: see reports [here](https://github.com/BVLC/caffe/issues/4328#issuecomment-229263764) and related [issue](https://github.com/wenwei202/caffe/issues/2)
 5. More in [Caffe Issue 4328](https://github.com/BVLC/caffe/issues/4328)
 
 ## Citations
