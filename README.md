@@ -18,6 +18,10 @@ Deep neural networks can be very sparse (>90%), after optimization by L1 regular
 
 The above figure shows the speedups are very limited (sometimes even slows down) althrough the sparsity can be as high as >90%. Our *SSL* method can train DNNs with structured sparsity, which results in very good locality and memory access pattern. For example, SSL can directly reduce the dimensions of weight matrixes in both convolutional layers and fully-connected layers.
 
+## Build 
+To build, please follow the standard process of building caffe.
+New configurations are added in `Makefile` and `Makefile.config.example`, but those features are Not modified for `cmake`. So `cmake` is NOT support currently.
+
 ## Caffemodel and examples
 Caffemodels of **CaffeNet** (a variant of AlexNet) learned by SSL are uploaded to [Caffe Model Zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo#learning-structured-sparsity-in-deep-neural-networks). Note that the paper focuses on acceleration and those caffemodels are NOT compressed by removing zeros. Zeros are stored as nonzeros are. During testing, zeros are removed and compressed at the beginning by `Layer::WeightAlign()` of [conv layer](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/layers/base_conv_layer.cpp#L13) and [fully-connected layer](https://github.com/wenwei202/caffe/blob/scnn/src/caffe/layers/inner_product_layer.cpp#L10).
 
