@@ -91,6 +91,8 @@ Training by SSL is simple, we add new features in [caffe.proto](/src/caffe/proto
   ```
   - `connectivity_mode` in `LayerParameter` can permanently prune zero-weighted connections: if you want to freeze the zero weights in the weight matrix, please use [connectivity_mode](/src/caffe/proto/caffe.proto#L375).
   - local [regularization_type](/src/caffe/proto/caffe.proto#L316) ("L1/L2") is supported for each `ParamSpec` (e.g. weights) in each layer.
+  
+During training, you will see some sparsity statistics. The sparsity is shown in the order of layers, and in each layer, in the order of weights and then biases. Basically, it plots sparsity for all parameter blobs in caffe, like parameters for a batch normalization layer. We usually care only about the sparsity of weights.
 
 
 ### Test/Evaluate sparsity-structured deep neural networks 
