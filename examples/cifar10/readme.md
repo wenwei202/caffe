@@ -9,7 +9,8 @@ priority: 5
 # Experiments on CIFAR-10
 ## ConvNets
 ### Baseline
-1. `cifar10_full_baseline_train_test.prototxt`: the network prototxt. Dropout on `ip1` is added.
+Use the same [net](https://github.com/BVLC/caffe/blob/master/examples/cifar10/cifar10_full_train_test.prototxt) in https://github.com/BVLC/caffe while extend the number of training steps.
+1. `cifar10_full_baseline_train_test.prototxt`: the network prototxt.
 2. `cifar10_full_baseline_multistep_solver.prototxt` is the corresponding solver.
 
 ### SSL to learn high row-sparsity and column-sparsity
