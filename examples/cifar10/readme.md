@@ -9,8 +9,8 @@ priority: 5
 # Experiments on CIFAR-10
 ## ConvNets
 ### Baseline
-1. `cifar10_full_train_test.prototxt`: the network prototxt. Dropout on `ip1` is added.
-2. `cifar10_full_multistep_solver.prototxt` is the corresponding solver.
+1. `cifar10_full_baseline_train_test.prototxt`: the network prototxt. Dropout on `ip1` is added.
+2. `cifar10_full_baseline_multistep_solver.prototxt` is the corresponding solver.
 
 ### SSL to learn high row-sparsity and column-sparsity
 1. `cifar10_full_train_test_kernel_shape.prototxt`: the network prototxt enabling group lasso regularization on each row/filter (by setting `breadth_decay_mult`) and each column/FilterShape (by setting `kernel_shape_decay_mult`)
