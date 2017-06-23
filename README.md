@@ -6,6 +6,8 @@ This is a branch working on low-rank deep neural networks for faster evaluation.
 
 [Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746)
 
+The source code of NIPS 2016 on structurally-sparse DNNs is in the [scnn](https://github.com/wenwei202/caffe/tree/scnn) branch.
+
 ## Tutorial
 Tutorials on using [python](/python) for low-rank DNNs.
 More details will be updated.
