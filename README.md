@@ -4,7 +4,16 @@ This is a branch working on low-rank deep neural networks for faster evaluation.
 
 ## Paper
 
-[Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746)
+[Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746) in ICCV 2017
+```
+@InProceedings{WWen_2017_ICCV,
+author = {Wen, Wei and Xu, Cong and Wu, Chunpeng and Wang, Yandan and Chen, Yiran and Li, Hai},
+title = {Coordinating Filters for Faster Deep Neural Networks},
+booktitle = {The IEEE International Conference on Computer Vision (ICCV)},
+month = {December},
+year = {2017}
+}
+```
 
 The source code of NIPS 2016 on structurally-sparse DNNs is in the [scnn](https://github.com/wenwei202/caffe/tree/scnn) branch.
 
