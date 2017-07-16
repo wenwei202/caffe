@@ -1,9 +1,9 @@
 # ABOUT 
-## Sparse Deep Neural Networks (NIPS 2016)
+## Structurally Sparse Deep Neural Networks (NIPS 2016)
 See the source code of our NIPS 2016 paper in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
 
-## Low-rank deep neural networks (ICCV 2017)
-See the source code of low rank deep neural networks in branch [sfm](https://github.com/wenwei202/caffe/tree/sfm)
+## Lower-rank deep neural networks (ICCV 2017)
+See the source code of low**er** rank deep neural networks in branch [sfm](https://github.com/wenwei202/caffe/tree/sfm)
 
 ## Direct sparse convolution and guided pruning (ICLR 2017)
 Originally in branch [intel](https://github.com/wenwei202/caffe/tree/intel), but merged to [IntelLabs/SkimCaffe](https://github.com/IntelLabs/SkimCaffe) with major contributions by @jspark1105
