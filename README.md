@@ -1,8 +1,8 @@
 # ABOUT 
-## Sparse Deep Neural Networks
-See the source code of our NIPS2016 paper in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
+## Sparse Deep Neural Networks (NIPS 2016)
+See the source code of our NIPS 2016 paper in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
 
-## Low-rank deep neural networks
+## Low-rank deep neural networks (ICCV 2017)
 See the source code of low rank deep neural networks in branch [sfm](https://github.com/wenwei202/caffe/tree/sfm)
 
 ## Caffe version
