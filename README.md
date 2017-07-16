@@ -1,9 +1,25 @@
 # ABOUT 
 ## Structurally Sparse Deep Neural Networks (NIPS 2016)
-See the source code of our NIPS 2016 paper in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
-
+See the source code in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
+```
+@incollection{Wen_NIPS2016,
+Title = {Learning Structured Sparsity in Deep Neural Networks},
+Author = {Wen, Wei and Wu, Chunpeng and Wang, Yandan and Chen, Yiran and Li, Hai},
+bookTitle = {Advances in Neural Information Processing Systems},
+Year = {2016}
+}
+```
 ## Lower-rank deep neural networks (ICCV 2017)
-See the source code of low**er** rank deep neural networks in branch [sfm](https://github.com/wenwei202/caffe/tree/sfm)
+See the source code in branch [sfm](https://github.com/wenwei202/caffe/tree/sfm)
+```
+@InProceedings{WWen_2017_ICCV,
+author = {Wen, Wei and Xu, Cong and Wu, Chunpeng and Wang, Yandan and Chen, Yiran and Li, Hai},
+title = {Coordinating Filters for Faster Deep Neural Networks},
+booktitle = {The IEEE International Conference on Computer Vision (ICCV)},
+month = {December},
+year = {2017}
+}
+```
 
 ## Direct sparse convolution and guided pruning (ICLR 2017)
 Originally in branch [intel](https://github.com/wenwei202/caffe/tree/intel), but merged to [IntelLabs/SkimCaffe](https://github.com/IntelLabs/SkimCaffe) with major contributions by @jspark1105
