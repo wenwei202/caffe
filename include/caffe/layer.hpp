@@ -106,6 +106,10 @@ class Layer {
    */
   inline bool IsShared() const { return is_shared_; }
 
+  /** @brief enable or disable displaying info.
+   */
+  inline void SetDisplay(bool display) { layer_param_.set_display(display); }
+
   /** @brief Set whether this layer is actually shared by other nets
    *         If ShareInParallel() is true and using more than one GPU and the
    *         net has TRAIN phase, then is_shared should be set true.

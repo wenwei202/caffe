@@ -412,6 +412,18 @@ bool Blob<Dtype>::ShapeEquals(const BlobProto& other) {
 }
 
 template <typename Dtype>
+Dtype Blob<Dtype>::GetSparsity( Dtype thre ){
+	CHECK_GE(thre,0);
+	int zero_num = 0;
+	for(int i=0;i<this->count();i++){
+		if( this->cpu_data()[i]<=thre && this->cpu_data()[i]>=-thre){
+			zero_num++;
+		}
+	}
+	return (Dtype)(zero_num) / (Dtype)(this->count());
+}
+
+template <typename Dtype>
 void Blob<Dtype>::CopyFrom(const Blob& source, bool copy_diff, bool reshape) {
   if (source.count() != count_ || source.shape() != shape_) {
     if (reshape) {

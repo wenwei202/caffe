@@ -29,6 +29,7 @@ class SGDSolver : public Solver<Dtype> {
   virtual void ApplyUpdate();
   virtual void Normalize(int param_id);
   virtual void Regularize(int param_id);
+  virtual void ForceRegularize(int param_id);
   virtual void ComputeUpdateValue(int param_id, Dtype rate);
   virtual void ClipGradients();
   virtual void SnapshotSolverState(const string& model_filename);
@@ -41,6 +42,9 @@ class SGDSolver : public Solver<Dtype> {
   // temp maintains other information that might be needed in computation
   //   of gradients/updates and is not needed in snapshots
   vector<shared_ptr<Blob<Dtype> > > history_, update_, temp_;
+  vector<shared_ptr<Blob<Dtype> > > temp_2_, temp_3_, temp_n_,temp_c_,temp_n_2_;
+  vector<shared_ptr<Blob<Dtype> > > ones_n_,ones_c_;
+  vector<shared_ptr<Blob<Dtype> > > temp_nxn_,temp_nxn_2_;
 
   DISABLE_COPY_AND_ASSIGN(SGDSolver);
 };

@@ -18,6 +18,8 @@
 
 #include "caffe/util/device_alternate.hpp"
 
+#define ZERO_THRESHOLD 0.0001
+
 // Convert macro to string
 #define STRINGIFY(m) #m
 #define AS_STRING(m) STRINGIFY(m)
@@ -135,6 +137,16 @@ class Caffe {
   inline static cublasHandle_t cublas_handle() { return Get().cublas_handle_; }
   inline static curandGenerator_t curand_generator() {
     return Get().curand_generator_;
+  }
+  inline static int get_threads_per_block() {
+	  cudaDeviceProp prop;
+	  int device;
+	  if (cudaSuccess != cudaGetDevice(&device)) {
+		LOG(FATAL)<<"No cuda device present.";
+	    return CAFFE_CUDA_NUM_THREADS;
+	  }
+	  CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
+	  return prop.maxThreadsPerBlock;
   }
 #endif
 

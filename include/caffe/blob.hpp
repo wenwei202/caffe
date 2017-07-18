@@ -49,6 +49,15 @@ class Blob {
    * propagate the new input shape to higher layers.
    */
   void Reshape(const vector<int>& shape);
+
+  void Print() const {
+    if (!data_) { return ; }
+    for (int i=0;i<count_;i++){
+  	  LOG(INFO)<<i<<" "<<cpu_data()[i]<<" "<<cpu_diff()[i];
+    }
+    return ;
+  }
+
   void Reshape(const BlobShape& shape);
   void ReshapeLike(const Blob& other);
   inline string shape_string() const {
@@ -264,6 +273,8 @@ class Blob {
   void ShareDiff(const Blob& other);
 
   bool ShapeEquals(const BlobProto& other);
+
+  Dtype GetSparsity(Dtype thre = 0);
 
  protected:
   shared_ptr<SyncedMemory> data_;

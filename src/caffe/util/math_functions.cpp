@@ -54,6 +54,19 @@ void caffe_axpy<double>(const int N, const double alpha, const double* X,
     double* Y) { cblas_daxpy(N, alpha, X, 1, Y, 1); }
 
 template <typename Dtype>
+void caffe_cpu_keep_same_direction(const int N, const Dtype* X, Dtype* Y){
+	for(int i=0; i<N; i++){
+		if(X[i]*Y[i]<0){
+			Y[i] = 0;
+		}
+	}
+}
+template void caffe_cpu_keep_same_direction<float>(const int N, const float* X, float* Y);
+template void caffe_cpu_keep_same_direction<double>(const int N, const double* X, double* Y);
+template void caffe_cpu_keep_same_direction<int>(const int N, const int* X, int* Y);
+template void caffe_cpu_keep_same_direction<unsigned int>(const int N, const unsigned int* X, unsigned int* Y);
+
+template <typename Dtype>
 void caffe_set(const int N, const Dtype alpha, Dtype* Y) {
   if (alpha == 0) {
     memset(Y, 0, sizeof(Dtype) * N);  // NOLINT(caffe/alt_fn)

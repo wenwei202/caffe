@@ -1,0 +1,14 @@
+net: "models/vggnet/VGG_ILSVRC_16_layers_train_val.prototxt"
+test_iter: 1000
+test_interval: 1000
+base_lr: 0.01
+lr_policy: "step"
+gamma: 0.1
+stepsize: 100000
+display: 200
+max_iter: 370000
+momentum: 0.9
+weight_decay: 0.0005
+snapshot: 50000
+snapshot_prefix: "models/vggnet/caffe_vggnet_train"
+solver_mode: GPU

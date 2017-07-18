@@ -199,6 +199,9 @@ void Solver<Dtype>::Step(int iters) {
   smoothed_loss_ = 0;
 
   while (iter_ < stop_iter) {
+	// remove force decay after specified iterations
+	if(param_.force_iter()!=-1 && iter_>=param_.force_iter())
+		param_.set_force_decay(0.0);
     // zero-init the params
     net_->ClearParamDiffs();
     if (param_.test_interval() && iter_ % param_.test_interval() == 0
@@ -219,7 +222,21 @@ void Solver<Dtype>::Step(int iters) {
     // accumulate the loss and gradient
     Dtype loss = 0;
     for (int i = 0; i < param_.iter_size(); ++i) {
+      if(0==i && display){
+		//enable layer-wise display
+		for (int i=0;i<net_->layers().size();i++){
+		  shared_ptr< Layer<Dtype> > layer = net_->layers()[i];
+		  layer->SetDisplay(true);
+		}
+	  } else {
+		//disable layer-wise display
+		for (int i=0;i<net_->layers().size();i++){
+		  shared_ptr< Layer<Dtype> > layer = net_->layers()[i];
+		  layer->SetDisplay(false);
+		}
+	  }
       loss += net_->ForwardBackward();
+
     }
     loss /= param_.iter_size();
     // average the loss across iterations for smoothed reporting

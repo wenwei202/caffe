@@ -98,7 +98,7 @@ message NetParameter {
 // NOTE
 // Update the next available ID when you add a new SolverParameter field.
 //
-// SolverParameter next available ID: 41 (last added: type)
+// SolverParameter next available ID: 46 (last added: type)
 message SolverParameter {
   //////////////////////////////////////////////////////////////////////////////
   // Specifying the train and test networks
@@ -177,6 +177,23 @@ message SolverParameter {
   // regularization types supported: L1 and L2
   // controlled by weight_decay
   optional string regularization_type = 29 [default = "L2"];
+  
+  // The directions of gradients by force regularization
+  // "all": the exact gradients derivatived by force regularization
+  // "same": only gradients (which have the same directions with error gradients) are used.
+  optional string force_direction = 45 [default = "all"];
+  // The type of the strength of force regularization/decay
+  // "fixed": its strength is fixed as force_decay
+  // "adaptive": the length (length1) of regularization gradients in each layer is adapted to the length (length2) of error gradients.
+  //             In this case, length1=force_decay*length2
+  optional string force_decay_type = 44 [default = "fixed"];
+  // The strength/decay of force regularization.
+  optional float force_decay = 42 [default = 0.0]; 
+  // Type of force regularization - Gravity, Linear, Constant, Degradation
+  optional string force_type = 41 [default = "Degradation"];
+  // The iterations after which force_decay will be set to zero.
+  optional int32 force_iter = 43 [default = -1]; 
+    
   // the stepsize for learning rate policy "step"
   optional int32 stepsize = 13;
   // the stepsize for learning rate policy "multistep"
@@ -211,7 +228,7 @@ message SolverParameter {
 
   // type of the solver
   optional string type = 40 [default = "SGD"];
-
+  
   // numerical stability for RMSProp, AdaGrad and AdaDelta and Adam
   optional float delta = 31 [default = 1e-8];
   // parameters for the Adam solver
@@ -239,6 +256,7 @@ message SolverParameter {
   }
   // DEPRECATED: use type instead of solver_type
   optional SolverType solver_type = 30 [default = SGD];
+  
 }
 
 // A message that stores the solver snapshots
@@ -278,6 +296,13 @@ message NetStateRule {
   repeated string not_stage = 5;
 }
 
+// Specifies the force regularization on 2D blocks
+message ForceRegular {
+  optional int32 xdim = 1 [default = 1];
+  optional int32 ydim = 2 [default = 1];
+  optional float multi = 3 [default = 0.0];
+}
+
 // Specifies training parameters (multipliers on global learning constants,
 // and the name and other settings used for weight sharing).
 message ParamSpec {
@@ -301,12 +326,18 @@ message ParamSpec {
 
   // The multiplier on the global weight decay for this parameter.
   optional float decay_mult = 4 [default = 1.0];
+  
+  // The multiplier on the global force decay for this parameter.
+  optional float force_mult = 6 [default = 0.0];
+  
+  // DEPRECATED The force regularization on 2D
+  optional ForceRegular force_regularize = 5;
 }
 
 // NOTE
 // Update the next available ID when you add a new LayerParameter field.
 //
-// LayerParameter next available layer-specific ID: 147 (last added: recurrent_param)
+// LayerParameter next available layer-specific ID: 149 (last added: symmetric_rectify_param)
 message LayerParameter {
   optional string name = 1; // the layer name
   optional string type = 2; // the layer type
@@ -345,6 +376,9 @@ message LayerParameter {
   // included/excluded.
   repeated NetStateRule include = 8;
   repeated NetStateRule exclude = 9;
+  
+  // Display info
+  optional bool display = 12 [default = false];
 
   // Parameters for data pre-processing.
   optional TransformationParameter transform_param = 100;
@@ -403,6 +437,8 @@ message LayerParameter {
   optional ThresholdParameter threshold_param = 128;
   optional TileParameter tile_param = 138;
   optional WindowDataParameter window_data_param = 129;
+  optional SparsifyParameter sparsify_param = 147;
+  optional SymmetricRectifyParameter symmetric_rectify_param = 148;
 }
 
 // Message that stores parameters used to apply transformation
@@ -993,6 +1029,19 @@ message ReLUParameter {
   optional Engine engine = 2 [default = DEFAULT];
 }
 
+// Message that stores parameters used by SparsifyLayer
+message SparsifyParameter {
+  // For Forward: The absolute threshold value to inhibit inputs from forwarding
+  // To zerout small activations
+  // Recommendation: Use SymmetricRectifyLayer in the front and set thre = 0
+  optional float thre = 1 [default = 0];
+  
+  // For Backward: The decay coefficient of inputs (e.g. the feature maps from previous the conv layer)
+  // To learn sparse inputs (e.g. sparse representations)
+  optional float coef = 2 [default = 0];
+  
+}
+
 message ReshapeParameter {
   // Specify the output dimensions. If some of the dimensions are set to 0,
   // the corresponding dimension from the bottom layer is used (unchanged).
@@ -1396,4 +1445,18 @@ message PReLUParameter {
   optional FillerParameter filler = 1;
   // Whether or not slope paramters are shared across channels.
   optional bool channel_shared = 2 [default = false];
+}
+
+message SymmetricRectifyParameter {
+  // Symmetric rectifying
+  // y = x - thre_i; if x > thre_i
+  //   = x + thre_i; if x < -thre_i
+  //   = 0 otherwise.
+
+  // Initial value of thre_i. Default is thre_i=0.0001 for all channel i.
+  optional FillerParameter filler = 1;
+  // Whether or not threshold paramters are shared across channels.
+  optional bool channel_shared = 2 [default = false];
+  // minus L1 decay to bias threshold to larger value
+  optional float thre_decay = 3 [default = 0.0];
 }

@@ -10,6 +10,54 @@ priority: 1
 
 We will assume that you have Caffe successfully compiled. If not, please refer to the [Installation page](/installation.html). In this tutorial, we will assume that your Caffe installation is located at `CAFFE_ROOT`.
 
+## Rank clipping
+### 1. Train a regular LeNet
+Suppose the trained model is saved as `examples/mnist/lenet_0.9917.caffemodel.h5`
+
+### 2. Generate network and caffemodel with full-rank decomposition
+
+Step 1: add the layers in `examples/mnist/except_layers.json`, which are excluded from pruning;
+
+Step 2: enable pruning fully-connected layers by `--enable_fc` and run
+```
+python python/nn_decomposer.py \
+--prototxt examples/mnist/lenet_train_test.prototxt \
+--caffemodel examples/mnist/lenet_0.9917.caffemodel.h5 \
+--rankratio 1.0 \
+--enable_fc \
+--except_layers examples/mnist/except_layers.json
+```
+
+Step 3: generated network prototxt and caffemodel is saved as `examples/mnist/lenet_train_test.prototxt.lowrank.prototxt` and `examples/mnist/lenet_0.9917.caffemodel.h5.lowrank.caffemodel.h5`
+
+Step 4: rename generated files
+```
+mv examples/mnist/lenet_train_test.prototxt.lowrank.prototxt examples/mnist/lenet_train_test_fullrank.prototxt
+mv examples/mnist/lenet_0.9917.caffemodel.h5.lowrank.caffemodel.h5 examples/mnist/lenet_0.9917_fullrank.caffemodel.h5
+```
+
+### 3. Start clipping
+Usage: 
+```
+./examples/mnist/train_script_dp_lowrank.sh \
+<base learning rate> \
+<clipping threshold> \
+0.0 None \
+<gpu id, -1 for cpu> \
+<template solver file> \
+<finetuned caffemodel> \
+<low-rank approximation type, pca or svd>\
+[optional maximum clipping iteration]
+```
+
+Example: 
+```
+./examples/mnist/train_script_dp_lowrank.sh 0.01 0.99 0.0 None 0 ./examples/mnist/template_lenet_multistep_dp_solver.prototxt examples/mnist/lenet_0.9917_fullrank.caffemodel.h5 pca 18000 &
+```
+
+
+
+
 ## Prepare Datasets
 
 You will first need to download and convert the data format from the MNIST website. To do this, simply run the following commands:
@@ -287,3 +335,6 @@ MNIST is a small dataset, so training with GPU does not really introduce too muc
 
 ### How to reduce the learning rate at fixed steps?
 Look at lenet_multistep_solver.prototxt
+
+### File list
+`lenet_train_test_sfm.prototxt`: example to use `SparsifyLayer`

@@ -30,6 +30,10 @@ void caffe_axpy(const int N, const Dtype alpha, const Dtype* X,
     Dtype* Y);
 
 template <typename Dtype>
+void caffe_cpu_keep_same_direction(const int N, const Dtype* X,
+    Dtype* Y);
+
+template <typename Dtype>
 void caffe_cpu_axpby(const int N, const Dtype alpha, const Dtype* X,
     const Dtype beta, Dtype* Y);
 
@@ -153,6 +157,13 @@ void caffe_gpu_gemm(const CBLAS_TRANSPOSE TransA,
     const Dtype alpha, const Dtype* A, const Dtype* B, const Dtype beta,
     Dtype* C);
 
+// C = α op ( A ) + β op ( B )
+template <typename Dtype>
+void caffe_gpu_geam(const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB, const int M, const int N,
+    const Dtype alpha, const Dtype* A, const Dtype beta, const Dtype* B,
+    Dtype* C);
+
 template <typename Dtype>
 void caffe_gpu_gemv(const CBLAS_TRANSPOSE TransA, const int M, const int N,
     const Dtype alpha, const Dtype* A, const Dtype* x, const Dtype beta,
@@ -160,6 +171,10 @@ void caffe_gpu_gemv(const CBLAS_TRANSPOSE TransA, const int M, const int N,
 
 template <typename Dtype>
 void caffe_gpu_axpy(const int N, const Dtype alpha, const Dtype* X,
+    Dtype* Y);
+
+template <typename Dtype>
+void caffe_gpu_keep_same_direction(const int N, const Dtype* X,
     Dtype* Y);
 
 template <typename Dtype>
@@ -198,6 +213,9 @@ template <typename Dtype>
 void caffe_gpu_div(const int N, const Dtype* a, const Dtype* b, Dtype* y);
 
 template <typename Dtype>
+void caffe_gpu_div_check_zero(const int N, const Dtype* a, const Dtype* b, Dtype* y);
+
+template <typename Dtype>
 void caffe_gpu_abs(const int n, const Dtype* a, Dtype* y);
 
 template <typename Dtype>
@@ -208,6 +226,9 @@ void caffe_gpu_log(const int n, const Dtype* a, Dtype* y);
 
 template <typename Dtype>
 void caffe_gpu_powx(const int n, const Dtype* a, const Dtype b, Dtype* y);
+
+template <typename Dtype>
+void caffe_gpu_powx_check_negative(const int n, const Dtype* a, const Dtype b, Dtype* y);
 
 // caffe_gpu_rng_uniform with two arguments generates integers in the range
 // [0, UINT_MAX].
@@ -245,6 +266,16 @@ void caffe_gpu_fabs(const int n, const Dtype* x, Dtype* y);
 
 template <typename Dtype>
 void caffe_gpu_scale(const int n, const Dtype alpha, const Dtype *x, Dtype* y);
+
+//get sqrt sum of weights within bars(column(true)/row(false)) @ z and copy them at each position @ y
+template <typename Dtype>
+void caffe_gpu_bar_group_length(const int n, const int c, const Dtype *x, Dtype* y, Dtype* z, bool along_column_or_row = true);
+
+//get sqrt sum of weights within blocks and copy them at each position
+template <typename Dtype>
+void caffe_gpu_block_length(const int n, const int c,
+		const int blk_size_n, const int blk_size_c,
+		const Dtype *x, Dtype* y);
 
 #define DEFINE_AND_INSTANTIATE_GPU_UNARY_FUNC(name, operation) \
 template<typename Dtype> \

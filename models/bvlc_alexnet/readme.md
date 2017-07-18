@@ -7,6 +7,11 @@ sha1: 9116a64c0fbe4459d18f4bb6b56d647b63920377
 caffe_commit: 709dc15af4a06bebda027c1eb2b3f3e3375d5077
 ---
 
+## finetune AlexNet with feature sparsity regularization
+```
+./models/bvlc_alexnet/train_script.sh 0.001 0.0000000009 1 models/bvlc_alexnet/template_solver.prototxt models/bvlc_alexnet/template_train_val.prototxt models/bvlc_alexnet/bvlc_alexnet.caffemodel
+```
+
 This model is a replication of the model described in the [AlexNet](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks) publication.
 
 Differences:
@@ -23,3 +28,21 @@ This model was trained by Evan Shelhamer @shelhamer
 ## License
 
 This model is released for unrestricted use.
+
+## scripts
+```
+./models/bvlc_alexnet/train_script_force.sh 0.001 0.00005 Degradation 1 models/bvlc_alexnet/template_solver_force.prototxt models/bvlc_alexnet/alexnet_0.57982_split.caffemodel.h5
+```
+
+## Email notification when the training is one
+You can put your email address in the end of the script (e.g. `train_script_force.sh`),so that you will be notified by an email when the training is done.
+Before you can be notified, please install `mail` by
+```
+sudo apt-get install mailutils
+sudo apt-get install sendmail
+```
+and test it by
+```
+echo "Test content" | mail -s "Hello" youraddress@example.com
+```
+The email may be blocked if you send it too frequently.
