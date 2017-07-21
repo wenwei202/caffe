@@ -1,6 +1,8 @@
 # ABOUT 
 
-This is a branch working on low-rank deep neural networks for faster evaluation.
+This branch is merged to [master](https://github.com/wenwei202/caffe), and maybe out-of-date.
+
+This is a branch working on low-rank deep neural networks for faster evaluation. Related work is accepted in ICCV 2017.
 
 ## Paper
 
