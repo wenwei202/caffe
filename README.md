@@ -1,17 +1,24 @@
 # ABOUT 
+## Repo summary
+### Lower-rank deep neural networks (ICCV 2017)
+Paper: [Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746).
+
+### Structurally Sparse Deep Neural Networks (NIPS 2016)
+See the source code in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
+
+### Direct sparse convolution and guided pruning (ICLR 2017)
+Originally in branch [intel](https://github.com/wenwei202/caffe/tree/intel), but merged to [IntelLabs/SkimCaffe](https://github.com/IntelLabs/SkimCaffe) with major contributions by @jspark1105
+
+### Caffe version
+Master branch is from caffe @ commit [eb4ba30](https://github.com/BVLC/caffe/commit/eb4ba30e3c4899edc7a9713158d61503fa8ecf90)
+
 ## Lower-rank deep neural networks (ICCV 2017)
 Tutorials on using [python](/python) for low-rank DNNs. More details will be updated.
+If any problems/bugs/questions, you are welcome to open an issue and we will response asap.
+
 
 Paper: [Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746).
 
-## Structurally Sparse Deep Neural Networks (NIPS 2016)
-See the source code in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
-
-## Direct sparse convolution and guided pruning (ICLR 2017)
-Originally in branch [intel](https://github.com/wenwei202/caffe/tree/intel), but merged to [IntelLabs/SkimCaffe](https://github.com/IntelLabs/SkimCaffe) with major contributions by @jspark1105
-
-## Caffe version
-Master branch is from caffe @ commit [eb4ba30](https://github.com/BVLC/caffe/commit/eb4ba30e3c4899edc7a9713158d61503fa8ecf90)
 
 ## License and Citation
 
