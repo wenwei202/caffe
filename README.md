@@ -31,7 +31,7 @@ Only three additional protobuf configurations are required:
 
 See details and implementations in [caffe.proto](/src/caffe/proto/caffe.proto#L190-L193) and [SGDSolver](/src/caffe/solvers/sgd_solver.cpp#L223)
 
-### Some research value
+### Some open research topics
 Force Regularization can squeeze/coordinate weight information to much lower rank space, but after low-rank decomposition with the same precision of approximation, it is still more challenging to recover the accuracy from the much more lightweight DNNs. 
 
 ## License and Citation
