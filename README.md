@@ -15,10 +15,11 @@ Originally in branch [intel](https://github.com/wenwei202/caffe/tree/intel), but
 Master branch is from caffe @ commit [eb4ba30](https://github.com/BVLC/caffe/commit/eb4ba30e3c4899edc7a9713158d61503fa8ecf90)
 
 ## Lower-rank deep neural networks (ICCV 2017)
-Tutorials on using [python](/python) for low-rank DNNs. More details will be updated.
+Tutorials on using python for low-rank DNNs is [here](/python). More details will be updated.
+
 If any problems/bugs/questions, you are welcome to open an issue and we will response asap.
 
-Paper: [Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746).
+Details of Force Regularization is in the Paper: [Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746).
 
 ### Training with Force Regularization for Lower-rank DNNs
 It is easy to use the code to train DNNs toward lower-rank DNNs.
