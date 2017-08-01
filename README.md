@@ -18,9 +18,17 @@ Master branch is from caffe @ commit [eb4ba30](https://github.com/BVLC/caffe/com
 Tutorials on using [python](/python) for low-rank DNNs. More details will be updated.
 If any problems/bugs/questions, you are welcome to open an issue and we will response asap.
 
-
 Paper: [Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746).
 
+### Training with Force Regularization for Lower-rank DNNs
+It is easy to use the code to train DNNs toward lower-rank DNNs.
+Only three additional protobuf configurations are required:
+
+1. `force_decay` in `SolverParameter`
+2. `force_type` in `SolverParameter`
+3. `force_mult` in `ParamSpec`
+
+See details and implementations in [caffe.proto](/src/caffe/proto/caffe.proto#L190-L193) and [SGDSolver](/src/caffe/solvers/sgd_solver.cpp#L223)
 
 ## License and Citation
 
