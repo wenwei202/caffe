@@ -2,6 +2,7 @@
 ## Repo summary
 ### Lower-rank deep neural networks (ICCV 2017)
 Paper: [Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746).
+
 source code is in master branch.
 
 ### Structurally Sparse Deep Neural Networks (NIPS 2016)
