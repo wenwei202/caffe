@@ -27,7 +27,7 @@ Only three additional protobuf configurations are required:
 
 1. `force_decay` in `SolverParameter`: Specified in solver. The coefficient to make the trade-off between accuracy and ranks. Larger `force_decay`, smaller ranks and usually lower accuracy.
 2. `force_type` in `SolverParameter`: Specified in solver. The kind of force to coordinate filters. `Degradation` - The strength of pairwise attractive force decreases as the distance decreases. This is the L2-norm force in the paper; `Constant` - The strength of pairwise attractive force keeps constant regardless of the distance. This is the L1-norm force in the paper.
-3. `force_mult` in `ParamSpec`: Specified for the `param` of weights in each layer. The local multipler of `force_decay` for filters in a specific layer, i.e., `force_mult*force_decay` is the final coefficient for the specific layer. You can set `force_mult: 0.0` to eliminate force regularization in any layer.
+3. `force_mult` in `ParamSpec`: Specified for the `param` of weights in each layer. The local multiplier of `force_decay` for filters in a specific layer, i.e., `force_mult*force_decay` is the final coefficient for the specific layer. You can set `force_mult: 0.0` to eliminate force regularization in any layer.
 
 See details and implementations in [caffe.proto](/src/caffe/proto/caffe.proto#L190-L193) and [SGDSolver](/src/caffe/solvers/sgd_solver.cpp#L223)
 
