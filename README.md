@@ -35,8 +35,11 @@ See details and implementations in [caffe.proto](/src/caffe/proto/caffe.proto#L1
 An example of training LeNet with L1-norm force regularization:
 
 ```
-######### The train/test net with local force decay multiplier
-net: "examples/mnist/lenet_train_test_force.prototxt"
+##############################################################
+# The train/test net with local force decay multiplier       |
+net: "examples/mnist/lenet_train_test_force.prototxt"        |
+##############################################################
+
 test_iter: 100
 test_interval: 500
 # The base learning rate. For large-scale DNNs, you might try 0.1x smaller base_lr of training the original DNNs from scratch.
@@ -44,11 +47,13 @@ base_lr: 0.01
 momentum: 0.9
 weight_decay: 0.0005
 
-# The coefficient of force regularization. 
-# The hyper-parameter to tune to make trade-off
-force_decay: 0.001
-# The type of force - L1-norm force
-force_type: "Constant"
+##############################################################
+# The coefficient of force regularization.                   |
+# The hyper-parameter to tune to make trade-off              |
+force_decay: 0.001                                           |
+# The type of force - L1-norm force                          |
+force_type: "Constant"                                       |
+##############################################################
 
 # The learning rate policy
 lr_policy: "multistep"
@@ -72,7 +77,7 @@ solver_mode: GPU
 Retraining a trained DNN with force regularization might get better results, comparing with training from scratch.
 
 ### Some open research topics
-Force Regularization can squeeze/coordinate weight information to much lower rank space, but after low-rank decomposition with the same precision of approximation, it is still more challenging to recover the accuracy from the much more lightweight DNNs. 
+Force Regularization can squeeze/coordinate weight information to much lower rank space, but after low-rank decomposition with the same precision of approximation, it is more challenging to recover the accuracy from the much more lightweight DNNs. 
 
 ## License and Citation
 
