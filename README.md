@@ -15,7 +15,7 @@ Originally in branch [intel](https://github.com/wenwei202/caffe/tree/intel), but
 Master branch is from caffe @ commit [eb4ba30](https://github.com/BVLC/caffe/commit/eb4ba30e3c4899edc7a9713158d61503fa8ecf90)
 
 ## Lower-rank deep neural networks (ICCV 2017)
-Tutorials on using python for low-rank DNNs is [here](/python). More details will be updated.
+Tutorials on using python to decompose DNNs to low-rank space is [here](/python). 
 
 If any problems/bugs/questions, you are welcome to open an issue and we will response asap.
 
