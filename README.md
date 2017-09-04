@@ -8,6 +8,9 @@ source code is in master branch.
 ### Structurally Sparse Deep Neural Networks (NIPS 2016)
 See the source code in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
 
+### TernGrad: Ternary Gradients to Reduce Communication in Distributed Deep Learning (NIPS 2017 Oral)
+A work to accelerate training. [code](https://github.com/wenwei202/terngrad)
+
 ### Direct sparse convolution and guided pruning (ICLR 2017)
 Originally in branch [intel](https://github.com/wenwei202/caffe/tree/intel), but merged to [IntelLabs/SkimCaffe](https://github.com/IntelLabs/SkimCaffe) with major contributions by @jspark1105
 
