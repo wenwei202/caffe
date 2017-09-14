@@ -68,7 +68,7 @@ Training by SSL is simple, we add new features in [caffe.proto](/src/caffe/proto
 }
 ```
   - `block_group_decay` in `SolverParameter`: do NOT forget to configure global weight decay of group lasso regularization in the solver prototxt by setting `block_group_decay` (default value is 0)
-  - Group Lasso regularization on each row or column can be specified by `block_group_lasso` with `ydimen: 1` or `xdimen: 1`. However, we also implemented (`breadth_decay_mult` & `kernel_shape_decay_mult` in `ParamSpec param`) and (`breadth_decay` & `kernel_shape_decay` in `SolverParameter`) to simplify the configuration of group Lasso regularization on each row or column, respectively. For example, in `conv1` of LeNet, `kernel_shape_decay_mult: 1.5` is equivalent to 
+  - Group Lasso regularization on each row or column can be specified by `block_group_lasso` with `ydimen: 1` or `xdimen: 1`. However, in GPU mode, we also implemented (`breadth_decay_mult` & `kernel_shape_decay_mult` in `ParamSpec param`) and (`breadth_decay` & `kernel_shape_decay` in `SolverParameter`) to simplify the configuration of group Lasso regularization on each row or column, respectively. For example, in `conv1` of LeNet, `kernel_shape_decay_mult: 1.5` is equivalent to 
   
   ```
   param { # weights
