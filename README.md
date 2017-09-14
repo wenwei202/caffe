@@ -14,6 +14,9 @@ Please also see our ICCV 2017 paper on lower-rank DNNs:
 And ICLR 2017 paper on sparse DNNs:
 [Paper](https://openreview.net/pdf?id=rJPcZ3txx), [Code](https://github.com/IntelLabs/SkimCaffe)
 
+You may have interest in our NIPS 2017 oral paper, regarding acceleration of distributed training using ternary gradients:
+[Paper](https://arxiv.org/abs/1705.07878), [Code](https://github.com/wenwei202/terngrad). 
+
 ## Motivation
 Deep neural networks can be very sparse (>90%), after optimization by L1 regularization or connection pruning. The model size can be compressed using those sparsifying methods, however, the computation cannot be sped up because of the poor cache locality and jumping memory access pattern resulted from the random pattern of the sparsity.
 
