@@ -83,6 +83,15 @@ Retraining a trained DNN with force regularization might get better results, com
 Force Regularization can squeeze/coordinate weight information to much lower rank space, but after low-rank decomposition with the same precision of approximation, it is more challenging to recover the accuracy from the much more lightweight DNNs. 
 
 ## License and Citation
+Please cite our ICCV and Caffe if it is useful for your research:
+
+    @InProceedings{Wen_2017_ICCV,
+	  author={Wen, Wei and Xu, Cong and Wu, Chunpeng and Wang, Yandan and Chen, Yiran and Li, Hai},
+      title={Coordinating Filters for Faster Deep Neural Networks},
+	  booktitle = {The IEEE International Conference on Computer Vision (ICCV)},
+	  month = {October},
+	  year = {2017}
+    }
 
 Caffe is released under the [BSD 2-Clause license](https://github.com/BVLC/caffe/blob/master/LICENSE).
 The BVLC reference models are released for unrestricted use.
