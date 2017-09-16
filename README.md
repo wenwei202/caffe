@@ -10,11 +10,7 @@ Slides are [here](/docs/WEN_NIPS2016.pdf).
 
 This work is extended and advanced to Recurrent Neural Networks (LSTMs) to learn hidden sizes. [Code](https://github.com/wenwei202/iss-rnns/) is implemented by TensorFlow. 
 
-Please also see our ICCV 2017 paper on lower-rank DNNs:
-[Paper](https://arxiv.org/abs/1703.09746), [Code](https://github.com/wenwei202/caffe). 
-
-And ICLR 2017 paper on sparse DNNs:
-[Paper](https://openreview.net/pdf?id=rJPcZ3txx), [Code](https://github.com/IntelLabs/SkimCaffe)
+Our ICCV 2017 paper on lower-rank DNNs ([Paper](https://arxiv.org/abs/1703.09746), [Code](https://github.com/wenwei202/caffe)) can combine with SSL method for further acceleration. 
 
 You may have interest in our NIPS 2017 oral paper, regarding acceleration of distributed training using ternary gradients:
 [Paper](https://arxiv.org/abs/1705.07878), [Code](https://github.com/wenwei202/terngrad). 
