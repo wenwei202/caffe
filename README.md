@@ -79,6 +79,9 @@ solver_mode: GPU
 
 Retraining a trained DNN with force regularization might get better results, comparing with training from scratch.
 
+### Hyperparameter
+We included the hyperparameter of "lambda_s" for AlexNet in [Figure 6](https://arxiv.org/pdf/1703.09746.pdf). 
+
 ### Some open research topics
 Force Regularization can squeeze/coordinate weight information to much lower rank space, but after low-rank decomposition with the same precision of approximation, it is more challenging to recover the accuracy from the much more lightweight DNNs. 
 
