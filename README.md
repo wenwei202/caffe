@@ -1,7 +1,7 @@
 # ABOUT 
 ## Repo summary
 ### Lower-rank deep neural networks (ICCV 2017)
-Paper: [Coordinating Filters for Faster Deep Neural Networks](https://arxiv.org/abs/1703.09746).
+Paper: [Coordinating Filters for Faster Deep Neural Networks](http://openaccess.thecvf.com/content_ICCV_2017/papers/Wen_Coordinating_Filters_for_ICCV_2017_paper.pdf).
 
 [Poster](/docs/ICCV17-Poster.pdf) is available.
 
