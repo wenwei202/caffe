@@ -9,7 +9,7 @@
 cd $CAFFE_ROOT
 ./models/bvlc_reference_caffenet/train_script.sh 0.001 0.0 0.0005 0.0 0.0 0 \
 template_group_solver.prototxt \
-caffenet_SSL_0.4259.caffemodel
+bvlc_reference_caffenet.caffemodel
 ```
 
 More examples in [examples/cifar10](/examples/cifar10)
