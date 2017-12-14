@@ -488,7 +488,7 @@ __global__ void block_group_lasso_kernel(const int n, const int c,
 		int idx1 = y_pos * c + x_pos;
 		//if(x_pos < c && y_pos < n){
 		if(offset_x < blk_size_c && offset_y < blk_size_n){
-			if(res){
+			if(res>0){
 				y[idx1] = Dtype(sqrt(res));
 			}else{
 				y[idx1] = Dtype(0);
