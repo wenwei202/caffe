@@ -7,7 +7,7 @@ Paper: [Coordinating Filters for Faster Deep Neural Networks](http://openaccess.
 
 source code is in master branch.
 
-### Structurally Sparse Deep Neural Networks (NIPS 2016)
+### Sparse Deep Neural Networks (NIPS 2016)
 See the source code in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
 
 ### (NIPS 2017 Oral) Ternary Gradients to Reduce Communication in Distributed Deep Learning 
