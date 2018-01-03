@@ -8,7 +8,7 @@ Our *SSL (Structured Sparsity Learning)* method utilizes group Lasso regularizat
 Poster is [here](/docs/Poster_Wen_NIPS2016.pdf).
 Slides are [here](/docs/WEN_NIPS2016.pdf).
 
-This work is extended and advanced to Recurrent Neural Networks (LSTMs) to learn hidden sizes. [Code](https://github.com/wenwei202/iss-rnns/) is implemented by TensorFlow. 
+This work is extended and advanced to Recurrent Neural Networks (like LSTMs and Recurrent Highway Networks) to learn hidden sizes. [Code](https://github.com/wenwei202/iss-rnns/) is implemented by TensorFlow. 
 
 Our ICCV 2017 paper on lower-rank DNNs ([Paper](https://arxiv.org/abs/1703.09746), [Code](https://github.com/wenwei202/caffe)) can combine with SSL method for further acceleration. 
 
