@@ -5,7 +5,7 @@ Paper: [Coordinating Filters for Faster Deep Neural Networks](http://openaccess.
 
 [Poster](/docs/ICCV17-Poster.pdf) is available.
 
-source code is in master branch.
+source code is in this master branch.
 
 ### Sparse Deep Neural Networks (NIPS 2016)
 See the source code in branch [scnn](https://github.com/wenwei202/caffe/tree/scnn)
