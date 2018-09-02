@@ -1,4 +1,7 @@
 //Usage: dim3 block(c,1); dim3 thread(1,n); col_group_lasso_kernel<<<block,thread>>>(n,c,x,y);
+#include <stdio.h>      /* printf, scanf, puts, NULL */
+#include <stdlib.h>     /* srand, rand */
+#include <time.h>  
 #include <cublas_v2.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -164,8 +167,8 @@ void saxpy(int n, float a, float *x, float *y)
 
 int main(void)
 {
-  int N = 2;//456;
-  int C = 3;//4096;
+  int N =  456;
+  int C = 4096;
   float *x, *y, *d_x, *d_y;
   x = (float*)malloc(N*C*sizeof(float));
   y = (float*)malloc(N*C*sizeof(float));
@@ -174,20 +177,24 @@ int main(void)
   cudaMalloc(&d_y, N*C*sizeof(float));
 
   for (int i = 0; i < N*C; i++) {
-    x[i] = .00001f*i;
-    y[i] = 1.1f;
+    x[i] = (rand() % 1000)/999.0f;
   }
 
   cudaMemcpy(d_x, x, N*C*sizeof(float), cudaMemcpyHostToDevice);
-  saxpy<<<(N*C+255)/256, 256>>>(N*C, 2.0f, d_x, d_y); 
-  //caffe_gpu_bar_group_lasso(N, C, d_x, d_y, true);
+  caffe_gpu_bar_group_lasso(N, C, d_x, d_y, true);
   CUDA_CHECK(cudaPeekAtLastError());
   
   cudaMemcpy(y, d_y, N*C*sizeof(float), cudaMemcpyDeviceToHost);
   ofstream myfile;
   myfile.open ("groplasso.txt");
-  for (int i = 0; i < N*C; i++)
-    myfile << y[i] << "\n";
+  cout << "saving to groplasso.txt\n";
+  for (int i = 0; i < N; i++){
+    for (int j = 0; j < C; j++) {  
+     myfile << y[i*C+j] << " ";
+    }
+   myfile<<"\n";
+  }
+    
   
   myfile.close();
   cudaFree(d_x);
