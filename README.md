@@ -14,7 +14,7 @@ See the source code in branch [scnn](https://github.com/wenwei202/caffe/tree/scn
 A work to accelerate training. [code](https://github.com/wenwei202/terngrad)
 
 ### Direct sparse convolution and guided pruning (ICLR 2017)
-Originally in branch [intel](https://github.com/wenwei202/caffe/tree/intel), but merged to [IntelLabs/SkimCaffe](https://github.com/IntelLabs/SkimCaffe) with major contributions by @jspark1105
+Originally in branch [intel](https://github.com/wenwei202/caffe/tree/intel), but merged to [IntelLabs/SkimCaffe](https://github.com/IntelLabs/SkimCaffe) with contributions also by @jspark1105
 
 ### Caffe version
 Master branch is from caffe @ commit [eb4ba30](https://github.com/BVLC/caffe/commit/eb4ba30e3c4899edc7a9713158d61503fa8ecf90)
